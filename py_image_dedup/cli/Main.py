@@ -6,71 +6,68 @@ import click
 IMAGE_HASH_MAP = {}
 
 
-@click.command()
-@click.option(
-    '-recursive',
-    default=True,
-    help='Recursive search'
-)
-@click.option(
-    '-directory',
-    help='Directory'
-)
-@click.option(
-    '-remove',
-    default=False,
-    help='Remove duplicate files automatically'
-)
-def deduplicate(recursive, directory, remove):
-    """Simple program that greets NAME for a total of COUNT times."""
+def validate_directory(ctx, param, directories):
+    """
+    Validates the directory parameter
+    """
 
-    try:
-        check_arguments(recursive, directory)
-    except ValueError as e:
-        console_print_error(e)
-        exit(-1)
+    # if not directories or len(directories) is 0:
+    #     raise click.BadParameter("Missing target directory!")
+    #
+    # for directory in directories:
+    #     if not directories or not os.path.isdir(directory):
+    #         raise click.BadParameter("Target directory is not a directory!")
 
-    walk_directory(directory, recursive)
+
+@click.command("deduplicate")
+@click.option(
+    '-d', '--directory',
+    callback=validate_directory,
+    type=click.Path(exists=True),
+    multiple=True,
+    help='Top level directory to analyze for duplicate files'
+)
+@click.option(
+    '-r', '--recursive', default=True,
+    help='Recursive search in all sub-folders'
+)
+@click.option(
+    '-v', '--verbose', count=True,
+    help='Show output while processing'
+)
+def deduplicate(recursive, directory, verbose):
+    from py_image_dedup.library.Deduplicator import Deduplicator
+    deduplicator = Deduplicator([directory])
+
+    result = deduplicator.analyze(recursive)
 
     output_result()
 
-    if remove:
-        remove_duplicates()
+    remove_duplicates()
 
 
-def check_arguments(recursive, directory):
-    """
-    Simple cmd argument checks
-    """
+@click.command("analyze")
+@click.option(
+    '-d', '--directory',
+    callback=validate_directory,
+    multiple=True,
+    help='Top level directory to analyze for duplicate files'
+)
+@click.option(
+    '-r', '--recursive', default=True,
+    help='Recursive search in all sub-folders'
+)
+@click.option(
+    '-v', '--verbose', count=True,
+    help='Show output while processing')
+def analyze(directory, recursive, verbose):
+    from py_image_dedup.library.Deduplicator import Deduplicator
+    deduplicator = Deduplicator([directory])
 
-    if not directory or not os.path.isdir(directory):
-        raise ValueError("Target directory is not a directory!")
+    result = deduplicator.analyze(recursive)
 
-
-def walk_directory(root_directory, recursive):
-    root_directory = root_directory.decode('utf-8')
-
-    if "~" in root_directory:
-        console_print_error("Illegal Char in Directory")
-
-    for (root, dirs, files) in os.walk(str(root_directory)):
-        # root is the place you're listing
-        # dirs is a list of directories directly under root
-        # files is a list of files directly under root
-
-        console_print_default('Analyzing "%s" ...' % root)
-
-        for file in files:
-            # click.echo('File: %s' % file)
-            image_hash = calculate_image_hash(os.path.join(root, file))
-            if image_hash not in IMAGE_HASH_MAP:
-                IMAGE_HASH_MAP[image_hash] = []
-
-            IMAGE_HASH_MAP[image_hash].append(os.path.join(root, file))
-
-        # if recursive:
-        #    for dir in direct_subfolders:
-        #    walk_directory(direct_subfolders)
+    # TODO:
+    # output_result()
 
 
 def output_result():
@@ -133,10 +130,13 @@ def console_print_error(message):
     click.echo(click.style('Error: %s' % message, fg='red'))
 
 
-def handler(signum, frame):
-    output_result()
-
-
 if __name__ == '__main__':
     deduplicate()
+    analyze()
+
+
+    def handler(signum, frame):
+        output_result()
+
+
     signal.signal(signal.SIGINT, handler)
