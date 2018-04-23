@@ -16,7 +16,7 @@ class IdentifierStore:
             return open(r'%s' % self._db_file_path, mode)
         except FileNotFoundError:
             self._write({})
-        
+
         return open(r'%s' % self._db_file_path, mode)
 
     def _close_db(self):
@@ -50,7 +50,7 @@ class IdentifierStore:
         else:
             return None
 
-    def set(self, key: str, value: str):
+    def set(self, key: str, value: {}):
         """
         Set a value in the store
         """

@@ -12,19 +12,20 @@ class Test(unittest.TestCase):
 
     #    analyze('-d D:/test')
 
-    def test_analyze(self):
-        from py_image_dedup.library.Deduplicator import Deduplicator
-        deduplicator = Deduplicator(['D:/test'])
+    # def test_analyze(self):
+    #     from py_image_dedup.library.Deduplicator import Deduplicator
+    #     deduplicator = Deduplicator(['D:/test'])
+    #
+    #     result = deduplicator.analyze(True)
+    #     print(result)
 
-        result = deduplicator.analyze(True)
-        print(result)
-
-    def test_analyze(self):
+    def test_deduplicate(self):
         from py_image_dedup.library.Deduplicator import Deduplicator
         deduplicator = Deduplicator(['D:/test'])
 
         result = deduplicator.deduplicate(True)
-        print(result)
+        for r in result:
+            print(r)
 
 
 if __name__ == '__main__':

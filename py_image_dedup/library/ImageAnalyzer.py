@@ -1,7 +1,8 @@
 import hashlib
 import os
+import time
 
-from py_image_dedup.library.IdentifierStore import IdentifierStore
+from py_image_dedup.persistence.IdentifierStore import IdentifierStore
 
 
 class ImageAnalyzer:
@@ -19,12 +20,13 @@ class ImageAnalyzer:
         :return: an identifier
         """
 
-        persisted_value = self._persistence.get(file_path)
-        if persisted_value:
-            return persisted_value
-
         stat_info = os.stat(file_path)
         file_size = stat_info.st_size
+        file_mod_date = os.path.getmtime(file_path)
+
+        persisted_value = self._persistence.get(file_path)
+        if persisted_value and file_mod_date <= persisted_value["date"]:
+            return persisted_value["identifier"]
 
         hasher = hashlib.md5()
         with open(file_path, 'rb') as afile:
@@ -36,7 +38,11 @@ class ImageAnalyzer:
         hashcode = hasher.hexdigest()
 
         identifier = "%s_%s" % (hashcode, file_size)
+        persistence_object = {
+            "date": int(time.time()),
+            "identifier": identifier
+        }
 
-        self._persistence.set(file_path, identifier)
+        self._persistence.set(file_path, persistence_object)
         self._persistence.save()
         return identifier

@@ -1,4 +1,3 @@
-import os
 import signal
 
 import click
@@ -39,11 +38,10 @@ def deduplicate(recursive, directory, verbose):
     from py_image_dedup.library.Deduplicator import Deduplicator
     deduplicator = Deduplicator([directory])
 
-    result = deduplicator.analyze(recursive)
+    result = deduplicator.deduplicate(recursive)
 
-    output_result()
-
-    remove_duplicates()
+    for r in result:
+        print(r)
 
 
 @click.command("analyze")
@@ -66,8 +64,8 @@ def analyze(directory, recursive, verbose):
 
     result = deduplicator.analyze(recursive)
 
-    # TODO:
-    # output_result()
+    for r in result:
+        print(r)
 
 
 def output_result():
@@ -95,27 +93,6 @@ def output_result():
                 console_print_default('  %s' % file)
 
     console_print_warn('Duplicates: %s' % duplicates_count)
-
-
-def remove_duplicates():
-    for key, value in IMAGE_HASH_MAP.iteritems():
-        if (len(value)) <= 1:
-            continue
-
-        remnant_found = False
-        for file in value:
-            if "Camera" in file:
-                console_print_default("Ignoring '%s' " % file)
-                remnant_found = True
-                continue
-            else:
-                if remnant_found:
-                    os.remove(file)
-                    console_print_warn("Deleted '%s' " % file)
-                    continue
-                else:
-                    remnant_found = True
-                    continue
 
 
 def console_print_default(message):
