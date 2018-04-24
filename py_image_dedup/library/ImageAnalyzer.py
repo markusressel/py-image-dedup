@@ -44,5 +44,7 @@ class ImageAnalyzer:
         }
 
         self._persistence.set(file_path, persistence_object)
-        self._persistence.save()
         return identifier
+
+    def save_state(self):
+        self._persistence.save()

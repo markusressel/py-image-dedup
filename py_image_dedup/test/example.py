@@ -23,7 +23,11 @@ class Test(unittest.TestCase):
         from py_image_dedup.library.Deduplicator import Deduplicator
         deduplicator = Deduplicator(['D:/test'])
 
-        result = deduplicator.deduplicate(True)
+        result = deduplicator.deduplicate(
+            recursive=True,
+            file_extensions=[".png", ".jpg", ".jpeg"],
+            dry_run=False)
+
         for r in result:
             print(r)
 

@@ -9,7 +9,7 @@ class Deduplicator:
         self._directories = directories
         self._image_analyzer = ImageAnalyzer(directories[0])
 
-    def analyze(self, recursive: bool) -> {str, str}:
+    def analyze(self, recursive: bool, file_extensions: [str] = None) -> {str, str}:
         """
         Analyzes all files, generates identifiers (if necessary) and stores them
         for later access
@@ -18,13 +18,22 @@ class Deduplicator:
 
         all_identifiers = {}
         for directory in self._directories:
-            new_identifiers = self._walk_directory(directory, recursive)
+            new_identifiers = self._walk_directory(directory, recursive, file_extensions)
             all_identifiers.update(new_identifiers)
 
+        self._image_analyzer.save_state()
         return all_identifiers
 
-    def deduplicate(self, recursive: bool):
-        all_identifiers = self.analyze(recursive)
+    def deduplicate(self, recursive: bool, file_extensions: [str] = None, dry_run: bool = False):
+        """
+        Removes duplicates
+
+        :param recursive:
+        :param file_extensions:
+        :param dry_run:
+        :return:
+        """
+        all_identifiers = self.analyze(recursive, file_extensions)
 
         files_with_same_identifier = self._collect_same_identifier(all_identifiers)
 
@@ -52,15 +61,14 @@ class Deduplicator:
                     result["kept"].append(file)
                     remnant_found = True
                     continue
-                else:
-                    if remnant_found:
+
+                if remnant_found:
+                    if not dry_run:
                         os.remove(file)
-                        result["deleted"].append(file)
-                        continue
-                    else:
-                        remnant_found = True
-                        result["kept"].append(file)
-                        continue
+                    result["deleted"].append(file)
+                else:
+                    remnant_found = True
+                    result["kept"].append(file)
 
         return result
 
@@ -74,7 +82,7 @@ class Deduplicator:
 
         return same_hashes
 
-    def _walk_directory(self, root_directory: str, recursive: bool) -> {str, str}:
+    def _walk_directory(self, root_directory: str, recursive: bool, file_extensions: [str] = None) -> {str, str}:
         """
         :param root_directory:
         :param recursive:
@@ -93,7 +101,12 @@ class Deduplicator:
             print('Analyzing "%s" ...' % root)
 
             for file in files:
+                if not self._file_extension_matches_filter(file_extensions, file):
+                    # skip file with unwanted file extension
+                    continue
+
                 file_path = os.path.abspath(os.path.join(root, file))
+
                 # click.echo('File: %s' % file)
                 image_identifier = self._image_analyzer.calculate_image_identifier(file_path)
 
@@ -104,3 +117,15 @@ class Deduplicator:
                 return result_map
 
         return result_map
+
+    def _file_extension_matches_filter(self, file_extensions: [str], file) -> bool:
+        if not file_extensions:
+            return True
+
+        filename, file_extension = os.path.splitext(file)
+
+        if file_extension.lower() not in (ext.lower() for ext in file_extensions):
+            # skip file with unwanted file extension
+            return False
+        else:
+            return True

@@ -3,13 +3,19 @@ import pickle
 
 
 class IdentifierStore:
+    # counter used to track how many new values were set
+    # and limit the amount of disk writes
+    __SET_CALL_COUNTER = 0
 
     def __init__(self, db_path: str):
         d = {"abc": [1, 2, 3], "qwerty": [4, 5, 6]}
 
         self._store = None
-        self._db_file_path = os.path.join(db_path, "hash_db.pkl")
+        self._db_file_path = os.path.join(db_path, "py-image-dedup_db.pkl")
         self._db_file = None
+
+        self._store = self.load()
+        self._cleanup()
 
     def _open_db(self, mode: str) -> object:
         try:
@@ -42,9 +48,6 @@ class IdentifierStore:
         :return:
         """
 
-        if not self._store:
-            self.load()
-
         if key in self._store:
             return self._store[key]
         else:
@@ -56,6 +59,11 @@ class IdentifierStore:
         """
         self._store[key] = value
 
+        # autosave if enough new values were stored
+        self.__SET_CALL_COUNTER += 1
+        if self.__SET_CALL_COUNTER % 50 == 0:
+            self.save()
+
     def set_all(self, hashes: {str, str}):
         """
         :return:
@@ -66,4 +74,14 @@ class IdentifierStore:
         """
         Store hashes in persistence
         """
+
         self._write(self._store)
+
+    def _cleanup(self):
+        cleaned = {}
+        for key, value in self._store.items():
+            if os.path.exists(key) and os.path.isfile(key):
+                cleaned[key] = value
+        self._store = cleaned
+
+        self.save()

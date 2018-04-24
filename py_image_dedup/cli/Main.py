@@ -1,5 +1,3 @@
-import signal
-
 import click
 
 IMAGE_HASH_MAP = {}
@@ -22,8 +20,6 @@ def validate_directory(ctx, param, directories):
 @click.option(
     '-d', '--directory',
     callback=validate_directory,
-    type=click.Path(exists=True),
-    multiple=True,
     help='Top level directory to analyze for duplicate files'
 )
 @click.option(
@@ -34,7 +30,7 @@ def validate_directory(ctx, param, directories):
     '-v', '--verbose', count=True,
     help='Show output while processing'
 )
-def deduplicate(recursive, directory, verbose):
+def deduplicate(directory, recursive, verbose):
     from py_image_dedup.library.Deduplicator import Deduplicator
     deduplicator = Deduplicator([directory])
 
@@ -48,7 +44,6 @@ def deduplicate(recursive, directory, verbose):
 @click.option(
     '-d', '--directory',
     callback=validate_directory,
-    multiple=True,
     help='Top level directory to analyze for duplicate files'
 )
 @click.option(
@@ -68,33 +63,6 @@ def analyze(directory, recursive, verbose):
         print(r)
 
 
-def output_result():
-    # sort according to amount of duplicates
-    list_of_hasmaps = {}
-    for key, value in IMAGE_HASH_MAP.iteritems():
-        if len(value) not in list_of_hasmaps:
-            list_of_hasmaps[len(value)] = {}
-
-        items_with_n_duplicates = list_of_hasmaps[len(value)]
-        items_with_n_duplicates[key] = value
-
-    # output result
-    duplicates_count = 0
-    for key, value in list_of_hasmaps.iteritems():
-        if key <= 1:
-            continue
-
-        console_print_default('File Count %s:' % key)
-
-        for key, value in value.iteritems():
-            duplicates_count += 1
-            console_print_default('%s:' % key)
-            for file in value:
-                console_print_default('  %s' % file)
-
-    console_print_warn('Duplicates: %s' % duplicates_count)
-
-
 def console_print_default(message):
     click.echo(str(message))
 
@@ -110,10 +78,3 @@ def console_print_error(message):
 if __name__ == '__main__':
     deduplicate()
     analyze()
-
-
-    def handler(signum, frame):
-        output_result()
-
-
-    signal.signal(signal.SIGINT, handler)
