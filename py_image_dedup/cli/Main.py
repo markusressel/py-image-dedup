@@ -31,8 +31,8 @@ def validate_directory(ctx, param, directories):
     help='Show output while processing'
 )
 def deduplicate(directory, recursive, verbose):
-    from py_image_dedup.library.Deduplicator import Deduplicator
-    deduplicator = Deduplicator([directory])
+    from py_image_dedup.library.ImageMatchDeduplicator import ImageMatchDeduplicator
+    deduplicator = ImageMatchDeduplicator([directory])
 
     result = deduplicator.deduplicate(recursive)
 
@@ -54,8 +54,8 @@ def deduplicate(directory, recursive, verbose):
     '-v', '--verbose', count=True,
     help='Show output while processing')
 def analyze(directory, recursive, verbose):
-    from py_image_dedup.library.Deduplicator import Deduplicator
-    deduplicator = Deduplicator([directory])
+    from py_image_dedup.library.ImageMatchDeduplicator import ImageMatchDeduplicator
+    deduplicator = ImageMatchDeduplicator([directory])
 
     result = deduplicator.analyze(recursive)
 
