@@ -21,7 +21,10 @@ class Test(unittest.TestCase):
 
     def test_deduplicate(self):
         from py_image_dedup.library.ImageMatchDeduplicator import ImageMatchDeduplicator
-        deduplicator = ImageMatchDeduplicator(directories=[r'M:\Fotos\Markus'], max_dist=0.15, threads=4)
+        deduplicator = ImageMatchDeduplicator(directories=[r'M:\Fotos\Iris'],
+                                              file_extension_filter=[".png", ".jpg", ".jpeg"],
+                                              max_dist=0.15,
+                                              threads=4)
         # deduplicator = ImageMatchDeduplicator(directories=[r'D:\test'], max_dist=0.15, threads=4)
 
         # optional
@@ -30,10 +33,22 @@ class Test(unittest.TestCase):
         #     file_extensions=[".png", ".jpg", ".jpeg"]
         # )
 
-        deduplicator.deduplicate(
+        result = deduplicator.deduplicate(
             recursive=True,
-            file_extensions=[".png", ".jpg", ".jpeg"],
             dry_run=True)
+
+        print("Done!")
+        print("")
+        print("")
+
+        for key, value in result.get_file_duplicates().items():
+            if len(value) > 0:
+                print("%s:" % key)
+            for val in value:
+                print("\t%s" % val)
+
+        print("")
+        print("File duplicate count: %s" % result.get_duplicate_count())
 
         # for r in result:
         #     print(r)

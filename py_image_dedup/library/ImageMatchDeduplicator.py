@@ -1,20 +1,29 @@
 import os
 from concurrent.futures import ThreadPoolExecutor
 
+from tqdm import tqdm
+
+from py_image_dedup.library.DeduplicationResult import DeduplicationResult
 from py_image_dedup.persistence.ImageSignatureStore import ImageSignatureStore
 
 
 class ImageMatchDeduplicator:
     EXECUTOR = ThreadPoolExecutor()
 
-    def __init__(self, directories: [str], max_dist: float, threads: int = 1):
-        self._directories = directories
-        self._persistence = ImageSignatureStore(max_dist=max_dist)
-        self._threads = threads
+    def __init__(self, directories: [str], file_extension_filter: [str] = None, max_dist: float = 0.03,
+                 threads: int = 1):
+        self._directories: [str] = directories
+        self._file_extension_filter: [str] = file_extension_filter
+        self._persistence: ImageSignatureStore = ImageSignatureStore(max_dist=max_dist)
+        self._threads: int = threads
 
-        self._changed_files_dict = {}
+        self._files_count: int = 0
 
-    def analyze(self, recursive: bool, file_extensions: [str] = None) -> {str, str}:
+        self._progress_bar: tqdm = None
+
+        self._deduplication_result: DeduplicationResult = None
+
+    def analyze(self, recursive: bool) -> {str, str}:
         """
         Analyzes all files, generates identifiers (if necessary) and stores them
         for later access
@@ -23,37 +32,47 @@ class ImageMatchDeduplicator:
 
         print("Analyzing files...")
 
-        with ThreadPoolExecutor(self._threads) as self.EXECUTOR:
-            for directory in self._directories:
+        for directory in self._directories:
+            with ThreadPoolExecutor(self._threads) as self.EXECUTOR:
+                print("Counting files in '%s' ..." % directory)
+                file_count = self._update_files_count(directory, recursive)
+
+                self._create_progressbar(file_count)
                 self._walk_directory(root_directory=directory,
                                      recursive=recursive,
-                                     file_extensions=file_extensions,
                                      command=lambda file_path: self._analyze_file(file_path))
 
-    def deduplicate(self, recursive: bool, file_extensions: [str] = None, dry_run: bool = False):
+    def deduplicate(self, recursive: bool, dry_run: bool = False) -> DeduplicationResult:
         """
         Removes duplicates
 
         :param recursive:
-        :param file_extensions:
         :param dry_run:
         :return:
         """
 
-        self.analyze(recursive, file_extensions)
+        self._deduplication_result = DeduplicationResult()
 
-        with ThreadPoolExecutor(self._threads) as self.EXECUTOR:
-            for directory in self._directories:
+        self.analyze(recursive)
+
+        for directory in self._directories:
+            with ThreadPoolExecutor(self._threads) as self.EXECUTOR:
+                print("Counting files in '%s' to process..." % directory)
+                file_count = self._update_files_count(directory, recursive)
+
+                print("Processing '%s' ..." % directory)
+                self._create_progressbar(file_count)
                 self._walk_directory(root_directory=directory,
                                      recursive=recursive,
-                                     file_extensions=file_extensions,
                                      command=lambda file_path: self._remove_duplicates(file_path, dry_run=dry_run))
 
         # remove empty folders
         for directory in self._directories:
             self._remove_empty_folders(directory, remove_root=True, dry_run=dry_run)
 
-    def _walk_directory(self, root_directory: str, recursive: bool, command, file_extensions: [str] = None):
+        return self._deduplication_result
+
+    def _walk_directory(self, root_directory: str, recursive: bool, command):
         """
         Walks through the files of the given directory
 
@@ -74,7 +93,7 @@ class ImageMatchDeduplicator:
                 file_path = os.path.abspath(os.path.join(root, file))
 
                 # skip file with unwanted file extension
-                if not self._file_extension_matches_filter(file_extensions, file):
+                if not self._file_extension_matches_filter(file):
                     continue
 
                 # skip if not existent (probably already deleted)
@@ -86,22 +105,24 @@ class ImageMatchDeduplicator:
             if not recursive:
                 return
 
-    def _file_extension_matches_filter(self, file_extensions: [str], file: str) -> bool:
-        if not file_extensions:
+    def _file_extension_matches_filter(self, file: str) -> bool:
+        if not self._file_extension_filter:
             return True
 
         filename, file_extension = os.path.splitext(file)
 
-        if file_extension.lower() not in (ext.lower() for ext in file_extensions):
+        if file_extension.lower() not in (ext.lower() for ext in self._file_extension_filter):
             # skip file with unwanted file extension
             return False
         else:
             return True
 
     def _analyze_file(self, file_path):
-        print("Analyzing Image '%s' ..." % file_path)
-        if self._persistence.add(file_path):
-            self._changed_files_dict[file_path] = ""
+        self._progress_bar.set_postfix_str("Analyzing Image '%s' ..." % file_path)
+
+        self._persistence.add(file_path)
+
+        self._increment_progress(1)
 
     def _remove_duplicates(self, reference_file_path: str, dry_run: bool = True):
         """
@@ -110,29 +131,28 @@ class ImageMatchDeduplicator:
         :param dry_run: if true, no files will actually be removed
         """
 
-        if reference_file_path not in self._changed_files_dict:
-            print("File hasn't changed and is not analyzed for duplicates: '%s'" % reference_file_path)
+        self._increment_progress(1)
+
+        if self._persistence.get(reference_file_path)[0]['metadata']['already_deduplicated']:
             return
         else:
-            print("Searching duplicates for '%s' ..." % reference_file_path)
+            self._progress_bar.set_postfix_str("Searching duplicates for '%s' ..." % reference_file_path)
 
         if not os.path.exists(reference_file_path):
+            # remove from persistence
+            self._persistence.remove(reference_file_path)
             return
 
         duplicate_candidates = self._persistence.search_similar(reference_file_path)
 
-        if (len(duplicate_candidates)) <= 1:
-            # skip files that don't have duplicates
-            print("No duplicates for '%s' ..." % reference_file_path)
-            return
-
-        print("Removing duplicates for '%s' ..." % reference_file_path)
+        self._progress_bar.set_postfix_str("Removing duplicates for '%s' ..." % reference_file_path)
 
         reference_file_size = os.stat(reference_file_path).st_size
         reference_file_mod_date = os.path.getmtime(reference_file_path)
 
         candidates_sorted_by_filesize = sorted(duplicate_candidates, key=lambda c: c['metadata']['filesize'])
 
+        duplicate_files_of_reference_file = []
         for candidate in candidates_sorted_by_filesize:
             candidate_path = candidate['path']
             candidate_dist = candidate['dist']
@@ -143,8 +163,10 @@ class ImageMatchDeduplicator:
             if candidate_path == reference_file_path:
                 continue
 
-            print("File '%s' is duplicate of '%s' with a dist value of '%s'" % (
-                reference_file_path, candidate_path, candidate_dist))
+            duplicate_files_of_reference_file.append(candidate_path)
+
+            # print("File '%s' is duplicate of '%s' with a dist value of '%s'" % (
+            #     reference_file_path, candidate_path, candidate_dist))
 
             # compare filesize, modification date
             if reference_file_size <= candidate_filesize and \
@@ -152,14 +174,23 @@ class ImageMatchDeduplicator:
 
                 # remove the smaller/equal sized and/or older/equally old file
                 if dry_run:
-                    print("DRY RUN: Would remove '%s'" % candidate_path)
+                    # print("DRY RUN: Would remove '%s'" % candidate_path)
+                    pass
                 else:
-                    print("Removing '%s'" % candidate_path)
+                    # print("Removing '%s'" % candidate_path)
                     # remove from file system
                     os.remove(candidate_path)
 
+                self._deduplication_result.add_removed_file(candidate_path)
+
                 # remove from persistence
                 self._persistence.remove(candidate_path)
+
+        self._deduplication_result.set_file_duplicates(reference_file_path, duplicate_files_of_reference_file)
+
+        # remember that this file has been processed in it's current state
+        if not dry_run:
+            self._persistence.update(reference_file_path, {"already_deduplicated": True})
 
     def _remove_empty_folders(self, root_path: str, remove_root: bool = True, dry_run: bool = True):
         """
@@ -188,3 +219,33 @@ class ImageMatchDeduplicator:
             else:
                 print("Removing empty folder '%s'" % root_path)
                 os.rmdir(root_path)
+
+            self._deduplication_result.add_removed_empty_folder(root_path)
+
+    def _update_files_count(self, directory: str, recursive: bool) -> int:
+        """
+        Count the files in the given directory
+        :param directory:
+        :return:
+        """
+
+        files_count = 0
+        for r, d, files in os.walk(directory):
+            for file in files:
+                if self._file_extension_matches_filter(file):
+                    files_count += 1
+            if not recursive:
+                break
+
+        self._files_count = files_count
+        return self._files_count
+
+    def _increment_progress(self, increase_count_by: int = 1):
+        self._progress_bar.update(n=increase_count_by)
+
+    def _create_progressbar(self, file_count) -> tqdm:
+        if self._progress_bar:
+            self._progress_bar.close()
+
+        self._progress_bar = tqdm(total=file_count, unit="Files", unit_scale=True, mininterval=1)
+        return self._progress_bar

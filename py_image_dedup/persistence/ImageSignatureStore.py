@@ -42,16 +42,15 @@ class ImageSignatureStore:
         file_modification_date = os.path.getmtime(image_file)
 
         # check if the file has already been analyzed (and didn't change in the meantime)
-        result = self.get(image_file)
-        existing_entities = result['hits']['hits']
+        existing_entities = self.get(image_file)
 
         if len(existing_entities) > 1:
             print("WARNING: More than a single entry for this file: %s" % image_file)
 
         for existing_entity in existing_entities:
-            if existing_entity['_source']['metadata']['filesize'] == file_size and \
-                    existing_entity['_source']['metadata']['modification_date'] == file_modification_date:
-                print("File is the same, not adding again")
+            if existing_entity['metadata']['filesize'] == file_size and \
+                    existing_entity['metadata']['modification_date'] == file_modification_date:
+                # print("File is the same, not adding again")
                 return False
 
         if not metadata:
@@ -59,10 +58,11 @@ class ImageSignatureStore:
 
         metadata['filesize'] = file_size
         metadata['modification_date'] = file_modification_date
+        metadata['already_deduplicated'] = False
 
         try:
             self._store.add_image(image_file, metadata=metadata)
-            print("Added file to SignatureStore: '%s'" % image_file)
+            # print("Added file to SignatureStore: '%s'" % image_file)
             return True
         except Exception as e:
             print(e)
@@ -79,7 +79,15 @@ class ImageSignatureStore:
             }
         }
 
-        return self._store.es.search(self.EL_INDEX, body=es_query)
+        query_result = self._store.es.search(self.EL_INDEX, body=es_query)
+
+        hits = query_result['hits']['hits']
+        result = []
+
+        for entity in hits:
+            result.append(entity['_source'])
+
+        return result
 
     def get_all(self) -> []:
         """
@@ -100,7 +108,15 @@ class ImageSignatureStore:
         :return:
         """
 
-        return self._store.search_image(image_file, all_orientations=all_orientations)
+        entities = self.get(image_file)
+        if len(entities) > 0:
+            result = []
+            rec = self._store.search_single_record(entities[0])
+            result.extend(rec)
+
+            return result
+        else:
+            return self._store.search_image(image_file, all_orientations=all_orientations)
 
     def search_metadata(self, metadata: dict) -> []:
         """
@@ -120,6 +136,14 @@ class ImageSignatureStore:
         }
 
         return self._store.es.search(self.EL_INDEX, body=es_query)
+
+    def update(self, file_path: str, metadata: {}):
+        """
+        Update the metadata of an entry
+        :param file_path: entry path
+        :param metadata: metadata to update (merged with exisiting metadata
+        :return: true if an entity was found and updated, false otherwise
+        """
 
     def remove(self, file_path: str) -> None:
         """
