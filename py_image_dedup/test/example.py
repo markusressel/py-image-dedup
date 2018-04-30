@@ -21,10 +21,19 @@ class Test(unittest.TestCase):
 
     def test_deduplicate(self):
         from py_image_dedup.library.ImageMatchDeduplicator import ImageMatchDeduplicator
-        deduplicator = ImageMatchDeduplicator(directories=[r'M:\Fotos\Iris'],
+        deduplicator = ImageMatchDeduplicator(directories=[r'M:\Fotos\Markus'],
                                               file_extension_filter=[".png", ".jpg", ".jpeg"],
-                                              max_dist=0.15,
-                                              threads=4)
+                                              max_dist=0.05,
+                                              threads=4,
+                                              recursive=True,
+                                              dry_run=False)
+        # deduplicator = ImageMatchDeduplicator(directories=[r'D:\test'],
+        #                                       file_extension_filter=[".png", ".jpg", ".jpeg"],
+        #                                       max_dist=0.05,
+        #                                       threads=4,
+        #                                       recursive=True,
+        #                                       dry_run=False)
+
         # deduplicator = ImageMatchDeduplicator(directories=[r'D:\test'], max_dist=0.15, threads=4)
 
         # optional
@@ -33,19 +42,30 @@ class Test(unittest.TestCase):
         #     file_extensions=[".png", ".jpg", ".jpeg"]
         # )
 
-        result = deduplicator.deduplicate(
-            recursive=True,
-            dry_run=True)
+        result = deduplicator.deduplicate()
 
         print("Done!")
         print("")
         print("")
 
+        print("Duplicates for files (indented ones are duplicates):")
+        print("Removed\tDuplicates\tfilename")
         for key, value in result.get_file_duplicates().items():
             if len(value) > 0:
-                print("%s:" % key)
+                if key in result.get_removed_files():
+                    print("(YES)\t(Duplicates: %s) '%s':" % (len(value), key))
+                else:
+                    print("(no )\t(Duplicates: %s) '%s':" % (len(value), key))
             for val in value:
-                print("\t%s" % val)
+                if val in result.get_removed_files():
+                    print("\t(YES)\t'%s'" % val)
+                else:
+                    print("\t(no )\t'%s'" % val)
+
+        print("")
+        print("Removed Files (%s):" % len(result.get_removed_files()))
+        for value in result.get_removed_files():
+            print("%s" % value)
 
         print("")
         print("File duplicate count: %s" % result.get_duplicate_count())

@@ -10,74 +10,105 @@ from py_image_dedup.persistence.ImageSignatureStore import ImageSignatureStore
 class ImageMatchDeduplicator:
     EXECUTOR = ThreadPoolExecutor()
 
-    def __init__(self, directories: [str], file_extension_filter: [str] = None, max_dist: float = 0.03,
-                 threads: int = 1):
+    def __init__(self, directories: [str],
+                 recursive: bool = True,
+                 file_extension_filter: [str] = None,
+                 max_dist: float = 0.03,
+                 threads: int = 1,
+                 dry_run: bool = True):
+        """
+        :param directories:
+        :param recursive: also walk through subfolders recursively
+        :param file_extension_filter:
+        :param max_dist:
+        :param threads:
+        :param dry_run: if true, no files will actually be removed
+        """
         self._directories: [str] = directories
+        self._directory_map = {}
+        self._recursive = recursive
+
         self._file_extension_filter: [str] = file_extension_filter
         self._persistence: ImageSignatureStore = ImageSignatureStore(max_dist=max_dist)
         self._threads: int = threads
 
-        self._files_count: int = 0
+        self._dry_run = dry_run
 
         self._progress_bar: tqdm = None
 
         self._deduplication_result: DeduplicationResult = None
 
-    def analyze(self, recursive: bool) -> {str, str}:
+    def analyze(self) -> {str, str}:
         """
-        Analyzes all files, generates identifiers (if necessary) and stores them
-        for later access
+        Analyzes all files, generates identifiers (if necessary) and stores them for later access
         :return: file_path -> identifier
         """
 
+        self._count_files()
+
         print("Analyzing files...")
 
-        for directory in self._directories:
+        for directory, file_count in self._directory_map.items():
             with ThreadPoolExecutor(self._threads) as self.EXECUTOR:
-                print("Counting files in '%s' ..." % directory)
-                file_count = self._update_files_count(directory, recursive)
-
-                self._create_progressbar(file_count)
+                self._create_file_progressbar(file_count)
                 self._walk_directory(root_directory=directory,
-                                     recursive=recursive,
                                      command=lambda file_path: self._analyze_file(file_path))
 
-    def deduplicate(self, recursive: bool, dry_run: bool = False) -> DeduplicationResult:
+    def deduplicate(self) -> DeduplicationResult:
         """
         Removes duplicates
-
-        :param recursive:
-        :param dry_run:
         :return:
         """
 
         self._deduplication_result = DeduplicationResult()
 
-        self.analyze(recursive)
+        self.analyze()
 
-        for directory in self._directories:
+        for directory, file_count in self._directory_map.items():
             with ThreadPoolExecutor(self._threads) as self.EXECUTOR:
-                print("Counting files in '%s' to process..." % directory)
-                file_count = self._update_files_count(directory, recursive)
-
                 print("Processing '%s' ..." % directory)
-                self._create_progressbar(file_count)
+                self._create_file_progressbar(file_count)
                 self._walk_directory(root_directory=directory,
-                                     recursive=recursive,
-                                     command=lambda file_path: self._remove_duplicates(file_path, dry_run=dry_run))
+                                     command=lambda file_path: self._remove_duplicates(file_path))
 
-        # remove empty folders
-        for directory in self._directories:
-            self._remove_empty_folders(directory, remove_root=True, dry_run=dry_run)
+        self._remove_files_marked_as_delete()
+        self.remove_empty_folders()
 
         return self._deduplication_result
 
-    def _walk_directory(self, root_directory: str, recursive: bool, command):
+    def remove_empty_folders(self):
+        """
+        Searches for empty folders and removes them
+        """
+
+        # remove empty folders
+        self._create_folder_progressbar(len(self._directories))
+        for directory in self._directories:
+            self._remove_empty_folders(directory, remove_root=True)
+            self._progress_bar.update(1)
+
+    def _count_files(self):
+        """
+        Counts the amount of files to analyze (used in progress) and stores them in a map
+        """
+        print("Counting files...")
+
+        self._directory_map = {}
+
+        self._create_folder_progressbar(len(self._directories))
+        for directory in self._directories:
+            self._progress_bar.set_postfix_str("Counting files in '%s' ..." % directory)
+
+            file_count = self._get_files_count(directory)
+            self._directory_map[directory] = file_count
+
+            self._progress_bar.update(1)
+
+    def _walk_directory(self, root_directory: str, command):
         """
         Walks through the files of the given directory
 
         :param root_directory: the directory to start with
-        :param recursive: also walk through subfolders recursively
         :param command: the method to execute for every file found
         :return: file_path -> identifier
         """
@@ -102,7 +133,7 @@ class ImageMatchDeduplicator:
 
                 self.EXECUTOR.submit(command, file_path)
 
-            if not recursive:
+            if not self._recursive:
                 return
 
     def _file_extension_matches_filter(self, file: str) -> bool:
@@ -124,11 +155,10 @@ class ImageMatchDeduplicator:
 
         self._increment_progress(1)
 
-    def _remove_duplicates(self, reference_file_path: str, dry_run: bool = True):
+    def _remove_duplicates(self, reference_file_path: str):
         """
         Removes all duplicates of the specified file
         :param reference_file_path: the file to check for duplicates
-        :param dry_run: if true, no files will actually be removed
         """
 
         self._increment_progress(1)
@@ -144,55 +174,45 @@ class ImageMatchDeduplicator:
             return
 
         duplicate_candidates = self._persistence.search_similar(reference_file_path)
+        self._save_duplicates_for_result(reference_file_path, duplicate_candidates)
 
-        self._progress_bar.set_postfix_str("Removing duplicates for '%s' ..." % reference_file_path)
+        self._select_images_to_delete(duplicate_candidates)
 
-        reference_file_size = os.stat(reference_file_path).st_size
-        reference_file_mod_date = os.path.getmtime(reference_file_path)
+        # remember that this file has been processed in it's current state
+        if not self._dry_run:
+            self._persistence.update(reference_file_path, {"already_deduplicated": True})
 
-        candidates_sorted_by_filesize = sorted(duplicate_candidates, key=lambda c: c['metadata']['filesize'])
-
+    def _save_duplicates_for_result(self, reference_file_path, duplicate_candidates):
         duplicate_files_of_reference_file = []
-        for candidate in candidates_sorted_by_filesize:
-            candidate_path = candidate['path']
-            candidate_dist = candidate['dist']
-            candidate_filesize = candidate['metadata']['filesize']
-            candidate_modification_date = candidate['metadata']['modification_date']
 
-            # skip candidate if it's the same file
+        for candidate in duplicate_candidates:
+            candidate_path = candidate['path']
+
+            # skip self
             if candidate_path == reference_file_path:
                 continue
 
             duplicate_files_of_reference_file.append(candidate_path)
 
+        self._deduplication_result.set_file_duplicates(reference_file_path, duplicate_files_of_reference_file)
+
+    def _select_images_to_delete(self, duplicate_candidates: [str]) -> None:
+        # sort after all criteria
+        duplicate_candidates = sorted(duplicate_candidates, key=lambda x: (
+            x['path'], x['dist'], x['metadata']['modification_date'], x['metadata']['filesize'], x['score']))
+
+        files_to_be_removed_shortly = duplicate_candidates[1:]
+
+        for candidate in files_to_be_removed_shortly:
+            candidate_path = candidate['path']
+
             # print("File '%s' is duplicate of '%s' with a dist value of '%s'" % (
             #     reference_file_path, candidate_path, candidate_dist))
 
-            # compare filesize, modification date
-            if reference_file_size <= candidate_filesize and \
-                    candidate_modification_date <= reference_file_mod_date:
+            _, file_name = os.path.split(candidate_path)
+            self._deduplication_result.add_removed_file(candidate_path)
 
-                # remove the smaller/equal sized and/or older/equally old file
-                if dry_run:
-                    # print("DRY RUN: Would remove '%s'" % candidate_path)
-                    pass
-                else:
-                    # print("Removing '%s'" % candidate_path)
-                    # remove from file system
-                    os.remove(candidate_path)
-
-                self._deduplication_result.add_removed_file(candidate_path)
-
-                # remove from persistence
-                self._persistence.remove(candidate_path)
-
-        self._deduplication_result.set_file_duplicates(reference_file_path, duplicate_files_of_reference_file)
-
-        # remember that this file has been processed in it's current state
-        if not dry_run:
-            self._persistence.update(reference_file_path, {"already_deduplicated": True})
-
-    def _remove_empty_folders(self, root_path: str, remove_root: bool = True, dry_run: bool = True):
+    def _remove_empty_folders(self, root_path: str, remove_root: bool = True):
         """
         Function to remove empty folders
         :param root_path:
@@ -208,13 +228,13 @@ class ImageMatchDeduplicator:
             for f in files:
                 fullpath = os.path.join(root_path, f)
                 if os.path.isdir(fullpath):
-                    self._remove_empty_folders(fullpath, dry_run=dry_run)
+                    self._remove_empty_folders(fullpath)
 
         # if folder empty, delete it
         files = os.listdir(root_path)
         if len(files) == 0 and remove_root:
 
-            if dry_run:
+            if self._dry_run:
                 print("DRY RUN: Would remove empty folder '%s'" % root_path)
             else:
                 print("Removing empty folder '%s'" % root_path)
@@ -222,7 +242,7 @@ class ImageMatchDeduplicator:
 
             self._deduplication_result.add_removed_empty_folder(root_path)
 
-    def _update_files_count(self, directory: str, recursive: bool) -> int:
+    def _get_files_count(self, directory: str) -> int:
         """
         Count the files in the given directory
         :param directory:
@@ -234,18 +254,52 @@ class ImageMatchDeduplicator:
             for file in files:
                 if self._file_extension_matches_filter(file):
                     files_count += 1
-            if not recursive:
+            if not self._recursive:
                 break
 
-        self._files_count = files_count
-        return self._files_count
+        return files_count
 
     def _increment_progress(self, increase_count_by: int = 1):
         self._progress_bar.update(n=increase_count_by)
 
-    def _create_progressbar(self, file_count) -> tqdm:
+    def _create_file_progressbar(self, total_file_count: int) -> tqdm:
+        self._create_progressbar(total_file_count, "Files")
+        return self._progress_bar
+
+    def _create_folder_progressbar(self, total_folder_count: int) -> tqdm:
+        self._create_progressbar(total_folder_count, "Folder")
+        return self._progress_bar
+
+    def _create_progressbar(self, total_file_count: int, unit: str) -> tqdm:
         if self._progress_bar:
             self._progress_bar.close()
 
-        self._progress_bar = tqdm(total=file_count, unit="Files", unit_scale=True, mininterval=1)
+        self._progress_bar = tqdm(total=total_file_count, unit=unit, unit_scale=True, mininterval=1)
         return self._progress_bar
+
+    def _delete_files(self, files_to_delete: [str]):
+        """
+        Deletes files on disk
+        :param files_to_delete: list of absolute file paths
+        """
+
+        for file in files_to_delete:
+            self._progress_bar.set_postfix_str("Removing '%s' ..." % file)
+
+            # remove the smaller/equal sized and/or older/equally old file
+            if self._dry_run:
+                pass
+            else:
+                # remove from file system
+                os.remove(file)
+
+                # remove from persistence
+                self._persistence.remove(file)
+
+            self._deduplication_result.add_removed_file(file)
+
+            self._progress_bar.update(n=1)
+
+    def _remove_files_marked_as_delete(self):
+        self._create_file_progressbar(total_file_count=len(self._deduplication_result.get_removed_files()))
+        self._delete_files(self._deduplication_result.get_removed_files())
