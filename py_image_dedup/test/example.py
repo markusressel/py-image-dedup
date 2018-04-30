@@ -29,14 +29,14 @@ class Test(unittest.TestCase):
         #     recursive=True,
         #     dry_run=True)
 
-        deduplicator = ImageMatchDeduplicator(
-            directories=[r'M:\Fotos\Iris\Syncthing\Telegram Gesendet', r'M:\Fotos\Iris\Syncthing\Telegram Empfangen'],
-            search_across_root_directories=True,
-            file_extension_filter=[".png", ".jpg", ".jpeg"],
-            max_dist=0.30,
-            threads=4,
-            recursive=True,
-            dry_run=True)
+        # deduplicator = ImageMatchDeduplicator(
+        #     directories=[r'M:\Fotos\Iris\Syncthing\Telegram Gesendet', r'M:\Fotos\Iris\Syncthing\Telegram Empfangen'],
+        #     search_across_root_directories=True,
+        #     file_extension_filter=[".png", ".jpg", ".jpeg"],
+        #     max_dist=0.30,
+        #     threads=4,
+        #     recursive=True,
+        #     dry_run=True)
 
         # optional
         # deduplicator.analyze(
@@ -44,12 +44,12 @@ class Test(unittest.TestCase):
         #     file_extensions=[".png", ".jpg", ".jpeg"]
         # )
 
-        # deduplicator = ImageMatchDeduplicator(directories=[r'D:\test'],
-        #                                       file_extension_filter=[".png", ".jpg", ".jpeg"],
-        #                                       max_dist=0.15,
-        #                                       threads=4,
-        #                                       recursive=True,
-        #                                       dry_run=False)
+        deduplicator = ImageMatchDeduplicator(directories=[r'D:\test'],
+                                              file_extension_filter=[".png", ".jpg", ".jpeg"],
+                                              max_dist=0.15,
+                                              threads=4,
+                                              recursive=True,
+                                              dry_run=False)
 
         result = deduplicator.deduplicate()
 
