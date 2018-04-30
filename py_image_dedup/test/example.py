@@ -21,14 +21,14 @@ class Test(unittest.TestCase):
 
     def test_deduplicate(self):
         from py_image_dedup.library.ImageMatchDeduplicator import ImageMatchDeduplicator
-        deduplicator = ImageMatchDeduplicator(
-            directories=[r'M:\Fotos\Markus', r'M:\Fotos\Iris'],
-            file_extension_filter=[".png", ".jpg", ".jpeg"],
-            search_across_root_directories=True,
-            max_dist=0.10,
-            threads=8,
-            recursive=True,
-            dry_run=True)
+        # deduplicator = ImageMatchDeduplicator(
+        #     directories=[r'M:\Fotos\Markus', r'M:\Fotos\Iris'],
+        #     file_extension_filter=[".png", ".jpg", ".jpeg"],
+        #     search_across_root_directories=True,
+        #     max_dist=0.10,
+        #     threads=8,
+        #     recursive=True,
+        #     dry_run=True)
 
         # deduplicator = ImageMatchDeduplicator(
         #     directories=[r'M:\Fotos\Iris\Syncthing\Telegram Gesendet', r'M:\Fotos\Iris\Syncthing\Telegram Empfangen'],
@@ -45,13 +45,13 @@ class Test(unittest.TestCase):
         #     file_extensions=[".png", ".jpg", ".jpeg"]
         # )
 
-        # deduplicator = ImageMatchDeduplicator(directories=[r'D:\test'],
-        #                                       search_across_root_directories=True,
-        #                                       file_extension_filter=[".png", ".jpg", ".jpeg"],
-        #                                       max_dist=0.15,
-        #                                       threads=4,
-        #                                       recursive=True,
-        #                                       dry_run=True)
+        deduplicator = ImageMatchDeduplicator(directories=[r'D:\test'],
+                                              search_across_root_directories=True,
+                                              file_extension_filter=[".png", ".jpg", ".jpeg"],
+                                              max_dist=0.15,
+                                              threads=4,
+                                              recursive=True,
+                                              dry_run=True)
 
         result = deduplicator.deduplicate()
 

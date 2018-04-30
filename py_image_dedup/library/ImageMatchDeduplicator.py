@@ -258,8 +258,8 @@ class ImageMatchDeduplicator:
         # sort after all criteria
         duplicate_candidates = sorted(duplicate_candidates, key=lambda x: (
             x['path'],
-            x['metadata']['modification_date'],
-            x['metadata']['filesize'],
+            x['metadata']['filesize'] * -1,  # reverse
+            x['metadata']['modification_date'] * -1,  # reverse
             x['dist'],
             x['score']))
 
