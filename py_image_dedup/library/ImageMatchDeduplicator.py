@@ -11,20 +11,31 @@ class ImageMatchDeduplicator:
     EXECUTOR = ThreadPoolExecutor()
 
     def __init__(self, directories: [str],
+                 search_across_root_directories: bool = False,
                  recursive: bool = True,
                  file_extension_filter: [str] = None,
                  max_dist: float = 0.03,
                  threads: int = 1,
                  dry_run: bool = True):
         """
-        :param directories:
-        :param recursive: also walk through subfolders recursively
-        :param file_extension_filter:
-        :param max_dist:
-        :param threads:
+        :param directories: list of directories to process
+        :param search_across_root_directories: if set to true duplicates duplicates will also be searched for in
+                other root directories specified in 'directories' parameter
+        :param recursive: also walk through sub-folders recursively
+        :param file_extension_filter: filter files for this extension
+        :param max_dist: maximum "difference" allowed, ranging from [0 .. 1] where 0.2 is still a pretty similar image
+        :param threads: number of threads to use for concurrent processing
         :param dry_run: if true, no files will actually be removed
         """
-        self._directories: [str] = directories
+        self._directories: [str] = []
+        for directory in directories:
+            if os.path.exists(directory):
+                self._directories.append(directory)
+            else:
+                print("Inexistend directory will be ignored: '%s'" % directory)
+
+        self._search_across_root_directories = search_across_root_directories
+
         self._directory_map = {}
         self._recursive = recursive
 
@@ -51,16 +62,20 @@ class ImageMatchDeduplicator:
         for directory, file_count in self._directory_map.items():
             with ThreadPoolExecutor(self._threads) as self.EXECUTOR:
                 self._create_file_progressbar(file_count)
-                self._walk_directory(root_directory=directory,
-                                     command=lambda root_dir, file_dir, file_path: self.__analyze_file(root_dir,
-                                                                                                       file_dir,
-                                                                                                       file_path))
+                self.__walk_directory_files(root_directory=directory,
+                                            command=lambda root_dir, file_dir, file_path: self.__analyze_file(
+                                                root_dir,
+                                                file_dir,
+                                                file_path))
 
     def deduplicate(self) -> DeduplicationResult:
         """
         Removes duplicates
         :return:
         """
+
+        if self._dry_run:
+            print("DRY RUN! No files or folders will actually be deleted!")
 
         self._deduplication_result = DeduplicationResult()
 
@@ -70,10 +85,11 @@ class ImageMatchDeduplicator:
             with ThreadPoolExecutor(self._threads) as self.EXECUTOR:
                 print("Processing '%s' ..." % directory)
                 self._create_file_progressbar(file_count)
-                self._walk_directory(root_directory=directory,
-                                     command=lambda root_dir, file_dir, file_path: self.__remove_duplicates(root_dir,
-                                                                                                            file_dir,
-                                                                                                            file_path))
+                self.__walk_directory_files(root_directory=directory,
+                                            command=lambda root_dir, file_dir, file_path: self.__remove_duplicates(
+                                                root_dir,
+                                                file_dir,
+                                                file_path))
 
         self._remove_files_marked_as_delete()
 
@@ -111,7 +127,7 @@ class ImageMatchDeduplicator:
 
             self._increment_progress(increase_count_by=1)
 
-    def _walk_directory(self, root_directory: str, command):
+    def __walk_directory_files(self, root_directory: str, command):
         """
         Walks through the files of the given directory
 
@@ -131,7 +147,7 @@ class ImageMatchDeduplicator:
                 file_path = os.path.abspath(os.path.join(root, file))
 
                 # skip file with unwanted file extension
-                if not self._file_extension_matches_filter(file):
+                if not self.__file_extension_matches_filter(file):
                     continue
 
                 # skip if not existent (probably already deleted)
@@ -143,7 +159,7 @@ class ImageMatchDeduplicator:
             if not self._recursive:
                 return
 
-    def _file_extension_matches_filter(self, file: str) -> bool:
+    def __file_extension_matches_filter(self, file: str) -> bool:
         """
         Checks if a file matches the filter set for this deduplicator
         :param file: the file to check
@@ -164,7 +180,6 @@ class ImageMatchDeduplicator:
         """
         Analyzes a single file
         :param file_path: the file path
-        :return:
         """
         self._progress_bar.set_postfix_str("Analyzing Image '%s' ..." % file_path)
 
@@ -192,8 +207,14 @@ class ImageMatchDeduplicator:
 
         duplicate_candidates = self._persistence.search_similar(reference_file_path)
 
-        # filter by files in the same root directory
-        duplicate_candidates = [x for x in duplicate_candidates if x['path'].startswith(root_directory)]
+        if self._search_across_root_directories:
+            # filter by files in at least one of the specified root directories
+            # this is necessary because the database might hold items for other paths already
+            # and those are not interesting to us
+            duplicate_candidates = [x for x in duplicate_candidates if x['path'].startswith(tuple(self._directories))]
+        else:
+            # filter by files in the same root directory
+            duplicate_candidates = [x for x in duplicate_candidates if x['path'].startswith(root_directory)]
 
         self._save_duplicates_for_result(reference_file_path, duplicate_candidates)
 
@@ -208,12 +229,17 @@ class ImageMatchDeduplicator:
 
         for candidate in duplicate_candidates:
             candidate_path = candidate['path']
+            candidate_dist = candidate['dist']
 
             # skip self
             if candidate_path == reference_file_path:
                 continue
 
-            duplicate_files_of_reference_file.append(candidate_path)
+            result_entry = {
+                'path': candidate_path,
+                'dist': candidate_dist
+            }
+            duplicate_files_of_reference_file.append(result_entry)
 
         self._deduplication_result.set_file_duplicates(reference_file_path, duplicate_files_of_reference_file)
 
@@ -225,9 +251,9 @@ class ImageMatchDeduplicator:
         # sort after all criteria
         duplicate_candidates = sorted(duplicate_candidates, key=lambda x: (
             x['path'],
-            x['dist'],
             x['metadata']['modification_date'],
             x['metadata']['filesize'],
+            x['dist'],
             x['score']))
 
         # keep first and mark others for removal
@@ -279,7 +305,7 @@ class ImageMatchDeduplicator:
         files_count = 0
         for r, d, files in os.walk(directory):
             for file in files:
-                if self._file_extension_matches_filter(file):
+                if self.__file_extension_matches_filter(file):
                     files_count += 1
             if not self._recursive:
                 break
@@ -337,7 +363,8 @@ class ImageMatchDeduplicator:
                 pass
             else:
                 # remove from file system
-                os.remove(file)
+                if os.path.exists(file):
+                    os.remove(file)
 
                 # remove from persistence
                 self._persistence.remove(file)

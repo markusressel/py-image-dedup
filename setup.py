@@ -19,7 +19,8 @@ setup(
         'scipy',
         'numpy',
         'image_match',
-        'elasticsearch'
+        'elasticsearch',
+        'tqdm'
     ],
     tests_require=[
 
