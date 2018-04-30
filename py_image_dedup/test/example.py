@@ -21,13 +21,14 @@ class Test(unittest.TestCase):
 
     def test_deduplicate(self):
         from py_image_dedup.library.ImageMatchDeduplicator import ImageMatchDeduplicator
-        # deduplicator = ImageMatchDeduplicator(
-        #     directories=[r'M:\Fotos\Markus', r'M:\Fotos\Iris'],
-        #     file_extension_filter=[".png", ".jpg", ".jpeg"],
-        #     max_dist=0.15,
-        #     threads=4,
-        #     recursive=True,
-        #     dry_run=True)
+        deduplicator = ImageMatchDeduplicator(
+            directories=[r'M:\Fotos\Markus', r'M:\Fotos\Iris'],
+            file_extension_filter=[".png", ".jpg", ".jpeg"],
+            search_across_root_directories=True,
+            max_dist=0.10,
+            threads=8,
+            recursive=True,
+            dry_run=True)
 
         # deduplicator = ImageMatchDeduplicator(
         #     directories=[r'M:\Fotos\Iris\Syncthing\Telegram Gesendet', r'M:\Fotos\Iris\Syncthing\Telegram Empfangen'],
@@ -44,12 +45,13 @@ class Test(unittest.TestCase):
         #     file_extensions=[".png", ".jpg", ".jpeg"]
         # )
 
-        deduplicator = ImageMatchDeduplicator(directories=[r'D:\test'],
-                                              file_extension_filter=[".png", ".jpg", ".jpeg"],
-                                              max_dist=0.15,
-                                              threads=4,
-                                              recursive=True,
-                                              dry_run=False)
+        # deduplicator = ImageMatchDeduplicator(directories=[r'D:\test'],
+        #                                       search_across_root_directories=True,
+        #                                       file_extension_filter=[".png", ".jpg", ".jpeg"],
+        #                                       max_dist=0.15,
+        #                                       threads=4,
+        #                                       recursive=True,
+        #                                       dry_run=True)
 
         result = deduplicator.deduplicate()
 
@@ -80,10 +82,15 @@ class Test(unittest.TestCase):
         print("")
         print("Removed Files (%s):" % len(result.get_removed_files()))
         for value in result.get_removed_files():
-            print("%s" % value)
+            print("  %s" % value)
+
+        print("Removed Folders (%s):" % len(result.get_removed_empty_folders()))
+        for value in result.get_removed_empty_folders():
+            print("  %s" % value)
 
         print("")
         print("File duplicate count: %s" % result.get_duplicate_count())
+        print("Empty Folder count: %s" % len(result.get_removed_empty_folders()))
 
 
 if __name__ == '__main__':

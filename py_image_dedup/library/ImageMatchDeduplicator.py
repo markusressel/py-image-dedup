@@ -282,9 +282,12 @@ class ImageMatchDeduplicator:
 
         result = []
 
-        for r, d, files in os.walk(root_path):
-            if len(files) == 0:
-                result.append(r)
+        for root, directories, files in os.walk(root_path):
+            if len(files) == 0 and len(directories) == 0:
+                # check if a parent directory is already added
+                if len([directory for directory in result if directory.startswith(root)]) == 0:
+                    result.append(root)
+
             if not self._recursive:
                 break
 
