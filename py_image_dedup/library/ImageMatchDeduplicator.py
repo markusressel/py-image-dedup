@@ -52,7 +52,9 @@ class ImageMatchDeduplicator:
             with ThreadPoolExecutor(self._threads) as self.EXECUTOR:
                 self._create_file_progressbar(file_count)
                 self._walk_directory(root_directory=directory,
-                                     command=lambda file_path: self.__analyze_file(file_path))
+                                     command=lambda root_dir, file_dir, file_path: self.__analyze_file(root_dir,
+                                                                                                       file_dir,
+                                                                                                       file_path))
 
     def deduplicate(self) -> DeduplicationResult:
         """
@@ -69,7 +71,9 @@ class ImageMatchDeduplicator:
                 print("Processing '%s' ..." % directory)
                 self._create_file_progressbar(file_count)
                 self._walk_directory(root_directory=directory,
-                                     command=lambda file_path: self._remove_duplicates(file_path))
+                                     command=lambda root_dir, file_dir, file_path: self.__remove_duplicates(root_dir,
+                                                                                                            file_dir,
+                                                                                                            file_path))
 
         self._remove_files_marked_as_delete()
 
@@ -134,7 +138,7 @@ class ImageMatchDeduplicator:
                 if not os.path.exists(file_path):
                     continue
 
-                self.EXECUTOR.submit(command, file_path)
+                self.EXECUTOR.submit(command, root_directory, root, file_path)
 
             if not self._recursive:
                 return
@@ -156,7 +160,7 @@ class ImageMatchDeduplicator:
         else:
             return True
 
-    def __analyze_file(self, file_path: str):
+    def __analyze_file(self, root_directory: str, file_directory: str, file_path: str):
         """
         Analyzes a single file
         :param file_path: the file path
@@ -168,7 +172,7 @@ class ImageMatchDeduplicator:
 
         self._increment_progress(1)
 
-    def _remove_duplicates(self, reference_file_path: str):
+    def __remove_duplicates(self, root_directory: str, file_directory: str, reference_file_path: str):
         """
         Removes all duplicates of the specified file
         :param reference_file_path: the file to check for duplicates
@@ -187,6 +191,10 @@ class ImageMatchDeduplicator:
             return
 
         duplicate_candidates = self._persistence.search_similar(reference_file_path)
+
+        # filter by files in the same root directory
+        duplicate_candidates = [x for x in duplicate_candidates if x['path'].startswith(root_directory)]
+
         self._save_duplicates_for_result(reference_file_path, duplicate_candidates)
 
         self._select_images_to_delete(duplicate_candidates)
