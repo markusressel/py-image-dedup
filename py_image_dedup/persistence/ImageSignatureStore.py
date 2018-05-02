@@ -57,7 +57,6 @@ class ImageSignatureStore:
 
         metadata['filesize'] = file_size
         metadata['modification_date'] = file_modification_date
-        metadata['already_deduplicated'] = False
 
         try:
             self._store.add_image(image_file, metadata=metadata)
@@ -143,7 +142,7 @@ class ImageSignatureStore:
 
         return self._store.es.search(self.EL_INDEX, body=es_query)
 
-    def update(self, file_path: str, metadata: {}):
+    def update_metadata(self, file_path: str, metadata: {}):
         """
         Update the metadata of an entry
         :param file_path: entry path

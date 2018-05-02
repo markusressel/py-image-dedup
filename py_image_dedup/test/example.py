@@ -22,13 +22,13 @@ class Test(unittest.TestCase):
     def test_deduplicate(self):
         from py_image_dedup.library.ImageMatchDeduplicator import ImageMatchDeduplicator
 
-        # directories = [r'M:\Fotos\Markus', r'M:\Fotos\Iris']
-        directories = [r'D:\test']
+        directories = [r'M:\Fotos\Markus', r'M:\Fotos\Iris']
+        # directories = [r'D:\test']
 
         deduplicator = ImageMatchDeduplicator(directories=directories,
                                               find_duplicatest_across_root_directories=True,
                                               file_extension_filter=[".png", ".jpg", ".jpeg"],
-                                              max_dist=0.15,
+                                              max_dist=0.10,
                                               threads=4,
                                               recursive=True,
                                               dry_run=True)
