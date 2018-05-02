@@ -1,5 +1,7 @@
 import click
 
+from py_image_dedup.library.ImageMatchDeduplicator import ImageMatchDeduplicator
+
 IMAGE_HASH_MAP = {}
 
 
@@ -31,10 +33,12 @@ def validate_directory(ctx, param, directories):
     help='Show output while processing'
 )
 def deduplicate(directory, recursive, verbose):
-    from py_image_dedup.library.ImageMatchDeduplicator import ImageMatchDeduplicator
-    deduplicator = ImageMatchDeduplicator([directory])
+    deduplicator = ImageMatchDeduplicator(
+        directories=[directory],
+        recursive=recursive
+    )
 
-    result = deduplicator.deduplicate(recursive)
+    result = deduplicator.deduplicate()
 
     for r in result:
         print(r)
@@ -54,10 +58,12 @@ def deduplicate(directory, recursive, verbose):
     '-v', '--verbose', count=True,
     help='Show output while processing')
 def analyze(directory, recursive, verbose):
-    from py_image_dedup.library.ImageMatchDeduplicator import ImageMatchDeduplicator
-    deduplicator = ImageMatchDeduplicator([directory])
+    deduplicator = ImageMatchDeduplicator(
+        directories=[directory],
+        recursive=recursive
+    )
 
-    result = deduplicator.analyze(recursive)
+    result = deduplicator.analyze()
 
     for r in result:
         print(r)

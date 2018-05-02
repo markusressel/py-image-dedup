@@ -313,6 +313,9 @@ class ImageMatchDeduplicator:
             # smaller is better
             candidate['dist'],
 
+            # if the filename contains "copy" it is less good
+            "copy" in FileUtils.get_file_name(candidate['path']).lower(),
+
             # longer filename is better (for "edited" versions)
             len(FileUtils.get_file_name(candidate['path'])) * -1,
 

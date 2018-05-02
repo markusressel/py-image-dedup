@@ -5,7 +5,7 @@ from random import uniform
 from py_image_dedup.library.ImageMatchDeduplicator import ImageMatchDeduplicator
 
 
-class Test(unittest.TestCase):
+class SelectImagesToDeleteTest(unittest.TestCase):
     under_test = ImageMatchDeduplicator(directories=[],
                                         find_duplicatest_across_root_directories=True,
                                         file_extension_filter=[".png", ".jpg", ".jpeg"],
@@ -13,6 +13,16 @@ class Test(unittest.TestCase):
                                         threads=4,
                                         recursive=True,
                                         dry_run=False)
+
+    def test_select_images_to_delete__contains_copy(self):
+        keep = [self._create_default_candidate(path="C:/1.jpg")]
+
+        dont_keep = []
+        for i in range(50):
+            c = self._create_default_candidate(path="C:/1%s-Copy.jpg" % i)
+            dont_keep.append(c)
+
+        self._run_test(keep, dont_keep)
 
     def test_select_images_to_delete__newer_and_bigger(self):
         keep = [self._create_default_candidate(path="C:/A.jpg", filesize=100, modification_date=100)]

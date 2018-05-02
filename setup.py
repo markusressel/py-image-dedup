@@ -20,9 +20,9 @@ setup(
         'numpy',
         'image_match',
         'elasticsearch',
-        'tqdm'
+        'tqdm',
+        'click'
     ],
     tests_require=[
-
     ]
 )
