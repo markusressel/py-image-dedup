@@ -225,7 +225,16 @@ class ImageMatchDeduplicator:
 
         self._save_duplicates_for_result(reference_file_path, duplicate_candidates)
 
-        self._select_images_to_delete(duplicate_candidates)
+        candidates_to_delete = self._select_images_to_delete(duplicate_candidates)
+        for candidate in candidates_to_delete:
+            candidate_path = candidate['path']
+            candidate_dist = candidate['dist']
+
+            # self._print("File '%s' is duplicate of '%s' with a dist value of '%s'" % (
+            #     reference_file_path, candidate_path, candidate_dist))
+
+            _, file_name = os.path.split(candidate_path)
+            self._deduplication_result.add_removed_file(candidate_path)
 
         # remember that this file has been processed in it's current state
         if not self._dry_run:
@@ -250,29 +259,37 @@ class ImageMatchDeduplicator:
 
         self._deduplication_result.set_file_duplicates(reference_file_path, duplicate_files_of_reference_file)
 
-    def _select_images_to_delete(self, duplicate_candidates: [str]) -> None:
+    def _select_images_to_delete(self, duplicate_candidates: [{}]) -> [{}]:
         """
         Sorts images according to the desired priorities and marks all but the first one as "to-be-deleted"
         :param duplicate_candidates: the images to analyze
         """
         # sort after all criteria
+        # the first item in the list will be the most preferred one of all duplicates
+        # all other ones will be marked to remove
+
         duplicate_candidates = sorted(duplicate_candidates, key=lambda x: (
+
+            # reverse, bigger is better
+            x['metadata']['filesize'] * -1,
+
+            # reverse, bigger is better
+            x['metadata']['modification_date'] * -1,
+
+            # reverse, bigger is better
+            x['score'] * -1,
+
+            # just to assure the order in the result is the same
+            # and recurring runs will result in the same order
             x['path'],
-            x['metadata']['filesize'] * -1,  # reverse
-            x['metadata']['modification_date'] * -1,  # reverse
+
+            # smaller is better
             x['dist'],
-            x['score']))
+
+        ))
 
         # keep first and mark others for removal
-        for candidate in duplicate_candidates[1:]:
-            candidate_path = candidate['path']
-            candidate_dist = candidate['dist']
-
-            # self._print("File '%s' is duplicate of '%s' with a dist value of '%s'" % (
-            #     reference_file_path, candidate_path, candidate_dist))
-
-            _, file_name = os.path.split(candidate_path)
-            self._deduplication_result.add_removed_file(candidate_path)
+        return duplicate_candidates[1:]
 
     def _find_empty_folders(self, root_path: str) -> [str]:
         """
