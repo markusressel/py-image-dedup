@@ -8,8 +8,6 @@ class IdentifierStore:
     __SET_CALL_COUNTER = 0
 
     def __init__(self, db_path: str):
-        d = {"abc": [1, 2, 3], "qwerty": [4, 5, 6]}
-
         self._store = None
         self._db_file_path = os.path.join(db_path, "py-image-dedup_db.pkl")
         self._db_file = None

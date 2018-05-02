@@ -15,7 +15,7 @@ class Test(unittest.TestCase):
                                         dry_run=False)
 
     def test_select_images_to_delete__newer_and_bigger(self):
-        keep = [self._create_default_candidate(path="C:/A.jpg", filesize=10, modification_date=10)]
+        keep = [self._create_default_candidate(path="C:/A.jpg", filesize=100, modification_date=100)]
 
         dont_keep = []
         for i in range(50):
@@ -25,7 +25,7 @@ class Test(unittest.TestCase):
         self._run_test(keep, dont_keep)
 
     def test_select_images_to_delete__newer(self):
-        keep = [self._create_default_candidate(path="C:/A.jpg", filesize=1, modification_date=10)]
+        keep = [self._create_default_candidate(path="C:/A.jpg", filesize=1, modification_date=100)]
 
         dont_keep = []
         for i in range(50):
@@ -35,7 +35,7 @@ class Test(unittest.TestCase):
         self._run_test(keep, dont_keep)
 
     def test_select_images_to_delete__bigger(self):
-        keep = [self._create_default_candidate(path="C:/A.jpg", filesize=10, modification_date=1)]
+        keep = [self._create_default_candidate(path="C:/A.jpg", filesize=100, modification_date=1)]
 
         dont_keep = []
         for i in range(50):
@@ -45,7 +45,7 @@ class Test(unittest.TestCase):
         self._run_test(keep, dont_keep)
 
     def test_select_images_to_delete__all_the_same(self):
-        keep = [self._create_default_candidate(path="C:/A.jpg")]
+        keep = [self._create_default_candidate(path="C:/00000.jpg")]
 
         dont_keep = []
         for i in range(50):
@@ -54,12 +54,22 @@ class Test(unittest.TestCase):
 
         self._run_test(keep, dont_keep)
 
-    def test_select_images_to_delete__higher_score(self):
-        keep = [self._create_default_candidate(path="C:/A.jpg", score=100)]
+    def test_select_images_to_delete__all_the_same_2(self):
+        keep = [self._create_default_candidate(path="C:/50-edited.jpg")]
 
         dont_keep = []
         for i in range(50):
-            c = self._create_default_candidate(path="C:/1%s.jpg" % i)
+            c = self._create_default_candidate(path="C:/%s.jpg" % i)
+            dont_keep.append(c)
+
+        self._run_test(keep, dont_keep)
+
+    def test_select_images_to_delete__higher_score(self):
+        keep = [self._create_default_candidate(path="C:/1.jpg", score=100)]
+
+        dont_keep = []
+        for i in range(50):
+            c = self._create_default_candidate(path="C:/1.jpg")
             dont_keep.append(c)
 
         self._run_test(keep, dont_keep)
@@ -77,30 +87,34 @@ class Test(unittest.TestCase):
     def test_select_images_to_delete__real_example(self):
         keep = [self._create_default_candidate(
             path=r"M:\Fotos\Markus\Google Photos Archiv\Takeout\Google Photos\2017-06-17\20170617_153437.jpg",
-            filesize=10000000)]
+            filesize=10000000, modification_date=1)]
 
         dont_keep = []
         for i in range(50):
-            c = self._create_default_candidate(path=r"M:\Fotos\Iris\Syncthing\Telegram Empfangen\223023133_644761.jpg",
-                                               filesize=270000)
+            c = self._create_default_candidate(
+                path=r"M:\Fotos\Iris\Syncthing\Telegram Empfangen\223023133_644761%i.jpg" % i,
+                filesize=270000, modification_date=2)
             dont_keep.append(c)
 
         self._run_test(keep, dont_keep)
 
-    def _run_test(self, keep: [{}], dont_keep: [{}]):
+    def _run_test(self, keep: [{}], dont_keep: [{}], test_reversed_order: bool = True,
+                  test_random_input_order: bool = True):
         candidates = keep + dont_keep
 
         result = self.under_test._select_images_to_delete(candidates)
         self._test_result_outcome(result, keep, dont_keep)
 
-        result = self.under_test._select_images_to_delete(reversed(candidates))
-        self._test_result_outcome(result, keep, dont_keep)
-
-        # test random sort orders of input just to be sure
-        for i in range(50):
-            shuffle(candidates)
-            result = self.under_test._select_images_to_delete(candidates)
+        if test_reversed_order:
+            result = self.under_test._select_images_to_delete(reversed(candidates))
             self._test_result_outcome(result, keep, dont_keep)
+
+        if test_random_input_order:
+            # test random sort orders of input just to be sure
+            for i in range(50):
+                shuffle(candidates)
+                result = self.under_test._select_images_to_delete(candidates)
+                self._test_result_outcome(result, keep, dont_keep)
 
     def _test_result_outcome(self, result: [{}], keep: [{}], dont_keep: [{}]):
         for c in keep:

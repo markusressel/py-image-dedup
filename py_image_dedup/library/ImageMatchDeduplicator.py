@@ -6,6 +6,7 @@ from tqdm import tqdm
 
 from py_image_dedup.library.DeduplicationResult import DeduplicationResult
 from py_image_dedup.persistence.ImageSignatureStore import ImageSignatureStore
+from py_image_dedup.util import FileUtils
 
 
 class ImageMatchDeduplicator:
@@ -52,6 +53,7 @@ class ImageMatchDeduplicator:
 
         self._progress_bar: tqdm = None
 
+        self._processed_files: {} = {}
         self._deduplication_result: DeduplicationResult = None
 
     def analyze(self) -> {str, str}:
@@ -65,13 +67,13 @@ class ImageMatchDeduplicator:
         self._print("Analyzing files...")
 
         for directory, file_count in self._directory_map.items():
-            with ThreadPoolExecutor(self._threads) as self.EXECUTOR:
-                self._create_file_progressbar(file_count)
-                self.__walk_directory_files(root_directory=directory,
-                                            command=lambda root_dir, file_dir, file_path: self.__analyze_file(
-                                                root_dir,
-                                                file_dir,
-                                                file_path))
+            self._create_file_progressbar(file_count)
+            self.__walk_directory_files(root_directory=directory,
+                                        threads=self._threads,
+                                        command=lambda root_dir, file_dir, file_path: self.__analyze_file(
+                                            root_dir,
+                                            file_dir,
+                                            file_path))
 
     def deduplicate(self) -> DeduplicationResult:
         """
@@ -84,23 +86,49 @@ class ImageMatchDeduplicator:
 
         self._deduplication_result = DeduplicationResult()
 
+        self.cleanup_database()
+
         self.analyze()
 
+        self._processed_files = {}
         for directory, file_count in self._directory_map.items():
-            with ThreadPoolExecutor(self._threads) as self.EXECUTOR:
-                self._print("Processing '%s' ..." % directory)
-                self._create_file_progressbar(file_count)
-                self.__walk_directory_files(root_directory=directory,
-                                            command=lambda root_dir, file_dir, file_path: self.__remove_duplicates(
-                                                root_dir,
-                                                file_dir,
-                                                file_path))
+            self._print("Processing '%s' ..." % directory)
+            self._create_file_progressbar(file_count)
+            self.__walk_directory_files(root_directory=directory,
+                                        threads=1,
+                                        command=lambda root_dir, file_dir, file_path: self.__find_duplicates(
+                                            root_dir,
+                                            file_dir,
+                                            file_path))
 
         self._remove_files_marked_as_delete()
 
         self.remove_empty_folders()
 
         return self._deduplication_result
+
+    def cleanup_database(self):
+        """
+        Removes database entries of files that don't exist on disk
+        Note that this cleanup will only consider files within one
+        of the root directories specified in constructor, as other file paths
+        might have been added on other machines.
+        """
+
+        self._print("Cleaning up database...")
+
+        entries = self._persistence.get_all()
+        for entry in entries:
+            file_path = entry['_source']['path']
+
+            # filter by files in at least one of the specified root directories
+            # this is necessary because the database might hold items for other paths already
+            # and those are not interesting to us
+            if not file_path.startswith(tuple(self._directories)):
+                continue
+
+            if not os.path.exists(file_path):
+                self._persistence.remove(file_path)
 
     def remove_empty_folders(self):
         """
@@ -132,9 +160,9 @@ class ImageMatchDeduplicator:
             file_count = self._get_files_count(directory)
             self._directory_map[directory] = file_count
 
-            self._increment_progress(increase_count_by=1)
+            self._increment_progress()
 
-    def __walk_directory_files(self, root_directory: str, command):
+    def __walk_directory_files(self, root_directory: str, command, threads: int):
         """
         Walks through the files of the given directory
 
@@ -145,26 +173,28 @@ class ImageMatchDeduplicator:
 
         # to avoid ascii char problems
         root_directory = str(root_directory)
-        for (root, dirs, files) in os.walk(root_directory):
-            # root is the place you're listing
-            # dirs is a list of directories directly under root
-            # files is a list of files directly under root
 
-            for file in files:
-                file_path = os.path.abspath(os.path.join(root, file))
+        with ThreadPoolExecutor(threads) as self.EXECUTOR:
+            for (root, dirs, files) in os.walk(root_directory):
+                # root is the place you're listing
+                # dirs is a list of directories directly under root
+                # files is a list of files directly under root
 
-                # skip file with unwanted file extension
-                if not self.__file_extension_matches_filter(file):
-                    continue
+                for file in files:
+                    file_path = os.path.abspath(os.path.join(root, file))
 
-                # skip if not existent (probably already deleted)
-                if not os.path.exists(file_path):
-                    continue
+                    # skip file with unwanted file extension
+                    if not self.__file_extension_matches_filter(file):
+                        continue
 
-                self.EXECUTOR.submit(command, root_directory, root, file_path)
+                    # skip if not existent (probably already deleted)
+                    if not os.path.exists(file_path):
+                        continue
 
-            if not self._recursive:
-                return
+                    self.EXECUTOR.submit(command, root_directory, root, file_path)
+
+                if not self._recursive:
+                    return
 
     def __file_extension_matches_filter(self, file: str) -> bool:
         """
@@ -192,24 +222,21 @@ class ImageMatchDeduplicator:
 
         self._persistence.add(file_path)
 
-        self._increment_progress(1)
+        self._increment_progress()
 
-    def __remove_duplicates(self, root_directory: str, file_directory: str, reference_file_path: str):
+    def __find_duplicates(self, root_directory: str, file_directory: str, reference_file_path: str):
         """
         Removes all duplicates of the specified file
         :param reference_file_path: the file to check for duplicates
         """
 
-        self._increment_progress(1)
+        self._increment_progress()
 
-        if self._persistence.get(reference_file_path)[0]['metadata']['already_deduplicated']:
-            return
-        else:
-            self._progress_bar.set_postfix_str("Searching duplicates for '%s' ..." % reference_file_path)
+        self._progress_bar.set_postfix_str("Searching duplicates for '%s' ..." % reference_file_path)
 
-        if not os.path.exists(reference_file_path):
-            # remove from persistence
-            self._persistence.remove(reference_file_path)
+        # remember processed files to prevent processing files in multiple directions
+        if reference_file_path in self._processed_files:
+            # already found a better candidate for this file
             return
 
         duplicate_candidates = self._persistence.search_similar(reference_file_path)
@@ -225,6 +252,14 @@ class ImageMatchDeduplicator:
 
         self._save_duplicates_for_result(reference_file_path, duplicate_candidates)
 
+        if len(duplicate_candidates) <= 1:
+            for candidate in duplicate_candidates:
+                candidate_path = candidate['path']
+                self._processed_files[candidate_path] = True
+
+            # nothing to do here since the result is unique
+            return
+
         candidates_to_delete = self._select_images_to_delete(duplicate_candidates)
         for candidate in candidates_to_delete:
             candidate_path = candidate['path']
@@ -236,16 +271,15 @@ class ImageMatchDeduplicator:
             _, file_name = os.path.split(candidate_path)
             self._deduplication_result.add_removed_file(candidate_path)
 
-        # remember that this file has been processed in it's current state
-        if not self._dry_run:
-            self._persistence.update(reference_file_path, {"already_deduplicated": True})
-
     def _save_duplicates_for_result(self, reference_file_path, duplicate_candidates):
         duplicate_files_of_reference_file = []
 
         for candidate in duplicate_candidates:
             candidate_path = candidate['path']
             candidate_dist = candidate['dist']
+
+            # remember that this file has already been processed
+            self._processed_files[candidate_path] = True
 
             # skip self
             if candidate_path == reference_file_path:
@@ -268,25 +302,30 @@ class ImageMatchDeduplicator:
         # the first item in the list will be the most preferred one of all found duplicates,
         # all other ones will be marked to remove
 
-        duplicate_candidates = sorted(duplicate_candidates, key=lambda x: (
-            # reverse, bigger is better
-            x['metadata']['filesize'] * -1,
+        duplicate_candidates = sorted(duplicate_candidates, key=lambda candidate: (
 
             # reverse, bigger is better
-            x['metadata']['modification_date'] * -1,
+            candidate['metadata']['filesize'] * -1,
 
             # reverse, bigger is better
-            x['score'] * -1,
+            candidate['metadata']['modification_date'] * -1,
 
             # smaller is better
-            x['dist'],
+            candidate['dist'],
 
-            # shorter file path is better
-            len(x['path']),
+            # longer filename is better (for "edited" versions)
+            len(FileUtils.get_file_name(candidate['path'])) * -1,
+
+            # shorter folder path is better
+            len(FileUtils.get_containing_folder(candidate['path'])),
+
+            # reverse, bigger is better
+            candidate['score'] * -1,
 
             # just to assure the order in the result is the same
+            # if all other criteria (above) are equal
             # and recurring runs will result in the same order
-            # x['path'],
+            candidate['path'],
 
         ))
 
@@ -412,7 +451,7 @@ class ImageMatchDeduplicator:
 
             self._deduplication_result.add_removed_file(file)
 
-            self._increment_progress(increase_count_by=1)
+            self._increment_progress()
 
     def _print(self, text: str):
         print("\n%s" % text, flush=True)

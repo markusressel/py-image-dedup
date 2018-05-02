@@ -13,20 +13,16 @@ class ImageSignatureStore:
     EL_DOC_TYPE = 'image'
 
     def __init__(self, max_dist: float = 0.03):
-        es = Elasticsearch(
-            hosts=[
-                {'host': "192.168.2.24", 'port': 9200}
-            ]
-        )
-
-        ses = SignatureES(
-            es=es,
+        self._store = SignatureES(
+            es=Elasticsearch(
+                hosts=[
+                    {'host': "192.168.2.24", 'port': 9200}
+                ]
+            ),
             index=self.EL_INDEX,
             doc_type=self.EL_DOC_TYPE,
             distance_cutoff=max_dist
         )
-
-        self._store = ses
 
     def add(self, image_file: str, metadata: dict = None) -> bool:
         """
@@ -52,6 +48,9 @@ class ImageSignatureStore:
                     existing_entity['metadata']['modification_date'] == file_modification_date:
                 # print("File is the same, not adding again")
                 return False
+
+        # remove existing entries
+        self.remove(image_file)
 
         if not metadata:
             metadata = {}
@@ -98,7 +97,14 @@ class ImageSignatureStore:
             'query': {'match_all': {}}
         }
 
-        return self._store.es.search(self.EL_INDEX, body=es_query)
+        from elasticsearch.helpers import scan
+        return scan(
+            self._store.es,
+            index=self.EL_INDEX,
+            doc_type=self.EL_DOC_TYPE,
+            preserve_order=True,
+            query=es_query,
+        )
 
     def search_similar(self, image_file: str, all_orientations: bool = True) -> []:
         """
@@ -188,7 +194,7 @@ class ImageSignatureStore:
 
     def remove_entries_of_missing_files(self):
         """
-        Remove all entries with files that dont exist
+        Remove all entries with files that don't exist
         """
         entries = self.get_all()
         for entry in entries:
