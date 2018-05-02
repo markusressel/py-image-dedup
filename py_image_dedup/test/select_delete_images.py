@@ -7,7 +7,7 @@ from py_image_dedup.library.ImageMatchDeduplicator import ImageMatchDeduplicator
 
 class Test(unittest.TestCase):
     under_test = ImageMatchDeduplicator(directories=[],
-                                        search_across_root_directories=True,
+                                        find_duplicatest_across_root_directories=True,
                                         file_extension_filter=[".png", ".jpg", ".jpeg"],
                                         max_dist=0.10,
                                         threads=4,
@@ -70,6 +70,19 @@ class Test(unittest.TestCase):
         dont_keep = []
         for i in range(50):
             c = self._create_default_candidate(path="C:/1%s.jpg" % i, dist=uniform(0.1, 1.0))
+            dont_keep.append(c)
+
+        self._run_test(keep, dont_keep)
+
+    def test_select_images_to_delete__real_example(self):
+        keep = [self._create_default_candidate(
+            path=r"M:\Fotos\Markus\Google Photos Archiv\Takeout\Google Photos\2017-06-17\20170617_153437.jpg",
+            filesize=10000000)]
+
+        dont_keep = []
+        for i in range(50):
+            c = self._create_default_candidate(path=r"M:\Fotos\Iris\Syncthing\Telegram Empfangen\223023133_644761.jpg",
+                                               filesize=270000)
             dont_keep.append(c)
 
         self._run_test(keep, dont_keep)

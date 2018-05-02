@@ -26,12 +26,12 @@ class Test(unittest.TestCase):
         # directories = [r'D:\test']
 
         deduplicator = ImageMatchDeduplicator(directories=directories,
-                                              search_across_root_directories=True,
+                                              find_duplicatest_across_root_directories=True,
                                               file_extension_filter=[".png", ".jpg", ".jpeg"],
                                               max_dist=0.10,
                                               threads=4,
                                               recursive=True,
-                                              dry_run=False)
+                                              dry_run=True)
 
         result = deduplicator.deduplicate()
 

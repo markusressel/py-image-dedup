@@ -12,7 +12,7 @@ class ImageMatchDeduplicator:
     EXECUTOR = ThreadPoolExecutor()
 
     def __init__(self, directories: [str],
-                 search_across_root_directories: bool = False,
+                 find_duplicatest_across_root_directories: bool = False,
                  recursive: bool = True,
                  file_extension_filter: [str] = None,
                  max_dist: float = 0.03,
@@ -20,7 +20,7 @@ class ImageMatchDeduplicator:
                  dry_run: bool = True):
         """
         :param directories: list of directories to process
-        :param search_across_root_directories: if set to true duplicates duplicates will also be searched for in
+        :param find_duplicatest_across_root_directories: if set to true duplicates duplicates will also be searched for in
                 other root directories specified in 'directories' parameter
         :param recursive: also walk through sub-folders recursively
         :param file_extension_filter: filter files for this extension
@@ -39,7 +39,7 @@ class ImageMatchDeduplicator:
             else:
                 self._directories.append(directory)
 
-        self._search_across_root_directories = search_across_root_directories
+        self._search_across_root_directories = find_duplicatest_across_root_directories
 
         self._directory_map = {}
         self._recursive = recursive
@@ -269,9 +269,6 @@ class ImageMatchDeduplicator:
         # all other ones will be marked to remove
 
         duplicate_candidates = sorted(duplicate_candidates, key=lambda x: (
-            # shorter file path is better
-            len(x['path']),
-
             # reverse, bigger is better
             x['metadata']['filesize'] * -1,
 
@@ -284,9 +281,12 @@ class ImageMatchDeduplicator:
             # smaller is better
             x['dist'],
 
+            # shorter file path is better
+            len(x['path']),
+
             # just to assure the order in the result is the same
             # and recurring runs will result in the same order
-            x['path'],
+            # x['path'],
 
         ))
 
