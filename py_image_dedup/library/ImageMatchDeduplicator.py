@@ -265,10 +265,12 @@ class ImageMatchDeduplicator:
         :param duplicate_candidates: the images to analyze
         """
         # sort after all criteria
-        # the first item in the list will be the most preferred one of all duplicates
+        # the first item in the list will be the most preferred one of all found duplicates,
         # all other ones will be marked to remove
 
         duplicate_candidates = sorted(duplicate_candidates, key=lambda x: (
+            # shorter file path is better
+            len(x['path']),
 
             # reverse, bigger is better
             x['metadata']['filesize'] * -1,
@@ -279,12 +281,12 @@ class ImageMatchDeduplicator:
             # reverse, bigger is better
             x['score'] * -1,
 
+            # smaller is better
+            x['dist'],
+
             # just to assure the order in the result is the same
             # and recurring runs will result in the same order
             x['path'],
-
-            # smaller is better
-            x['dist'],
 
         ))
 
