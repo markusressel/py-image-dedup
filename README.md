@@ -23,8 +23,8 @@ of this repository. Create GitHub tickets for bugs and new features and comment 
 # License
 
 ```
-raspyrfm-client by Markus Ressel
-Copyright (C) 2017  Markus Ressel
+py-image-dedup by Markus Ressel
+Copyright (C) 2018  Markus Ressel
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
