@@ -74,6 +74,7 @@ class ImageMatchDeduplicator:
                                             root_dir,
                                             file_dir,
                                             file_path))
+            self._progress_bar.close()
 
     def deduplicate(self) -> DeduplicationResult:
         """
@@ -100,6 +101,7 @@ class ImageMatchDeduplicator:
                                             root_dir,
                                             file_dir,
                                             file_path))
+            self._progress_bar.close()
 
         self._remove_files_marked_as_delete()
 
@@ -161,6 +163,7 @@ class ImageMatchDeduplicator:
             self._directory_map[directory] = file_count
 
             self._increment_progress()
+        self._progress_bar.close()
 
     def __walk_directory_files(self, root_directory: str, command, threads: int):
         """
@@ -358,7 +361,6 @@ class ImageMatchDeduplicator:
         """
         Function to remove empty folders
         :param root_path:
-        :param remove_root:
         """
 
         self._print("Removing empty folders in: '%s' ..." % root_path)
@@ -375,6 +377,7 @@ class ImageMatchDeduplicator:
             self._deduplication_result.add_removed_empty_folder(folder)
 
             self._increment_progress()
+        self._progress_bar.close()
 
     def _get_files_count(self, directory: str) -> int:
         """
@@ -431,6 +434,7 @@ class ImageMatchDeduplicator:
 
         self._create_file_progressbar(total_file_count=len(self._deduplication_result.get_removed_files()))
         self._delete_files(self._deduplication_result.get_removed_files())
+        self._progress_bar.close()
 
     def _delete_files(self, files_to_delete: [str]):
         """

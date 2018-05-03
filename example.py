@@ -2,7 +2,7 @@ from py_image_dedup.library.ImageMatchDeduplicator import ImageMatchDeduplicator
 
 deduplicator = ImageMatchDeduplicator(
     # directories=[r'C:\Sample'],
-    directories=[r'M:\Fotos\Markus', r'M:\Fotos\Iris'],
+    directories=[r'M:\Fotos\Iris', r'M:\Fotos\Markus'],
     find_duplicatest_across_root_directories=True,
     file_extension_filter=[".png", ".jpg", ".jpeg"],  # Note: case insensitive
     max_dist=0.10,
