@@ -49,7 +49,7 @@ class ImageSignatureStore:
         image_data[MetadataKey.FILE_SIZE.value] = file_size
         image_data[MetadataKey.FILE_MODIFICATION_DATE.value] = file_modification_date
 
-        from py_image_dedup.library import ImageUtils
+        from py_image_dedup.util import ImageUtils
         exif_data = ImageUtils.get_exif_data(image_file_path)
 
         return image_data
