@@ -1,3 +1,4 @@
+import math
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -6,14 +7,19 @@ from tqdm import tqdm
 
 from py_image_dedup.library.DeduplicationResult import DeduplicationResult
 from py_image_dedup.persistence.ImageSignatureStore import ImageSignatureStore
+from py_image_dedup.persistence.MetadataKey import MetadataKey
 from py_image_dedup.util import FileUtils
 
 
 class ImageMatchDeduplicator:
     EXECUTOR = ThreadPoolExecutor()
 
-    def __init__(self, directories: [str],
+    def __init__(self,
+                 database_host: str,
+                 directories: [str],
+                 database_port: int = None,
                  find_duplicatest_across_root_directories: bool = False,
+                 max_file_modification_time_diff: int = None,
                  recursive: bool = True,
                  file_extension_filter: [str] = None,
                  max_dist: float = 0.03,
@@ -41,12 +47,16 @@ class ImageMatchDeduplicator:
                 self._directories.append(directory)
 
         self._search_across_root_directories = find_duplicatest_across_root_directories
+        self._max_mod_time_diff = max_file_modification_time_diff
 
         self._directory_map = {}
         self._recursive = recursive
 
         self._file_extension_filter: [str] = file_extension_filter
-        self._persistence: ImageSignatureStore = ImageSignatureStore(max_dist=max_dist)
+        self._persistence: ImageSignatureStore = ImageSignatureStore(
+            host=database_host,
+            port=database_port,
+            max_dist=max_dist)
         self._threads: int = threads
 
         self._dry_run = dry_run
@@ -122,7 +132,7 @@ class ImageMatchDeduplicator:
 
         entries = self._persistence.get_all()
         for entry in entries:
-            file_path = entry['_source']['path']
+            file_path = entry['_source'][MetadataKey.PATH.value]
 
             # filter by files in at least one of the specified root directories
             # this is necessary because the database might hold items for other paths already
@@ -248,25 +258,31 @@ class ImageMatchDeduplicator:
             # filter by files in at least one of the specified root directories
             # this is necessary because the database might hold items for other paths already
             # and those are not interesting to us
-            duplicate_candidates = [x for x in duplicate_candidates if x['path'].startswith(tuple(self._directories))]
+            duplicate_candidates = [x for x in duplicate_candidates if
+                                    x[MetadataKey.PATH.value].startswith(tuple(self._directories))]
         else:
             # filter by files in the same root directory
-            duplicate_candidates = [x for x in duplicate_candidates if x['path'].startswith(root_directory)]
+            duplicate_candidates = [x for x in duplicate_candidates if
+                                    x[MetadataKey.PATH.value].startswith(root_directory)]
 
         self._save_duplicates_for_result(reference_file_path, duplicate_candidates)
 
         if len(duplicate_candidates) <= 1:
             for candidate in duplicate_candidates:
-                candidate_path = candidate['path']
+                candidate_path = candidate[MetadataKey.PATH.value]
+
+                if candidate_path != reference_file_path:
+                    print("Unexpected single candidate!")
+
                 self._processed_files[candidate_path] = True
 
-            # nothing to do here since the result is unique
-            return
+                # nothing to do here since the result is unique
+                return
 
         candidates_to_delete = self._select_images_to_delete(duplicate_candidates)
         for candidate in candidates_to_delete:
-            candidate_path = candidate['path']
-            candidate_dist = candidate['dist']
+            candidate_path = candidate[MetadataKey.PATH.value]
+            candidate_dist = candidate[MetadataKey.DISTANCE.value]
 
             # self._print("File '%s' is duplicate of '%s' with a dist value of '%s'" % (
             #     reference_file_path, candidate_path, candidate_dist))
@@ -278,8 +294,8 @@ class ImageMatchDeduplicator:
         duplicate_files_of_reference_file = []
 
         for candidate in duplicate_candidates:
-            candidate_path = candidate['path']
-            candidate_dist = candidate['dist']
+            candidate_path = candidate[MetadataKey.PATH.value]
+            candidate_dist = candidate[MetadataKey.DISTANCE.value]
 
             # remember that this file has already been processed
             self._processed_files[candidate_path] = True
@@ -289,8 +305,8 @@ class ImageMatchDeduplicator:
                 continue
 
             result_entry = {
-                'path': candidate_path,
-                'dist': candidate_dist
+                MetadataKey.PATH.value: candidate_path,
+                MetadataKey.DISTANCE.value: candidate_dist
             }
             duplicate_files_of_reference_file.append(result_entry)
 
@@ -308,32 +324,40 @@ class ImageMatchDeduplicator:
         duplicate_candidates = sorted(duplicate_candidates, key=lambda candidate: (
 
             # reverse, bigger is better
-            candidate['metadata']['filesize'] * -1,
+            candidate[MetadataKey.METADATA.value][MetadataKey.FILE_SIZE.value] * -1,
 
-            # reverse, bigger is better
-            candidate['metadata']['modification_date'] * -1,
+            # reverse, bigger (later time) is better
+            candidate[MetadataKey.METADATA.value][MetadataKey.FILE_MODIFICATION_DATE.value] * -1,
 
             # smaller is better
-            candidate['dist'],
+            candidate[MetadataKey.DISTANCE.value],
 
             # if the filename contains "copy" it is less good
-            "copy" in FileUtils.get_file_name(candidate['path']).lower(),
+            "copy" in FileUtils.get_file_name(candidate[MetadataKey.PATH.value]).lower(),
 
             # longer filename is better (for "edited" versions)
-            len(FileUtils.get_file_name(candidate['path'])) * -1,
+            len(FileUtils.get_file_name(candidate[MetadataKey.PATH.value])) * -1,
 
             # shorter folder path is better
-            len(FileUtils.get_containing_folder(candidate['path'])),
+            len(FileUtils.get_containing_folder(candidate[MetadataKey.PATH.value])),
 
             # reverse, bigger is better
-            candidate['score'] * -1,
+            candidate[MetadataKey.SCORE.value] * -1,
 
             # just to assure the order in the result is the same
             # if all other criteria (above) are equal
             # and recurring runs will result in the same order
-            candidate['path'],
+            candidate[MetadataKey.PATH.value],
 
         ))
+
+        if self._max_mod_time_diff is not None:
+            best_candidate = duplicate_candidates[0]
+            best_match_mod_time = best_candidate[MetadataKey.METADATA.value][MetadataKey.FILE_MODIFICATION_DATE.value]
+
+            duplicate_candidates = [c for c in duplicate_candidates if math.fabs(
+                c[MetadataKey.METADATA.value][
+                    MetadataKey.FILE_MODIFICATION_DATE.value] - best_match_mod_time) <= self._max_mod_time_diff]
 
         # keep first and mark others for removal
         return duplicate_candidates[1:]

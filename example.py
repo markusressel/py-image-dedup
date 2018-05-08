@@ -1,6 +1,8 @@
 from py_image_dedup.library.ImageMatchDeduplicator import ImageMatchDeduplicator
+from py_image_dedup.persistence.MetadataKey import MetadataKey
 
 deduplicator = ImageMatchDeduplicator(
+    database_host="192.168.2.24",
     # directories=[r'C:\Sample'],
     directories=[r'M:\Fotos\Iris', r'M:\Fotos\Markus'],
     find_duplicatest_across_root_directories=True,
@@ -28,8 +30,8 @@ for reference_file, duplicates in result.get_file_duplicates().items():
             print("(keep)\t\t'%s'\t\t(Count: %s)" % (reference_file, duplicate_count))
 
         for duplicate in duplicates:
-            file_path = duplicate['path']
-            distance = duplicate['dist']
+            file_path = duplicate[MetadataKey.PATH.value]
+            distance = duplicate[MetadataKey.DISTANCE.value]
             distance_rounded = round(distance, 3)
 
             if file_path in result.get_removed_files():

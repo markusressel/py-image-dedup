@@ -3,6 +3,8 @@ import os
 from elasticsearch import Elasticsearch
 from image_match.elasticsearch_driver import SignatureES
 
+from py_image_dedup.persistence.MetadataKey import MetadataKey
+
 
 class ImageSignatureStore:
     # counter used to track how many new values were set
@@ -12,11 +14,18 @@ class ImageSignatureStore:
     EL_INDEX = 'images'
     EL_DOC_TYPE = 'image'
 
-    def __init__(self, max_dist: float = 0.03):
+    DEFAULT_DATABASE_PORT = 9200
+
+    DATAMODEL_VERSION = 2
+
+    def __init__(self, host: str = "127.0.0.1", port: int = DEFAULT_DATABASE_PORT, max_dist: float = 0.03):
+        if port is None:
+            port = self.DEFAULT_DATABASE_PORT
+
         self._store = SignatureES(
             es=Elasticsearch(
                 hosts=[
-                    {'host': "192.168.2.24", 'port': 9200}
+                    {'host': host, 'port': port}
                 ]
             ),
             index=self.EL_INDEX,
@@ -44,8 +53,15 @@ class ImageSignatureStore:
             print("WARNING: More than a single entry for this file: %s" % image_file)
 
         for existing_entity in existing_entities:
-            if existing_entity['metadata']['filesize'] == file_size and \
-                    existing_entity['metadata']['modification_date'] == file_modification_date:
+            is_data_version_ok = False
+            if MetadataKey.DATAMODEL_VERSION.value in existing_entity[MetadataKey.METADATA.value]:
+                is_data_version_ok = existing_entity[MetadataKey.METADATA.value][
+                                         MetadataKey.DATAMODEL_VERSION.value] == self.DATAMODEL_VERSION
+
+            if is_data_version_ok and \
+                    existing_entity[MetadataKey.METADATA.value][MetadataKey.FILE_SIZE.value] == file_size and \
+                    existing_entity[MetadataKey.METADATA.value][
+                        MetadataKey.FILE_MODIFICATION_DATE.value] == file_modification_date:
                 # print("File is the same, not adding again")
                 return False
 
@@ -55,8 +71,12 @@ class ImageSignatureStore:
         if not metadata:
             metadata = {}
 
-        metadata['filesize'] = file_size
-        metadata['modification_date'] = file_modification_date
+        metadata[MetadataKey.DATAMODEL_VERSION.value] = self.DATAMODEL_VERSION
+        metadata[MetadataKey.FILE_SIZE.value] = file_size
+        metadata[MetadataKey.FILE_MODIFICATION_DATE.value] = file_modification_date
+
+        # read exif data if possible
+        self._append_exif_data_if_possible(metadata, image_file)
 
         try:
             self._store.add_image(image_file, metadata=metadata)
@@ -65,6 +85,36 @@ class ImageSignatureStore:
         except Exception as e:
             print(e)
             return False
+
+    def _append_exif_data_if_possible(self, metadata, image_file) -> {}:
+        import PIL.Image
+        img = PIL.Image.open(image_file)
+
+        exif_data = img._getexif()
+        if exif_data:
+            import PIL.ExifTags
+            exif_data = {
+                PIL.ExifTags.TAGS[key]: value for key, value in exif_data.items() if key in PIL.ExifTags.TAGS
+            }
+
+            if 'DateTimeDigitized' in exif_data:
+                metadata['exif_date_time_digitized'] = exif_data['DateTimeDigitized']
+            if 'DateTimeOriginal' in exif_data:
+                metadata['exif_date_time_original'] = exif_data['DateTimeOriginal']
+            if 'Orientation' in exif_data:
+                metadata['exif_orientation'] = exif_data['Orientation']
+
+            if 'XResolution' in exif_data:
+                metadata['exif_x_resolution'] = exif_data['XResolution']
+            if 'YResolution' in exif_data:
+                metadata['exif_y_resolution'] = exif_data['YResolution']
+
+            if 'ExifImageWidth' in exif_data:
+                metadata['exif_image_width'] = exif_data['ExifImageWidth']
+            if 'ExifImageHeight' in exif_data:
+                metadata['exif_image_height'] = exif_data['ExifImageHeight']
+
+        return metadata
 
     def get(self, file_path: str):
         es_query = {

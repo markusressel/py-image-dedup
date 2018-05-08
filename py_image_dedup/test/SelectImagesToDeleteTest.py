@@ -3,16 +3,31 @@ from random import shuffle
 from random import uniform
 
 from py_image_dedup.library.ImageMatchDeduplicator import ImageMatchDeduplicator
+from py_image_dedup.persistence.MetadataKey import MetadataKey
 
 
 class SelectImagesToDeleteTest(unittest.TestCase):
     under_test = ImageMatchDeduplicator(directories=[],
                                         find_duplicatest_across_root_directories=True,
+                                        max_file_modification_time_diff=100,
                                         file_extension_filter=[".png", ".jpg", ".jpeg"],
                                         max_dist=0.10,
                                         threads=4,
                                         recursive=True,
-                                        dry_run=False)
+                                        dry_run=True)
+
+    def test_select_images_to_delete__filter_max_mod_time_diff(self):
+        keep = [
+            self._create_default_candidate(modification_date=100),
+            self._create_default_candidate(modification_date=-1000)  # file modification time is too far apart
+        ]
+
+        dont_keep = []
+        for i in range(50):
+            c = self._create_default_candidate(modification_date=0)
+            dont_keep.append(c)
+
+        self._run_test(keep, dont_keep)
 
     def test_select_images_to_delete__contains_copy(self):
         keep = [self._create_default_candidate(path="C:/1.jpg")]
@@ -25,31 +40,31 @@ class SelectImagesToDeleteTest(unittest.TestCase):
         self._run_test(keep, dont_keep)
 
     def test_select_images_to_delete__newer_and_bigger(self):
-        keep = [self._create_default_candidate(path="C:/A.jpg", filesize=100, modification_date=100)]
+        keep = [self._create_default_candidate(filesize=100, modification_date=100)]
 
         dont_keep = []
         for i in range(50):
-            c = self._create_default_candidate(path="C:/1%s.jpg" % i, filesize=i, modification_date=i)
+            c = self._create_default_candidate(filesize=i, modification_date=i)
             dont_keep.append(c)
 
         self._run_test(keep, dont_keep)
 
     def test_select_images_to_delete__newer(self):
-        keep = [self._create_default_candidate(path="C:/A.jpg", filesize=1, modification_date=100)]
+        keep = [self._create_default_candidate(modification_date=100)]
 
         dont_keep = []
         for i in range(50):
-            c = self._create_default_candidate(path="C:/1%s.jpg" % i, filesize=1, modification_date=i)
+            c = self._create_default_candidate(modification_date=i)
             dont_keep.append(c)
 
         self._run_test(keep, dont_keep)
 
     def test_select_images_to_delete__bigger(self):
-        keep = [self._create_default_candidate(path="C:/A.jpg", filesize=100, modification_date=1)]
+        keep = [self._create_default_candidate(filesize=100)]
 
         dont_keep = []
         for i in range(50):
-            c = self._create_default_candidate(path="C:/1%s.jpg" % i, filesize=i, modification_date=1)
+            c = self._create_default_candidate(filesize=i)
             dont_keep.append(c)
 
         self._run_test(keep, dont_keep)
@@ -75,21 +90,21 @@ class SelectImagesToDeleteTest(unittest.TestCase):
         self._run_test(keep, dont_keep)
 
     def test_select_images_to_delete__higher_score(self):
-        keep = [self._create_default_candidate(path="C:/1.jpg", score=100)]
+        keep = [self._create_default_candidate(score=100)]
 
         dont_keep = []
         for i in range(50):
-            c = self._create_default_candidate(path="C:/1.jpg")
+            c = self._create_default_candidate()
             dont_keep.append(c)
 
         self._run_test(keep, dont_keep)
 
     def test_select_images_to_delete__lower_dist(self):
-        keep = [self._create_default_candidate(path="C:/0.jpg", dist=0)]
+        keep = [self._create_default_candidate(dist=0)]
 
         dont_keep = []
         for i in range(50):
-            c = self._create_default_candidate(path="C:/1%s.jpg" % i, dist=uniform(0.1, 1.0))
+            c = self._create_default_candidate(dist=uniform(0.1, 1.0))
             dont_keep.append(c)
 
         self._run_test(keep, dont_keep)
@@ -135,13 +150,13 @@ class SelectImagesToDeleteTest(unittest.TestCase):
     def _create_default_candidate(self, path: str = "C:/test", dist: float = 0.05, filesize: int = 100,
                                   modification_date: int = 1, score: int = 64) -> {}:
         return {
-            'path': path,
-            'dist': dist,
-            'metadata': {
-                'filesize': filesize,
-                'modification_date': modification_date
+            MetadataKey.PATH.value: path,
+            MetadataKey.DISTANCE.value: dist,
+            MetadataKey.METADATA.value: {
+                MetadataKey.FILE_SIZE.value: filesize,
+                MetadataKey.FILE_MODIFICATION_DATE.value: modification_date
             },
-            'score': score
+            MetadataKey.SCORE.value: score
         }
 
 

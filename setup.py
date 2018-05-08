@@ -21,7 +21,8 @@ setup(
         'image_match',
         'elasticsearch',
         'tqdm',
-        'click'
+        'click',
+        'Pillow'
     ],
     tests_require=[
     ]
