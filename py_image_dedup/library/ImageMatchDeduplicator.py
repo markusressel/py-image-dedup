@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from tqdm import tqdm
 
 from py_image_dedup.library.DeduplicationResult import DeduplicationResult
-from py_image_dedup.persistence.ImageSignatureStore import ImageSignatureStore
+from py_image_dedup.persistence import ImageSignatureStore
 from py_image_dedup.persistence.MetadataKey import MetadataKey
 from py_image_dedup.util import FileUtils
 
@@ -15,23 +15,21 @@ class ImageMatchDeduplicator:
     EXECUTOR = ThreadPoolExecutor()
 
     def __init__(self,
-                 database_host: str,
+                 image_signature_store: ImageSignatureStore,
                  directories: [str],
-                 database_port: int = None,
                  find_duplicatest_across_root_directories: bool = False,
                  max_file_modification_time_diff: int = None,
                  recursive: bool = True,
                  file_extension_filter: [str] = None,
-                 max_dist: float = 0.03,
                  threads: int = 1,
                  dry_run: bool = True):
         """
+        :param image_signature_store: persistent storage for image signatures and other metadata
         :param directories: list of directories to process
-        :param find_duplicatest_across_root_directories: if set to true duplicates duplicates will also be searched for in
-                other root directories specified in 'directories' parameter
+        :param find_duplicatest_across_root_directories: if set to true duplicates duplicates will also be searched for
+               in other root directories specified in 'directories' parameter
         :param recursive: also walk through sub-folders recursively
         :param file_extension_filter: filter files for this extension
-        :param max_dist: maximum "difference" allowed, ranging from [0 .. 1] where 0.2 is still a pretty similar image
         :param threads: number of threads to use for concurrent processing
         :param dry_run: if true, no files will actually be removed
         """
@@ -53,17 +51,14 @@ class ImageMatchDeduplicator:
         self._recursive = recursive
 
         self._file_extension_filter: [str] = file_extension_filter
-        self._persistence: ImageSignatureStore = ImageSignatureStore(
-            host=database_host,
-            port=database_port,
-            max_dist=max_dist)
+        self._persistence: ImageSignatureStore = image_signature_store
         self._threads: int = threads
 
         self._dry_run = dry_run
 
         self._progress_bar: tqdm = None
 
-        self._processed_files: {} = {}
+        self._processed_files: dict = {}
         self._deduplication_result: DeduplicationResult = None
 
     def analyze(self) -> {str, str}:
@@ -252,7 +247,7 @@ class ImageMatchDeduplicator:
             # already found a better candidate for this file
             return
 
-        duplicate_candidates = self._persistence.search_similar(reference_file_path)
+        duplicate_candidates = self._persistence.find_similar(reference_file_path)
 
         if self._search_across_root_directories:
             # filter by files in at least one of the specified root directories
@@ -282,12 +277,6 @@ class ImageMatchDeduplicator:
         candidates_to_delete = self._select_images_to_delete(duplicate_candidates)
         for candidate in candidates_to_delete:
             candidate_path = candidate[MetadataKey.PATH.value]
-            candidate_dist = candidate[MetadataKey.DISTANCE.value]
-
-            # self._print("File '%s' is duplicate of '%s' with a dist value of '%s'" % (
-            #     reference_file_path, candidate_path, candidate_dist))
-
-            _, file_name = os.path.split(candidate_path)
             self._deduplication_result.add_removed_file(candidate_path)
 
     def _save_duplicates_for_result(self, reference_file_path, duplicate_candidates):

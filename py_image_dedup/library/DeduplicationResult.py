@@ -39,7 +39,7 @@ class DeduplicationResult:
         """
         self._removed_folders.add(folder)
 
-    def set_file_duplicates(self, reference_file: str, duplicate_files: {}):
+    def set_file_duplicates(self, reference_file: str, duplicate_files: []):
         """
         Set a list of files that are duplicates of the reference file
         :param reference_file: the file that is used as a baseline

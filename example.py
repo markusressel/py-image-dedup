@@ -1,13 +1,17 @@
 from py_image_dedup.library.ImageMatchDeduplicator import ImageMatchDeduplicator
+from py_image_dedup.persistence.ElasticSearchStoreBackend import ElasticSearchStoreBackend
 from py_image_dedup.persistence.MetadataKey import MetadataKey
 
 deduplicator = ImageMatchDeduplicator(
-    database_host="192.168.2.24",
-    # directories=[r'C:\Sample'],
-    directories=[r'M:\Fotos\Iris', r'M:\Fotos\Markus'],
+    image_signature_store=ElasticSearchStoreBackend(
+        host="192.168.2.24",
+        max_dist=0.10,
+        use_exif_data=True
+    ),
+    directories=[r'C:\Sample'],
+    # directories=[r'M:\Fotos\Iris', r'M:\Fotos\Markus'],
     find_duplicatest_across_root_directories=True,
     file_extension_filter=[".png", ".jpg", ".jpeg"],  # Note: case insensitive
-    max_dist=0.10,
     threads=4,
     recursive=True,
     dry_run=True

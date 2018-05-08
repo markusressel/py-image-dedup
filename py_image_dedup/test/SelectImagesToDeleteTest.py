@@ -7,14 +7,15 @@ from py_image_dedup.persistence.MetadataKey import MetadataKey
 
 
 class SelectImagesToDeleteTest(unittest.TestCase):
-    under_test = ImageMatchDeduplicator(directories=[],
-                                        find_duplicatest_across_root_directories=True,
-                                        max_file_modification_time_diff=100,
-                                        file_extension_filter=[".png", ".jpg", ".jpeg"],
-                                        max_dist=0.10,
-                                        threads=4,
-                                        recursive=True,
-                                        dry_run=True)
+    under_test = ImageMatchDeduplicator(
+        image_signature_store=None,
+        directories=[],
+        find_duplicatest_across_root_directories=True,
+        max_file_modification_time_diff=100,
+        file_extension_filter=[".png", ".jpg", ".jpeg"],
+        threads=4,
+        recursive=True,
+        dry_run=True)
 
     def test_select_images_to_delete__filter_max_mod_time_diff(self):
         keep = [
