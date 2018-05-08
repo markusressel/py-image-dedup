@@ -28,8 +28,6 @@ class ImageSignatureStore:
         image_data = self._create_metadata_dict(image_file_path)
         self._add(image_file_path, image_data)
 
-        raise NotImplementedError()
-
     def _create_metadata_dict(self, image_file_path: str) -> dict:
         """
         Creates a dictionary that should be stored in persistence
@@ -49,8 +47,10 @@ class ImageSignatureStore:
         image_data[MetadataKey.FILE_SIZE.value] = file_size
         image_data[MetadataKey.FILE_MODIFICATION_DATE.value] = file_modification_date
 
-        from py_image_dedup.util import ImageUtils
-        exif_data = ImageUtils.get_exif_data(image_file_path)
+        if self._use_exif_data:
+            from py_image_dedup.util import ImageUtils
+            exif_data = ImageUtils.get_exif_data(image_file_path)
+            # TODO: append exif data for later usage
 
         return image_data
 
@@ -63,10 +63,10 @@ class ImageSignatureStore:
         """
         raise NotImplementedError()
 
-    def get(self, file_path: str) -> StoreEntry or None:
+    def get(self, image_file_path: str) -> StoreEntry or None:
         """
         Get a store entry by it's file_path
-        :param file_path: file path to search for
+        :param image_file_path: file path to search for
         :return: store entry or None
         """
         raise NotImplementedError()

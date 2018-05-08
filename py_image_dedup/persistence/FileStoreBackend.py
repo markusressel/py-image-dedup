@@ -64,9 +64,9 @@ class FileStoreBackend(ImageSignatureStore):
         if self.__SET_CALL_COUNTER % 50 == 0:
             self.save()
 
-    def get(self, file_path: str) -> StoreEntry or None:
-        if file_path in self._store:
-            return self._store[file_path]
+    def get(self, image_file_path: str) -> StoreEntry or None:
+        if image_file_path in self._store:
+            return self._store[image_file_path]
         else:
             return None
 

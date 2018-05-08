@@ -52,12 +52,9 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
     def _add(self, image_file_path: str, image_data):
 
         # check if the file has already been analyzed (and didn't change in the meantime)
-        existing_entities = self._get(image_file_path)
+        existing_entity = self._get(image_file_path)
 
-        if len(existing_entities) > 1:
-            print("WARNING: More than a single entry for this file: %s" % image_file_path)
-
-        for existing_entity in existing_entities:
+        if existing_entity is not None:
             is_data_version_ok = False
             if MetadataKey.DATAMODEL_VERSION.value in existing_entity[MetadataKey.METADATA.value]:
                 is_data_version_ok = existing_entity[MetadataKey.METADATA.value][
@@ -83,19 +80,19 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
             print(e)
             return False
 
-    def get(self, file_path: str) -> StoreEntry or None:
+    def get(self, image_file_path: str) -> StoreEntry or None:
         """
         Get a store entry by it's file_path
-        :param file_path: file path to search for
+        :param image_file_path: file path to search for
         :return:
         """
-        db_entity = self._get(file_path)
+        db_entity = self._get(image_file_path)
         return self._createStoreEntity(db_entity)
 
-    def _get(self, file_path: str) -> dict or None:
+    def _get(self, image_file_path: str) -> dict or None:
         """
         Get a store entry by it's file_path
-        :param file_path: file path to search for
+        :param image_file_path: file path to search for
         :return: elasticsearch result dictionary
         """
 
@@ -103,7 +100,7 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
             'query': {
                 "constant_score": {
                     "filter": {
-                        "term": {'path': file_path}
+                        "term": {'path': image_file_path}
                     }
                 }
             }
@@ -112,12 +109,15 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
         query_result = self._store.es.search(self._el_index, body=es_query)
 
         hits = query_result['hits']['hits']
+
+        if len(hits) > 1:
+            print("WARNING: More than a single entry for a file, cleaning up: %s" % image_file_path)
+            self.remove(image_file_path)
+            self.add(image_file_path)
+
         if len(hits) == 0:
             return None
-        elif len(hits) == 1:
-            return hits[0]['_source']
         else:
-            print("WARNING: More than a single entry for this file: %s" % file_path)
             return hits[0]['_source']
 
     def get_all(self) -> [StoreEntry]:

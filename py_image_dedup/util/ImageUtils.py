@@ -17,7 +17,7 @@ def get_exif_data(image_file_path: str) -> {}:
             return {
                 PIL.ExifTags.TAGS[key]: value for key, value in exif_data.items() if key in PIL.ExifTags.TAGS
             }
-    except:
+    except Exception as e:
         return {}
 
     # if 'DateTimeDigitized' in exif_data:
