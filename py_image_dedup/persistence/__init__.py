@@ -9,7 +9,7 @@ class ImageSignatureStore:
     Base class for Persistence implementations
     """
 
-    DATAMODEL_VERSION = 2
+    DATAMODEL_VERSION = 3
 
     def __init__(self, use_exif_data: bool = True):
         self._use_exif_data = use_exif_data
@@ -25,7 +25,26 @@ class ImageSignatureStore:
         image search functionality. You can do that with the metadata= field in the add_image function.
         :return: true if the file was added, false otherwise
         """
+
         image_data = self._create_metadata_dict(image_file_path)
+
+        # check if the file has already been analyzed (and didn't change in the meantime)
+        existing_entity = self.get(image_file_path)
+        if existing_entity is not None:
+            is_data_version_ok = False
+            if MetadataKey.DATAMODEL_VERSION.value in existing_entity[MetadataKey.METADATA.value]:
+                is_data_version_ok = existing_entity[MetadataKey.METADATA.value][
+                                         MetadataKey.DATAMODEL_VERSION.value] == self.DATAMODEL_VERSION
+
+            if is_data_version_ok and \
+                    existing_entity[MetadataKey.METADATA.value][MetadataKey.FILE_SIZE.value] == image_data[
+                MetadataKey.FILE_SIZE.value] and \
+                    existing_entity[MetadataKey.METADATA.value][
+                        MetadataKey.FILE_MODIFICATION_DATE.value] == image_data[
+                MetadataKey.FILE_MODIFICATION_DATE.value]:
+                # print("File is the same, not adding again")
+                return
+
         self._add(image_file_path, image_data)
 
     def _create_metadata_dict(self, image_file_path: str) -> dict:
@@ -36,7 +55,7 @@ class ImageSignatureStore:
         :return: dictionary containing all relevant information
         """
 
-        image_data = {}
+        image_data: dict = {}
         image_data[MetadataKey.PATH.value] = image_file_path
 
         # get some metadata
@@ -50,9 +69,20 @@ class ImageSignatureStore:
         if self._use_exif_data:
             from py_image_dedup.util import ImageUtils
             exif_data = ImageUtils.get_exif_data(image_file_path)
-            # TODO: append exif data for later usage
+
+            self._convert_bytes_to_str(exif_data)
+
+            image_data[MetadataKey.EXIF_DATA.value] = exif_data
 
         return image_data
+
+    def _convert_bytes_to_str(self, dictionary: dict):
+        for k, v in dictionary.items():
+            if isinstance(v, dict):
+                self._convert_bytes_to_str(v)
+            else:
+                if isinstance(v, bytes):
+                    dictionary[k] = str(v)
 
     def _add(self, image_file_path: str, image_data: dict) -> None:
         """

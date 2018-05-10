@@ -1,5 +1,6 @@
 import math
 import os
+import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 
@@ -127,7 +128,19 @@ class ImageMatchDeduplicator:
 
         entries = self._persistence.get_all()
         for entry in entries:
-            file_path = entry['_source'][MetadataKey.PATH.value]
+            image_entry = entry['_source']
+            metadata = image_entry[MetadataKey.METADATA.value]
+
+            file_path = image_entry[MetadataKey.PATH.value]
+
+            if MetadataKey.DATAMODEL_VERSION.value not in metadata:
+                self._persistence.remove(file_path)
+                continue
+
+            data_version = metadata[MetadataKey.DATAMODEL_VERSION.value]
+            if data_version != self._persistence.DATAMODEL_VERSION:
+                self._persistence.remove(file_path)
+                continue
 
             # filter by files in at least one of the specified root directories
             # this is necessary because the database might hold items for other paths already
@@ -199,7 +212,11 @@ class ImageMatchDeduplicator:
                     if not os.path.exists(file_path):
                         continue
 
-                    self.EXECUTOR.submit(command, root_directory, root, file_path)
+                    try:
+                        self.EXECUTOR.submit(command, root_directory, root, file_path)
+                    except Exception as e:
+                        self._print(str(e))
+                        sys.exit(-1)
 
                 if not self._recursive:
                     return

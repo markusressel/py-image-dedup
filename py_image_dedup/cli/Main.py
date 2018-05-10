@@ -40,9 +40,6 @@ def deduplicate(directory, recursive, verbose):
 
     result = deduplicator.deduplicate()
 
-    for r in result:
-        print(r)
-
 
 @click.command("analyze")
 @click.option(

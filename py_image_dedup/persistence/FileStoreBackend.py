@@ -80,8 +80,6 @@ class FileStoreBackend(ImageSignatureStore):
         if image_file_path in self._store:
             self._store.pop(image_file_path)
 
-        pass
-
     def remove_all(self) -> None:
         pass
 

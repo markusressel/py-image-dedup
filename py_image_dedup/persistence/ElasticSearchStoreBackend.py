@@ -2,7 +2,6 @@ from elasticsearch import Elasticsearch
 from image_match.elasticsearch_driver import SignatureES
 
 from py_image_dedup.persistence import ImageSignatureStore
-from py_image_dedup.persistence.MetadataKey import MetadataKey
 from py_image_dedup.persistence.StoreEntry import StoreEntry
 
 
@@ -49,36 +48,11 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
             distance_cutoff=max_dist
         )
 
-    def _add(self, image_file_path: str, image_data):
-
-        # check if the file has already been analyzed (and didn't change in the meantime)
-        existing_entity = self._get(image_file_path)
-
-        if existing_entity is not None:
-            is_data_version_ok = False
-            if MetadataKey.DATAMODEL_VERSION.value in existing_entity[MetadataKey.METADATA.value]:
-                is_data_version_ok = existing_entity[MetadataKey.METADATA.value][
-                                         MetadataKey.DATAMODEL_VERSION.value] == self.DATAMODEL_VERSION
-
-            if is_data_version_ok and \
-                    existing_entity[MetadataKey.METADATA.value][MetadataKey.FILE_SIZE.value] == image_data[
-                MetadataKey.FILE_SIZE.value] and \
-                    existing_entity[MetadataKey.METADATA.value][
-                        MetadataKey.FILE_MODIFICATION_DATE.value] == image_data[
-                MetadataKey.FILE_MODIFICATION_DATE.value]:
-                # print("File is the same, not adding again")
-                return False
-
+    def _add(self, image_file_path: str, image_data: dict) -> None:
         # remove existing entries
         self.remove(image_file_path)
 
-        try:
-            self._store.add_image(image_file_path, metadata=image_data)
-            # print("Added file to SignatureStore: '%s'" % image_file)
-            return True
-        except Exception as e:
-            print(e)
-            return False
+        self._store.add_image(image_file_path, metadata=image_data)
 
     def get(self, image_file_path: str) -> StoreEntry or None:
         """
@@ -87,7 +61,8 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
         :return:
         """
         db_entity = self._get(image_file_path)
-        return self._createStoreEntity(db_entity)
+        return db_entity
+        # return self._createStoreEntity(db_entity)
 
     def _get(self, image_file_path: str) -> dict or None:
         """

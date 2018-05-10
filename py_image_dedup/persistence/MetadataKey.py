@@ -12,3 +12,5 @@ class MetadataKey(Enum):
 
     FILE_SIZE = "filesize"
     FILE_MODIFICATION_DATE = "file_modification_date"
+
+    EXIF_DATA = "exif_data"
