@@ -159,12 +159,11 @@ class ImageMatchDeduplicator:
         self._print("Phase 6: Removing empty folders ...")
 
         # remove empty folders
-        with self._create_folder_progressbar(len(self._directories)):
-            for directory in self._directories:
-                empty_folders = self._find_empty_folders(directory)
+        for directory in self._directories:
+            empty_folders = self._find_empty_folders(directory)
 
-                self._remove_folders(directory, empty_folders)
-                # self._increment_progress(increase_count_by=1)
+            self._remove_folders(directory, empty_folders)
+            # self._increment_progress(increase_count_by=1)
 
     def _count_files(self):
         """
@@ -353,6 +352,7 @@ class ImageMatchDeduplicator:
             # just to assure the order in the result is the same
             # if all other criteria (above) are equal
             # and recurring runs will result in the same order
+            # (although they shouldn't be compared twice to begin with)
             candidate[MetadataKey.PATH.value],
 
         ))
