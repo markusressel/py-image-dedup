@@ -23,6 +23,7 @@ class ImageMatchDeduplicator:
                  recursive: bool = True,
                  file_extension_filter: [str] = None,
                  threads: int = 1,
+                 skip_analyze_phase: bool = False,
                  dry_run: bool = True):
         """
         :param image_signature_store: persistent storage for image signatures and other metadata
@@ -55,6 +56,8 @@ class ImageMatchDeduplicator:
         self._persistence: ImageSignatureStore = image_signature_store
         self._threads: int = threads
 
+        self._skip_analyze_phase = skip_analyze_phase
+
         self._dry_run = dry_run
 
         self._progress_bar: tqdm = None
@@ -69,6 +72,9 @@ class ImageMatchDeduplicator:
         """
 
         self._count_files()
+
+        if self._skip_analyze_phase:
+            return
 
         self._print("Phase 3: Analyzing files ...")
 

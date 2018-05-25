@@ -9,9 +9,11 @@ deduplicator = ImageMatchDeduplicator(
         use_exif_data=True
     ),
     # directories=[r'C:\Sample'],
-    directories=[r'M:\Fotos\Iris'],
+    # directories=[r'M:\Fotos\Iris'],
+    directories=[r'M:\Fotos\Markus'],
+    skip_analyze_phase=False,
     # directories=[r'M:\Fotos\Iris', r'M:\Fotos\Markus'],
-    # max_file_modification_time_diff=100,
+    max_file_modification_time_diff=1 * 1000 * 60 * 5,
     find_duplicatest_across_root_directories=True,
     file_extension_filter=[".png", ".jpg", ".jpeg"],  # Note: case insensitive
     threads=8,
