@@ -12,8 +12,45 @@ This library is still a work in progress
 
 # How to use
 
-Coming soon...
+## Setup an elasticsearch instance
 
+Since this library is based on [Image-Match](https://github.com/ascribe/image-match) you need a running
+elasticsearch instance for efficient storing and querying of image signatures.
+
+py-image-dedup uses a single index called "images" that you can create using the following command:
+```
+curl -X PUT "192.168.2.24:9200/images?pretty" -H "Content-Type: application/json" -d "
+{
+  \"mappings\": {
+    \"image\": {
+      \"properties\": {
+        \"path\": {
+          \"type\": \"keyword\",
+          \"ignore_above\": 256
+        }
+      }
+    }
+  }
+}
+```
+
+## Configuration
+
+py-image-dedup has a lot of customization options to make sure
+it can detect the best image with the highest probability possible.
+
+| Name | Description | Default |
+|======|=============|=========|
+| test | test        | `False` |
+
+## Make dry run
+
+To analyze images and get an overview of what images would be deleted be sure to
+make a dry run first.
+
+```
+py-image-dedup -d "/home/mydir" --dry-run
+```
 
 # Contributing
 

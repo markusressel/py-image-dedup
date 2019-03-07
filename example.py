@@ -1,27 +1,35 @@
+from py_image_dedup.library.DeduplicatorConfig import DeduplicatorConfig
 from py_image_dedup.library.ImageMatchDeduplicator import ImageMatchDeduplicator
 from py_image_dedup.persistence.ElasticSearchStoreBackend import ElasticSearchStoreBackend
 from py_image_dedup.persistence.MetadataKey import MetadataKey
 
+deduplicatorConfig = DeduplicatorConfig(
+    recursive=True,
+    search_across_root_directories=False,
+    file_extension_filter=[
+        ".png",
+        ".jpg",
+        ".jpeg"
+    ],
+    max_file_modification_time_diff=1 * 1000 * 60 * 5,
+)
+
 deduplicator = ImageMatchDeduplicator(
     image_signature_store=ElasticSearchStoreBackend(
-        host="192.168.2.24",
+        host="127.0.0.1",
         max_dist=0.10,
         use_exif_data=True
     ),
-    # directories=[r'C:\Sample'],
-    # directories=[r'M:\Fotos\Iris'],
-    directories=[r'M:\Fotos\Markus'],
-    skip_analyze_phase=False,
-    # directories=[r'M:\Fotos\Iris', r'M:\Fotos\Markus'],
-    max_file_modification_time_diff=1 * 1000 * 60 * 5,
-    find_duplicatest_across_root_directories=True,
-    file_extension_filter=[".png", ".jpg", ".jpeg"],  # Note: case insensitive
+    directories=[
+        r'/home/markus/py-image-dedup/dir1',
+        r'/home/markus/py-image-dedup/dir2'
+    ],
+    config=deduplicatorConfig,
     threads=8,
-    recursive=True,
     dry_run=True
 )
 
-result = deduplicator.deduplicate()
+result = deduplicator.deduplicate(skip_analyze_phase=False)
 
 print("Done!")
 print("")

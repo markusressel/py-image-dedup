@@ -33,37 +33,13 @@ def validate_directory(ctx, param, directories):
     help='Show output while processing'
 )
 def deduplicate(directory, recursive, verbose):
+    # TODO: this is broken
     deduplicator = ImageMatchDeduplicator(
         directories=[directory],
         recursive=recursive
     )
 
     result = deduplicator.deduplicate()
-
-
-@click.command("analyze")
-@click.option(
-    '-d', '--directory',
-    callback=validate_directory,
-    help='Top level directory to analyze for duplicate files'
-)
-@click.option(
-    '-r', '--recursive', default=True,
-    help='Recursive search in all sub-folders'
-)
-@click.option(
-    '-v', '--verbose', count=True,
-    help='Show output while processing')
-def analyze(directory, recursive, verbose):
-    deduplicator = ImageMatchDeduplicator(
-        directories=[directory],
-        recursive=recursive
-    )
-
-    result = deduplicator.analyze()
-
-    for r in result:
-        print(r)
 
 
 def console_print_default(message):
@@ -80,4 +56,3 @@ def console_print_error(message):
 
 if __name__ == '__main__':
     deduplicate()
-    analyze()
