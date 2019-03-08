@@ -8,6 +8,69 @@ a pHash for an image and store the result in an ElasticSearch backend for very h
 
 [![asciicast](https://asciinema.org/a/3WbBxMXnZyT1QnuTP9fm37wkS.svg)](https://asciinema.org/a/3WbBxMXnZyT1QnuTP9fm37wkS)
 
+# How it works
+
+This library has been optimized to be able to run this tool regularly
+on an expanding set of data.
+
+### Phase 1 - Database cleanup
+
+In the first phase the elasticsearch backend is checked against the 
+current filesystem state. Files that no longer exist are removed from
+the database to speed up queries made in a later phase.
+
+### Phase 2 - Counting files
+
+Although not necessary for the deduplication process it is very convenient
+to have some kind of progress indication while the deduplication process
+is at work. To do this available files must be counted beforehand.
+
+### Phase 3 - Analysing files
+
+In this phase every image file is analysed. This means generating a signature (pHash)
+to quickly compare it to other images and adding other metadata of the image
+to the elasticsearch backend that is used in the next phase.
+
+This phase is quite CPU intensive. Using as much threads as possible 
+(using the `-t` parameter) is advised to get the quickest results.
+
+Since we might already have a previous version of this file in the database 
+before analysing a given file the file modification time is compared to the
+given one. If the database content seems to be still correct the signature 
+for this file will **not** be recalculated. Because of this supsequent
+runs will be much faster. There has to happen some file access still though 
+so it is probably still limited to that. 
+ 
+### Phase 4 - Finding duplicates
+
+Every file is now processed again - but only by means of querying the 
+database backend for similar images (within the given `max_dist`).
+If there are images found that match the similarity criteria they are considered
+duplicate candidates. All candidates are then ordered by the following
+criteria:
+
+1. file size (bigger is better)
+1. file modification time (newer is better)
+1. EXIF data (more exif data is better)
+1. pixel count (more is better)
+1. distance (lower is better)
+1. filename contains "copy" (False is better)
+1. filename length (longer is better) - (for "edited" versions)
+1. parent folder path length (shorter is better)
+1. score (higher is better)
+
+The first candidate in the resulting list is considered to be the best
+available version of all candidates.
+ 
+### Phase 5 - Removing duplicates
+
+All but the best version of duplicate candidates identified in the previous
+phase are now deleted from the file system (if you did not specify `--dry-run` of course).  
+ 
+### Phase 6 - Removing empty folders
+
+In the last phase empty folders are deleted.
+
 # How to use
 
 ## Setup elasticsearch backend
@@ -19,7 +82,7 @@ This library requires elasticsearch version 5 or later. Sadly the
 specifies version 2 for no apparent reason, so you have to remove this
 requirement from it's requirements.
 
-Because of this **py-image-dedup** will exit with an **error on first install**.
+Because of this **py-image-dedup** might exit with an **error on first install**.
 
 To fix this find the installed files of the image-match library, f.ex.
 
@@ -90,6 +153,47 @@ be sure to make a dry run first.
 ```shell
 py-image-dedup -d "/home/mydir" --dry-run
 ```
+
+## FreeBSD
+
+If you want to run this on a FreeBSD host make sure you have an up
+to date release that is able to install ports.
+
+Since [Image-Match](https://github.com/ascribe/image-match) does a lot of
+math it relies on `numpy` and `scipy`. To get those working on FreeBSD
+you have to install them as a port:
+
+```
+pkg install pkgconf
+pkg install py36-numpy
+pkg install py27-scipy
+```
+
+For `.png` support you also need to install
+```
+pkg install png
+```
+
+I still ran into issues after installing all these and just threw those
+to in the mix and it finally worked:
+```
+pkg install freetype
+pkg install py27-matplotlib  # this has a LOT of dependencies
+```
+
+### Encoding issues
+
+When using the pythin library `click` on FreeBSD you might run into
+encoding issues. To mitigate this change your locale from `ANSII` to `UTF-8`
+if possible.
+
+This can be achieved f.ex. by creating a file `~/.login_conf` with the following content:
+```
+me:\
+	:charset=ISO-8859-1:\
+	:lang=de_DE.UTF-8:
+```
+
 
 # Contributing
 
