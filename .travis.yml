@@ -1,7 +1,5 @@
 language: python
 python:
-  - "3.4"
-  - "3.5"
   - "3.6"
 # not yet working (because of scikit-image dependency)
 #  - "3.7"

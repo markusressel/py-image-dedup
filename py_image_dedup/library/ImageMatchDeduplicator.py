@@ -48,10 +48,14 @@ class ImageMatchDeduplicator:
         :return: result of the operation
         """
 
+        # see: https://stackoverflow.com/questions/14861891/runtimewarning-invalid-value-encountered-in-divide
+        # and: https://stackoverflow.com/questions/29347987/why-cant-i-suppress-numpy-warnings
+        import numpy
+        numpy.warnings.filterwarnings('ignore')
+
         self._deduplication_result = DeduplicationResult()
         if config:
             self._config: DeduplicatorConfig = config
-
 
         for directory in directories:
             if not os.path.exists(directory):
@@ -177,7 +181,7 @@ class ImageMatchDeduplicator:
 
         with self._create_folder_progressbar(len(self._directories)):
             for directory in self._directories:
-                self._progress_bar.set_postfix_str("Counting files in '%s' ..." % directory)
+                self._progress_bar.set_postfix_str(self._truncate_middle(directory))
 
                 file_count = self._get_files_count(directory)
                 self._directory_map[directory] = file_count
@@ -244,7 +248,7 @@ class ImageMatchDeduplicator:
         Analyzes a single file
         :param file_path: the file path
         """
-        self._progress_bar.set_postfix_str("Analyzing '%s' ..." % file_path)
+        self._progress_bar.set_postfix_str(self._truncate_middle(file_path))
 
         self._persistence.add(file_path)
 
@@ -258,7 +262,7 @@ class ImageMatchDeduplicator:
 
         self._increment_progress()
 
-        self._progress_bar.set_postfix_str("Finding duplicates of '%s' ..." % reference_file_path)
+        self._progress_bar.set_postfix_str(self._truncate_middle(reference_file_path))
 
         # remember processed files to prevent processing files in multiple directions
         if reference_file_path in self._processed_files:
@@ -416,12 +420,12 @@ class ImageMatchDeduplicator:
 
         with self._create_folder_progressbar(len(folders)):
             for folder in folders:
+                self._progress_bar.set_postfix_str(self._truncate_middle(folder))
+
                 if not dry_run:
-                    self._progress_bar.set_postfix_str("Removing '%s' ..." % folder)
                     os.rmdir(folder)
 
                 self._deduplication_result.add_removed_empty_folder(folder)
-
                 self._increment_progress()
 
     def _get_files_count(self, directory: str) -> int:
@@ -484,7 +488,7 @@ class ImageMatchDeduplicator:
         """
 
         for file in files_to_delete:
-            self._progress_bar.set_postfix_str("Removing '%s' ..." % file)
+            self._progress_bar.set_postfix_str(self._truncate_middle(file))
 
             # remove the smaller/equal sized and/or older/equally old file
             if dry_run:
@@ -508,3 +512,14 @@ class ImageMatchDeduplicator:
         click.echo(text)
         # delay a little so it is in line
         time.sleep(0.1)
+
+    @staticmethod
+    def _truncate_middle(text: str, max_length: int = 50):
+        if len(text) <= max_length:
+            # string is already short-enough, fill up with spaces
+            return text + ((max_length - len(text)) * " ")
+        # half of the size, minus the 3 .'s
+        n_2 = int(max_length / 2) - 3
+        # whatever's left
+        n_1 = max_length - n_2 - 3
+        return '{0}...{1}'.format(text[:n_1], text[-n_2:])
