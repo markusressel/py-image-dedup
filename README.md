@@ -1,4 +1,4 @@
-# py-image-dedup
+# py-image-dedup [![Build Status](https://travis-ci.org/markusressel/py-image-dedup.svg?branch=master)](https://travis-ci.org/markusressel/gopass-chrome-importer) [![PyPI version](https://badge.fury.io/py/py-image-dedup.svg)](https://badge.fury.io/py/py-image-dedup)
 
 **py-image-dedup** is a tool to scan through a library of photos, find duplicates and remove them
 in a prioritized way.
@@ -14,13 +14,15 @@ This library is still a work in progress
 
 # How to use
 
-## Setup an elasticsearch instance
+## Setup elasticsearch backend
 
-Since this library is based on [Image-Match](https://github.com/ascribe/image-match) you need a running
-elasticsearch instance for efficient storing and querying of image signatures.
+Since this library is based on [Image-Match](https://github.com/ascribe/image-match) 
+you need a running elasticsearch instance for efficient storing and 
+querying of image signatures.
 
 py-image-dedup uses a single index called "images" that you can create using the following command:
-```
+
+```shell
 curl -X PUT "192.168.2.24:9200/images?pretty" -H "Content-Type: application/json" -d "
 {
   \"mappings\": {
@@ -38,19 +40,33 @@ curl -X PUT "192.168.2.24:9200/images?pretty" -H "Content-Type: application/json
 
 ## Configuration
 
-py-image-dedup has a lot of customization options to make sure
-it can detect the best image with the highest probability possible.
+py-image-dedup offers customization options to make sure it can 
+detect the best image with the highest probability possible.
 
 | Name | Description | Default |
-|======|=============|=========|
-| test | test        | `False` |
+|------|-------------|---------|
+| threads | Number of threads to use for image analysis | 2 |
+| recursive | Toggle to analyse given directories recursively | `False` |
+| search_across_dirs | Toggle to allow duplicate results across given directories | `False` |
+| file_extensions | Comma separated list of file extensions to analyse | `"png,jpg,jpeg"` |
+| max_dist | Maximum distance of image signatures to consider. This is a value in the range [0..1] | `0.1` |
 
-## Make dry run
+## Command line usage
 
-To analyze images and get an overview of what images would be deleted be sure to
-make a dry run first.
+**py-image-dedup** can be used from the command line like this:
 
+```shell
+py-image-dedup deduplicate --help
 ```
+
+Have a look at the help output to see how you can customize it.
+
+## Dry run
+
+To analyze images and get an overview of what images would be deleted 
+be sure to make a dry run first.
+
+```shell
 py-image-dedup -d "/home/mydir" --dry-run
 ```
 
