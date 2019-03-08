@@ -283,9 +283,12 @@ class ImageMatchDeduplicator:
         """
         self._progress_bar.set_postfix_str(self._truncate_middle(file_path))
 
-        self._persistence.add(file_path)
-
-        self._increment_progress()
+        try:
+            self._persistence.add(file_path)
+        except Exception as e:
+            echo("Error analyzing file '%s': %s" % (file_path, e))
+        finally:
+            self._increment_progress()
 
     def _find_duplicates(self, root_directories: [str], root_directory: str, reference_file_path: str):
         """
