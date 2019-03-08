@@ -113,15 +113,19 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
         )
 
     def find_similar(self, reference_image_file_path: str) -> []:
-        entry = self._get(reference_image_file_path)
-        if entry is not None:
-            result = []
-            rec = self._store.search_single_record(entry)
-            result.extend(rec)
+        try:
+            entry = self._get(reference_image_file_path)
+            if entry is not None:
+                result = []
+                rec = self._store.search_single_record(entry)
+                result.extend(rec)
 
-            return result
-        else:
-            return self._store.search_image(reference_image_file_path, all_orientations=True)
+                return result
+            else:
+                return self._store.search_image(reference_image_file_path, all_orientations=True)
+        except Exception as e:
+            echo("Error querying database for similar images of '%s': %s" % (reference_image_file_path, e), color="red")
+            return []
 
     def search_metadata(self, metadata: dict) -> []:
         """

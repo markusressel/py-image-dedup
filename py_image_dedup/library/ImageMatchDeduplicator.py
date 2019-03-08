@@ -292,7 +292,8 @@ class ImageMatchDeduplicator:
 
     def _find_duplicates(self, root_directories: [str], root_directory: str, reference_file_path: str):
         """
-        Removes all duplicates of the specified file
+        Finds duplicates and marks all but the best copy as "to-be-deleted".
+
         :param root_directories: valid root directories
         :param root_directory: root directory of reference_file_path
         :param reference_file_path: the file to check for duplicates
@@ -384,7 +385,8 @@ class ImageMatchDeduplicator:
         # keep first and mark others for removal
         return [duplicate_candidates[0]] + keep_unfitting, duplicate_candidates[1:]
 
-    def _sort_by_quality_descending(self, duplicate_candidates) -> []:
+    @staticmethod
+    def _sort_by_quality_descending(duplicate_candidates) -> []:
         """
         Sorts images according to the desired priorities.
         The first item in the list will be the most preferred one of all found duplicates.
