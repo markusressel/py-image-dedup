@@ -5,9 +5,10 @@ from random import uniform
 from py_image_dedup.library.DeduplicatorConfig import DeduplicatorConfig
 from py_image_dedup.library.ImageMatchDeduplicator import ImageMatchDeduplicator
 from py_image_dedup.persistence.MetadataKey import MetadataKey
+from tests import TestBase
 
 
-class SelectImagesToDeleteTest(unittest.TestCase):
+class SelectImagesToDeleteTest(TestBase):
     under_test: ImageMatchDeduplicator
 
     def setUp(self):
