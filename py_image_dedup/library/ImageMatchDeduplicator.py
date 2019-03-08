@@ -6,19 +6,19 @@ from concurrent.futures import ThreadPoolExecutor
 import click
 from tqdm import tqdm
 
+from py_image_dedup import util
 from py_image_dedup.library.DeduplicationResult import DeduplicationResult
 from py_image_dedup.library.DeduplicatorConfig import DeduplicatorConfig, ConfigParam
 from py_image_dedup.persistence import ImageSignatureStore
 from py_image_dedup.persistence.MetadataKey import MetadataKey
 from py_image_dedup.util import FileUtils, echo
+from py_image_dedup.util.FileUtils import validate_directories_exist
 
 
 class ImageMatchDeduplicator:
     EXECUTOR = ThreadPoolExecutor()
 
     _config: DeduplicatorConfig = DeduplicatorConfig()
-    _directories: [str] = []
-    _directory_map = {}
     _progress_bar: tqdm = None
     _processed_files: dict = {}
     _deduplication_result: DeduplicationResult = None
@@ -28,6 +28,24 @@ class ImageMatchDeduplicator:
         :param image_signature_store: persistent storage for image signatures and other metadata
         """
         self._persistence: ImageSignatureStore = image_signature_store
+
+    def analyse(self, directories: [str],
+                config: DeduplicatorConfig = None,
+                threads: int = 1):
+        """
+        Runs the analysis phase independently
+        :return:
+        """
+
+        if config:
+            self._config: DeduplicatorConfig = config
+        directories = validate_directories_exist(directories)
+
+        echo("Phase 1/2: Counting files ...", color='cyan')
+        directory_map = self._count_files(directories)
+
+        echo("Phase 2/2: Analyzing files ...", color='cyan')
+        self._analyze(directory_map, threads)
 
     def deduplicate(self, directories: [str],
                     config: DeduplicatorConfig = None,
@@ -56,65 +74,57 @@ class ImageMatchDeduplicator:
         if config:
             self._config: DeduplicatorConfig = config
 
-        for directory in directories:
-            if not os.path.exists(directory):
-                echo("Missing directory will be ignored: '%s'" % directory)
-                continue
-            if not os.path.isdir(directory):
-                echo("Directory path is not a directory and will be ignored: '%s'" % directory)
-                continue
-            else:
-                self._directories.append(directory)
+        directories = validate_directories_exist(directories)
 
-        if len(self._directories) <= 0:
+        if len(directories) <= 0:
             echo("No root directories to scan", color='yellow')
             return self._deduplication_result
 
         if dry_run:
-            echo("DRY RUN! No files or folders will actually be deleted!", color='yellow')
+            echo("==> DRY RUN! No files or folders will actually be deleted! <==", color='yellow')
 
         echo("Phase 1/6: Cleaning up database ...", color='cyan')
-        self._cleanup_database()
+        self._cleanup_database(directories)
 
         echo("Phase 2/6: Counting files ...", color='cyan')
-        self._count_files()
+        directory_map = self._count_files(directories)
 
         phase_3_text = "Phase 3/6: Analyzing files"
         if skip_analyze_phase:
             echo(phase_3_text + " - Skipping", color='yellow')
         else:
             echo(phase_3_text, color='cyan')
-            self._analyze(threads)
+            self._analyze(directory_map, threads)
 
         echo("Phase 4/6: Finding duplicate files ...", color='cyan')
         self._processed_files = {}
-        for directory, file_count in self._directory_map.items():
+        for directory, file_count in directory_map.items():
             echo("Finding duplicates in '%s' ..." % directory)
             with self._create_file_progressbar(file_count):
                 self.__walk_directory_files(
                     root_directory=directory,
-                    threads=1,
-                    command=lambda root_dir, file_dir, file_path: self.__find_duplicates(
+                    threads=1,  # there seems to be no performance advantage in using multiple threads here
+                    command=lambda root_dir, _, file_path: self._find_duplicates(
+                        directories,
                         root_dir,
-                        file_dir,
                         file_path))
 
         echo("Phase 5/6: Removing duplicates ...", color='cyan')
         self._remove_files_marked_as_delete(dry_run)
 
         echo("Phase 6/6: Removing empty folders ...", color='cyan')
-        self._remove_empty_folders(dry_run)
+        self._remove_empty_folders(directories, dry_run)
 
         return self._deduplication_result
 
-    def _analyze(self, threads: int = 1) -> {str, str}:
+    def _analyze(self, directory_map: dict, threads: int = 1) -> {str, str}:
         """
         Analyzes all files, generates identifiers (if necessary) and stores them for later access
 
         :return: file_path -> identifier
         """
 
-        for directory, file_count in self._directory_map.items():
+        for directory, file_count in directory_map.items():
             echo("Analyzing files in '%s' ..." % directory)
             with self._create_file_progressbar(file_count):
                 self.__walk_directory_files(
@@ -122,12 +132,14 @@ class ImageMatchDeduplicator:
                     threads=threads,
                     command=lambda root_dir, file_dir, file_path: self.__analyze_file(file_path))
 
-    def _cleanup_database(self):
+    def _cleanup_database(self, directories: []):
         """
         Removes database entries of files that don't exist on disk.
         Note that this cleanup will only consider files within one
         of the root directories specified in constructor, as other file paths
         might have been added on other machines.
+
+        :param directories: directories in this run
         """
 
         # TODO: This iterates through all db entries - even the ones we are ignoring.
@@ -161,7 +173,7 @@ class ImageMatchDeduplicator:
                     # filter by files in at least one of the specified root directories
                     # this is necessary because the database might hold items for other paths already
                     # and those are not interesting to us
-                    if not file_path.startswith(tuple(self._directories)):
+                    if not file_path.startswith(tuple(directories)):
                         continue
 
                     if not os.path.exists(file_path):
@@ -171,33 +183,39 @@ class ImageMatchDeduplicator:
                 finally:
                     self._increment_progress()
 
-    def _remove_empty_folders(self, dry_run: bool):
+    def _remove_empty_folders(self, directories: [], dry_run: bool):
         """
         Searches for empty folders and removes them
+
+        :param directories: directories to scan
         """
 
         # remove empty folders
-        for directory in self._directories:
+        for directory in directories:
             empty_folders = self._find_empty_folders(directory)
 
             self._remove_folders(directory, empty_folders, dry_run)
             # self._increment_progress(increase_count_by=1)
 
-    def _count_files(self):
+    def _count_files(self, directories: []) -> dict:
         """
         Counts the amount of files to analyze (used in progress) and stores them in a map
+
+        @:return map "directory file count" -> "directory path"
         """
 
-        self._directory_map = {}
+        directory_map = {}
 
-        with self._create_folder_progressbar(len(self._directories)):
-            for directory in self._directories:
+        with self._create_folder_progressbar(len(directories)):
+            for directory in directories:
                 self._progress_bar.set_postfix_str(self._truncate_middle(directory))
 
                 file_count = self._get_files_count(directory)
-                self._directory_map[directory] = file_count
+                directory_map[directory] = file_count
 
                 self._increment_progress()
+
+        return directory_map
 
     def __walk_directory_files(self, root_directory: str, command, threads: int):
         """
@@ -211,7 +229,7 @@ class ImageMatchDeduplicator:
         # to avoid ascii char problems
         root_directory = str(root_directory)
 
-        with ThreadPoolExecutor(threads) as self.EXECUTOR:
+        with ThreadPoolExecutor(max_workers=threads, thread_name_prefix="py-image-dedup-walker") as self.EXECUTOR:
             for (root, dirs, files) in os.walk(root_directory):
                 # root is the place you're listing
                 # dirs is a list of directories directly under root
@@ -229,10 +247,11 @@ class ImageMatchDeduplicator:
                         continue
 
                     try:
-                        self.EXECUTOR.submit(command, root_directory, root, file_path)
+                        future = self.EXECUTOR.submit(util.reraise_with_stack(command), root_directory, root, file_path)
+                        future.result()
                     except Exception as e:
-                        click.echo(str(e), err=True)
-                        sys.exit(-1)
+                        click.echo(e, err=True)
+                        sys.exit(1)
 
                 if not self._config[ConfigParam.RECURSIVE]:
                     return
@@ -265,14 +284,15 @@ class ImageMatchDeduplicator:
 
         self._increment_progress()
 
-    def __find_duplicates(self, root_directory: str, file_directory: str, reference_file_path: str):
+    def _find_duplicates(self, root_directories: [str], root_directory: str, reference_file_path: str):
         """
         Removes all duplicates of the specified file
+        :param root_directories: valid root directories
+        :param root_directory: root directory of reference_file_path
         :param reference_file_path: the file to check for duplicates
         """
 
         self._increment_progress()
-
         self._progress_bar.set_postfix_str(self._truncate_middle(reference_file_path))
 
         # remember processed files to prevent processing files in multiple directions
@@ -287,23 +307,30 @@ class ImageMatchDeduplicator:
             # this is necessary because the database might hold items for other paths already
             # and those are not interesting to us
             duplicate_candidates = [x for x in duplicate_candidates if
-                                    x[MetadataKey.PATH.value].startswith(tuple(self._directories))]
+                                    x[MetadataKey.PATH.value].startswith(tuple(root_directories))]
         else:
             # filter by files in the same root directory
             duplicate_candidates = [x for x in duplicate_candidates if
                                     x[MetadataKey.PATH.value].startswith(root_directory)]
+
+        if len(duplicate_candidates) <= 0:
+            echo("No duplication candidates found in database for '%s'. "
+                 "This is an indication that the file has not been analysed yet or "
+                 "there was an issue analysing it." % reference_file_path,
+                 color='yellow')
 
         if len(duplicate_candidates) <= 1:
             for candidate in duplicate_candidates:
                 candidate_path = candidate[MetadataKey.PATH.value]
 
                 if candidate_path != reference_file_path:
-                    echo("Unexpected single candidate!", color='yellow')
+                    echo("Unexpected unique duplication candidate '%s' for "
+                         "reference file '%s'" % (candidate_path, reference_file_path), color='yellow')
 
                 self._processed_files[candidate_path] = True
 
-                # nothing to do here since the result is unique
-                return
+            # nothing to do here since the result is unique
+            return
 
         # sort by quality criteria and redo the search to use the best candidate as the reference image
         sorted_duplicate_candidates = self._sort_by_quality_descending(duplicate_candidates)

@@ -32,7 +32,7 @@ PARAM_SKIP_ANALYSE_PHASE = "skip-analyse-phase"
 PARAM_DRY_RUN = "dry-run"
 
 CMD_OPTION_NAMES = {
-    PARAM_DIRECTORIES: ['-d', '--directories'],
+    PARAM_DIRECTORIES: ['-d', '--directory', '-d', "directories"],
     PARAM_RECURSIVE: ['--recursive', '-r'],
     PARAM_SEARCH_ACROSS_DIRS: ['--search-across-dirs', '-sad'],
     PARAM_FILE_EXTENSIONS: ['--file-extensions', '-fe'],
@@ -60,23 +60,82 @@ def get_option_names(parameter: str) -> list:
     return CMD_OPTION_NAMES[parameter]
 
 
+OPTION_DIRECTORIES = click.option(
+    *get_option_names(PARAM_DIRECTORIES),
+    required=True,
+    type=click.Path(exists=True, file_okay=False, dir_okay=True, writable=False,
+                    readable=True, resolve_path=True, allow_dash=False),
+    multiple=True,
+    help='List of directories to deduplicate.')
+OPTION_RECURSIVE = click.option(
+    *get_option_names(PARAM_RECURSIVE),
+    required=False,
+    default=False,
+    is_flag=True,
+    help='When set all directories will be recursively analyzed.')
+
+OPTION_SEARCH_ACROSS_DIRECTORIES = click.option(
+    *get_option_names(PARAM_SEARCH_ACROSS_DIRS),
+    required=False,
+    default=False,
+    is_flag=True,
+    help='When set duplicates will be found even if they are located in different root directories.')
+
+OPTION_FILE_EXTENSIONS = click.option(
+    *get_option_names(PARAM_FILE_EXTENSIONS),
+    required=False,
+    default="png,jpg,jpeg",
+    type=str,
+    help='Comma separated list of file extentions.')
+
+OPTION_THREADS = click.option(
+    *get_option_names(PARAM_THREADS),
+    required=False,
+    default=2,
+    type=int,
+    help='Number of threads to use for image analysis phase.')
+
+OPTION_ES_HOSTNAME = click.option(
+    *get_option_names(PARAM_ES_HOSTNAME),
+    required=False,
+    default="127.0.0.1",
+    type=str,
+    help='Hostname of the elasticsearch backend instance to use.')
+
+
+@cli.command(name="analyse")
+@OPTION_DIRECTORIES
+@OPTION_RECURSIVE
+@OPTION_SEARCH_ACROSS_DIRECTORIES
+@OPTION_FILE_EXTENSIONS
+@OPTION_THREADS
+@OPTION_ES_HOSTNAME
+def c_analyse(directories: click.Path, recursive: bool, search_across_dirs: bool, file_extensions: str,
+              threads: int, elasticsearch_hostname: str):
+    deduplicator = ImageMatchDeduplicator(
+        image_signature_store=ElasticSearchStoreBackend(
+            host=elasticsearch_hostname,
+            max_dist=0.5,
+            use_exif_data=True
+        )
+    )
+
+    config = DeduplicatorConfig(
+        recursive=recursive,
+        search_across_root_directories=search_across_dirs,
+        file_extension_filter=list(map(lambda x: "." + x, file_extensions.split(","))),
+    )
+
+    deduplicator.analyse(directories, config, threads)
+
+
 @cli.command(name="deduplicate")
-@click.option(*get_option_names(PARAM_DIRECTORIES),
-              required=True,
-              type=click.Path(exists=True, file_okay=False, dir_okay=True, writable=False, readable=True,
-                              resolve_path=True, allow_dash=False),
-              multiple=True,
-              help='List of directories to deduplicate.')
-@click.option(*get_option_names(PARAM_RECURSIVE), required=False, default=False, is_flag=True,
-              help='When set all directories will be recursively analyzed.')
-@click.option(*get_option_names(PARAM_SEARCH_ACROSS_DIRS), required=False, default=False, is_flag=True,
-              help='When set duplicates will be found even if they are located in different root directories.')
-@click.option(*get_option_names(PARAM_FILE_EXTENSIONS), required=False, default="png,jpg,jpeg", type=str,
-              help='Comma separated list of file extentions.')
-@click.option(*get_option_names(PARAM_THREADS), required=False, default=2, type=int,
-              help='Number of threads to use for image analysis phase.')
-@click.option(*get_option_names(PARAM_ES_HOSTNAME), required=False, default="127.0.0.1", type=str,
-              help='Hostname of the elasticsearch backend instance to use.')
+@OPTION_DIRECTORIES
+@OPTION_RECURSIVE
+@OPTION_SEARCH_ACROSS_DIRECTORIES
+@OPTION_FILE_EXTENSIONS
+@OPTION_THREADS
+@OPTION_ES_HOSTNAME
 @click.option(*get_option_names(PARAM_MAX_DIST), required=False, default=0.10, type=float,
               help='Maximum signature distance [0..1] to query from elasticsearch backend.')
 @click.option(*get_option_names(PARAM_SKIP_ANALYSE_PHASE), required=False, default=False, is_flag=True,
@@ -112,18 +171,6 @@ def c_deduplicate(directories: click.Path, recursive: bool, search_across_dirs: 
 
     echo()
     result.print_to_console()
-
-
-def console_print_default(message):
-    echo(message)
-
-
-def console_print_warn(message):
-    echo('Warn: %s' % message, color='yellow')
-
-
-def console_print_error(message):
-    echo('Error: %s' % message, color='red')
 
 
 if __name__ == '__main__':
