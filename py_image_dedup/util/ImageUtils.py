@@ -20,3 +20,13 @@ def get_exif_data(image_file_path: str) -> {}:
     except Exception as e:
         pass
     return {}
+
+
+def get_pixel_count(image_file_path: str) -> int:
+    try:
+        img = Image.open(image_file_path)
+        width, height = img.size
+        return width * height
+    except Exception as e:
+        pass
+    return 0

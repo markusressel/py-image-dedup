@@ -13,4 +13,5 @@ class MetadataKey(Enum):
     FILE_SIZE = "filesize"
     FILE_MODIFICATION_DATE = "file_modification_date"
 
+    PIXELCOUNT = "pixelcount"
     EXIF_DATA = "exif_data"

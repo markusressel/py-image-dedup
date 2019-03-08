@@ -20,6 +20,7 @@ setup(
         'numpy',
         'image_match',
         'elasticsearch',
+        'tabulate',
         'tqdm',
         'click',
         'Pillow'

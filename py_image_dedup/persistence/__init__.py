@@ -9,7 +9,7 @@ class ImageSignatureStore:
     Base class for Persistence implementations
     """
 
-    DATAMODEL_VERSION = 3
+    DATAMODEL_VERSION = 5
 
     def __init__(self, use_exif_data: bool = True):
         self._use_exif_data = use_exif_data
@@ -55,6 +55,8 @@ class ImageSignatureStore:
         :return: dictionary containing all relevant information
         """
 
+        from py_image_dedup.util import ImageUtils
+
         image_data: dict = {}
         image_data[MetadataKey.PATH.value] = image_file_path
 
@@ -66,12 +68,11 @@ class ImageSignatureStore:
         image_data[MetadataKey.FILE_SIZE.value] = file_size
         image_data[MetadataKey.FILE_MODIFICATION_DATE.value] = file_modification_date
 
+        image_data[MetadataKey.PIXELCOUNT.value] = ImageUtils.get_pixel_count(image_file_path)
+
         if self._use_exif_data:
-            from py_image_dedup.util import ImageUtils
             exif_data = ImageUtils.get_exif_data(image_file_path)
-
             self._convert_bytes_to_str(exif_data)
-
             image_data[MetadataKey.EXIF_DATA.value] = exif_data
 
         return image_data
