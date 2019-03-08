@@ -28,8 +28,9 @@ In this phase every image file is analysed. This means generating a signature (p
 to quickly compare it to other images and adding other metadata of the image
 to the elasticsearch backend that is used in the next phase.
 
-This phase is quite CPU intensive. Using as much threads as possible 
-(using the `-t` parameter) is advised to get the quickest results.
+This phase is quite CPU intensive and the first run take take quite
+some time. Using as much threads as feasible (using the `-t` parameter) 
+is advised to get the best performance.
 
 Since we might already have a previous version of this file in the database 
 before analysing a given file the file modification time is compared to the
