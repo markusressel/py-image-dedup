@@ -17,7 +17,7 @@ from py_image_dedup.util import FileUtils
 class ImageMatchDeduplicator:
     EXECUTOR = ThreadPoolExecutor()
 
-    _config: DeduplicatorConfig
+    _config: DeduplicatorConfig = DeduplicatorConfig()
     _directories: [str] = []
     _directory_map = {}
     _progress_bar: tqdm = None
@@ -31,7 +31,7 @@ class ImageMatchDeduplicator:
         self._persistence: ImageSignatureStore = image_signature_store
 
     def deduplicate(self, directories: [str],
-                    config: DeduplicatorConfig = DeduplicatorConfig(),
+                    config: DeduplicatorConfig = None,
                     threads: int = 1,
                     dry_run: bool = True,
                     skip_analyze_phase: bool = False) -> DeduplicationResult:
@@ -49,7 +49,9 @@ class ImageMatchDeduplicator:
         """
 
         self._deduplication_result = DeduplicationResult()
-        self._config: DeduplicatorConfig = config
+        if config:
+            self._config: DeduplicatorConfig = config
+
 
         for directory in directories:
             if not os.path.exists(directory):
@@ -293,8 +295,8 @@ class ImageMatchDeduplicator:
         new_reference_file_path = sorted_duplicate_candidates[0][MetadataKey.PATH.value]
         duplicate_candidates = self._persistence.find_similar(new_reference_file_path)
 
-        candidate_to_keep, candidates_to_delete = self._select_images_to_delete(duplicate_candidates)
-        self._save_duplicates_for_result(candidate_to_keep, candidates_to_delete)
+        candidates_to_keep, candidates_to_delete = self._select_images_to_delete(duplicate_candidates)
+        self._save_duplicates_for_result(candidates_to_keep[0], candidates_to_delete)
         for candidate in candidates_to_delete:
             candidate_path = candidate[MetadataKey.PATH.value]
             self._deduplication_result.add_removed_file(candidate_path)
@@ -316,12 +318,23 @@ class ImageMatchDeduplicator:
 
         duplicate_candidates = self._sort_by_quality_descending(duplicate_candidates)
 
+        keep_unfitting = []
+        max_mod_time_diff = self._config[ConfigParam.MAX_FILE_MODIFICATION_TIME_DIFF]
+        if max_mod_time_diff is not None:
+            # filter files that don't match max mod time diff criteria
+            best_candidate = duplicate_candidates[0]
+            best_match_mod_time = best_candidate[MetadataKey.METADATA.value][MetadataKey.FILE_MODIFICATION_DATE.value]
+
+            keep_unfitting = [c for c in duplicate_candidates if not math.fabs(
+                c[MetadataKey.METADATA.value][
+                    MetadataKey.FILE_MODIFICATION_DATE.value] - best_match_mod_time) <= max_mod_time_diff]
+
         # remember that we have processed these files
         for candidate in duplicate_candidates:
             self._processed_files[candidate[MetadataKey.PATH.value]] = True
 
         # keep first and mark others for removal
-        return duplicate_candidates[0], duplicate_candidates[1:]
+        return [duplicate_candidates[0]] + keep_unfitting, duplicate_candidates[1:]
 
     def _sort_by_quality_descending(self, duplicate_candidates) -> []:
         """
@@ -368,15 +381,6 @@ class ImageMatchDeduplicator:
             candidate[MetadataKey.PATH.value],
 
         ))
-
-        max_mod_time_diff = self._config[ConfigParam.MAX_FILE_MODIFICATION_TIME_DIFF]
-        if max_mod_time_diff is not None:
-            best_candidate = duplicate_candidates[0]
-            best_match_mod_time = best_candidate[MetadataKey.METADATA.value][MetadataKey.FILE_MODIFICATION_DATE.value]
-
-            duplicate_candidates = [c for c in duplicate_candidates if math.fabs(
-                c[MetadataKey.METADATA.value][
-                    MetadataKey.FILE_MODIFICATION_DATE.value] - best_match_mod_time) <= max_mod_time_diff]
 
         return duplicate_candidates
 

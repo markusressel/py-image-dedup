@@ -2,22 +2,20 @@ import unittest
 from random import shuffle
 from random import uniform
 
+from py_image_dedup.library.DeduplicatorConfig import DeduplicatorConfig
 from py_image_dedup.library.ImageMatchDeduplicator import ImageMatchDeduplicator
 from py_image_dedup.persistence.MetadataKey import MetadataKey
 
 
 class SelectImagesToDeleteTest(unittest.TestCase):
-    under_test = ImageMatchDeduplicator(
-        image_signature_store=None,
-        directories=[],
-        search_across_root_directories=True,
-        max_file_modification_time_diff=100,
-        file_extension_filter=[".png", ".jpg", ".jpeg"],
-        threads=4,
-        recursive=True,
-        dry_run=True)
+    under_test: ImageMatchDeduplicator
+
+    def setUp(self):
+        self.under_test = ImageMatchDeduplicator(image_signature_store=None)
 
     def test_select_images_to_delete__filter_max_mod_time_diff(self):
+        self.under_test._config = DeduplicatorConfig(max_file_modification_time_diff=100)
+
         keep = [
             self._create_default_candidate(modification_date=100),
             self._create_default_candidate(modification_date=-1000)  # file modification time is too far apart
@@ -128,34 +126,37 @@ class SelectImagesToDeleteTest(unittest.TestCase):
                   test_random_input_order: bool = True):
         candidates = keep + dont_keep
 
-        result = self.under_test._select_images_to_delete(candidates)
-        self._test_result_outcome(result, keep, dont_keep)
+        kept, not_kept = self.under_test._select_images_to_delete(candidates)
+        self._test_result_outcome(kept, not_kept, keep, dont_keep)
 
         if test_reversed_order:
-            result = self.under_test._select_images_to_delete(reversed(candidates))
-            self._test_result_outcome(result, keep, dont_keep)
+            kept, not_kept = self.under_test._select_images_to_delete(reversed(candidates))
+            self._test_result_outcome(kept, not_kept, keep, dont_keep)
 
         if test_random_input_order:
             # test random sort orders of input just to be sure
             for i in range(50):
                 shuffle(candidates)
-                result = self.under_test._select_images_to_delete(candidates)
-                self._test_result_outcome(result, keep, dont_keep)
+                kept, not_kept = self.under_test._select_images_to_delete(candidates)
+                self._test_result_outcome(kept, not_kept, keep, dont_keep)
 
-    def _test_result_outcome(self, result: [{}], keep: [{}], dont_keep: [{}]):
+    def _test_result_outcome(self, kept, not_kept, keep: [{}], dont_keep: [{}]):
         for c in keep:
-            self.assertNotIn(c, result)
+            self.assertIn(c, kept)
         for c in dont_keep:
-            self.assertIn(c, result)
+            self.assertIn(c, not_kept)
 
     def _create_default_candidate(self, path: str = "C:/test", dist: float = 0.05, filesize: int = 100,
-                                  modification_date: int = 1, score: int = 64) -> {}:
+                                  modification_date: int = 1, pixel_count: int = 10000, exif_tags: {} = {},
+                                  score: int = 64) -> {}:
         return {
             MetadataKey.PATH.value: path,
             MetadataKey.DISTANCE.value: dist,
             MetadataKey.METADATA.value: {
                 MetadataKey.FILE_SIZE.value: filesize,
-                MetadataKey.FILE_MODIFICATION_DATE.value: modification_date
+                MetadataKey.FILE_MODIFICATION_DATE.value: modification_date,
+                MetadataKey.PIXELCOUNT.value: pixel_count,
+                MetadataKey.EXIF_DATA.value: exif_tags
             },
             MetadataKey.SCORE.value: score
         }
