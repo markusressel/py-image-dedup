@@ -57,7 +57,7 @@ class ImageSignatureStore:
 
         from py_image_dedup.util import ImageUtils
 
-        image_data: dict = {}
+        image_data = {}
         image_data[MetadataKey.PATH.value] = image_file_path
 
         # get some metadata
