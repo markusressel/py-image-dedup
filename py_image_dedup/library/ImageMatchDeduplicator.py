@@ -33,8 +33,11 @@ class ImageMatchDeduplicator:
                 config: DeduplicatorConfig = None,
                 threads: int = 1):
         """
-        Runs the analysis phase independently
-        :return:
+        Runs the analysis phase independently.
+
+        :param directories: list of directories to process
+        :param config: deduplication configuration
+        :param threads: number of threads to use for concurrent processing
         """
 
         if config:
@@ -53,7 +56,7 @@ class ImageMatchDeduplicator:
                     dry_run: bool = True,
                     skip_analyze_phase: bool = False) -> DeduplicationResult:
         """
-        Removes duplicates
+        Runs the full 6 deduplication phases.
 
         :param directories: list of directories to process
         :param config: deduplication configuration
