@@ -1,0 +1,9 @@
+setuptools
+scipy
+numpy
+image_match
+elasticsearch==6.3.1
+tabulate
+tqdm
+click
+Pillow
