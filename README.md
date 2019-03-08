@@ -66,7 +66,7 @@ detect the best image with the highest probability possible.
 
 | Name | Description | Default |
 |------|-------------|---------|
-| threads | Number of threads to use for image analysis | 2 |
+| threads | Number of threads to use for image analysis | `2` |
 | recursive | Toggle to analyse given directories recursively | `False` |
 | search_across_dirs | Toggle to allow duplicate results across given directories | `False` |
 | file_extensions | Comma separated list of file extensions to analyse | `"png,jpg,jpeg"` |
