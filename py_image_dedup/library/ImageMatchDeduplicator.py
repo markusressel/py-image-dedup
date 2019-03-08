@@ -124,7 +124,7 @@ class ImageMatchDeduplicator:
 
     def _cleanup_database(self):
         """
-        Removes database entries of files that don't exist on disk
+        Removes database entries of files that don't exist on disk.
         Note that this cleanup will only consider files within one
         of the root directories specified in constructor, as other file paths
         might have been added on other machines.
@@ -133,33 +133,43 @@ class ImageMatchDeduplicator:
         # TODO: This iterates through all db entries - even the ones we are ignoring.
         # The db query should be improved to speed this up
 
-        entries = self._persistence.get_all()
-        for entry in entries:
-            image_entry = entry['_source']
-            metadata = image_entry[MetadataKey.METADATA.value]
+        count, entries = self._persistence.get_all()
+        if count <= 0:
+            return
 
-            file_path = image_entry[MetadataKey.PATH.value]
+        with self._create_progressbar(count, unit="entries"):
+            for entry in entries:
+                try:
+                    image_entry = entry['_source']
+                    metadata = image_entry[MetadataKey.METADATA.value]
 
-            if MetadataKey.DATAMODEL_VERSION.value not in metadata:
-                echo("Removing db entry with missing db model version number: %s" % file_path)
-                self._persistence.remove(file_path)
-                continue
+                    file_path = image_entry[MetadataKey.PATH.value]
 
-            data_version = metadata[MetadataKey.DATAMODEL_VERSION.value]
-            if data_version != self._persistence.DATAMODEL_VERSION:
-                echo("Removing db entry with old db model version: %s" % file_path)
-                self._persistence.remove(file_path)
-                continue
+                    self._progress_bar.set_postfix_str(self._truncate_middle(file_path))
 
-            # filter by files in at least one of the specified root directories
-            # this is necessary because the database might hold items for other paths already
-            # and those are not interesting to us
-            if not file_path.startswith(tuple(self._directories)):
-                continue
+                    if MetadataKey.DATAMODEL_VERSION.value not in metadata:
+                        echo("Removing db entry with missing db model version number: %s" % file_path)
+                        self._persistence.remove(file_path)
+                        continue
 
-            if not os.path.exists(file_path):
-                echo("Removing db entry for missing file: %s" % file_path)
-                self._persistence.remove(file_path)
+                    data_version = metadata[MetadataKey.DATAMODEL_VERSION.value]
+                    if data_version != self._persistence.DATAMODEL_VERSION:
+                        echo("Removing db entry with old db model version: %s" % file_path)
+                        self._persistence.remove(file_path)
+                        continue
+
+                    # filter by files in at least one of the specified root directories
+                    # this is necessary because the database might hold items for other paths already
+                    # and those are not interesting to us
+                    if not file_path.startswith(tuple(self._directories)):
+                        continue
+
+                    if not os.path.exists(file_path):
+                        echo("Removing db entry for missing file: %s" % file_path)
+                        self._persistence.remove(file_path)
+
+                finally:
+                    self._increment_progress()
 
     def _remove_empty_folders(self, dry_run: bool):
         """

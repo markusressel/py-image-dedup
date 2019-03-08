@@ -102,9 +102,9 @@ class ImageSignatureStore:
         """
         raise NotImplementedError()
 
-    def get_all(self) -> [StoreEntry]:
+    def get_all(self) -> (int, object):
         """
-        :return: all stored entries
+        :return: item count, stored entries as a generator function
         """
         raise NotImplementedError()
 
