@@ -41,7 +41,7 @@ Since this library is based on [Image-Match](https://github.com/ascribe/image-ma
 you need a running elasticsearch instance for efficient storing and 
 querying of image signatures.
 
-**py-image-dedup** uses a single index called "images" that you can create using the following command:
+**py-image-dedup** uses a single index called `images` that you can create using the following command:
 
 ```shell
 curl -X PUT "192.168.2.24:9200/images?pretty" -H "Content-Type: application/json" -d "
