@@ -47,7 +47,7 @@ Every file is now processed again - but only by means of querying the
 database backend for similar images (within the given `max_dist`).
 If there are images found that match the similarity criteria they are considered
 duplicate candidates. All candidates are then ordered by the following
-criteria:
+criteria (in this exact order):
 
 1. file size (bigger is better)
 1. file modification time (newer is better)
