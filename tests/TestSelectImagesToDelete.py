@@ -9,7 +9,6 @@ from tests import TestBase
 
 
 class SelectImagesToDeleteTest(TestBase):
-    under_test: ImageMatchDeduplicator
 
     def setUp(self):
         self.under_test = ImageMatchDeduplicator(image_signature_store=None)
