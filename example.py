@@ -11,7 +11,7 @@ deduplicator = ImageMatchDeduplicator(
     )
 )
 
-deduplicatorConfig = DeduplicatorConfig(
+config = DeduplicatorConfig(
     recursive=True,
     search_across_root_directories=True,
     file_extension_filter=[
@@ -29,7 +29,7 @@ result = deduplicator.deduplicate(
         # r'/home/markus/py-image-dedup/dir2'
         r'/mnt/data/py-dedup-test/Syncthing'
     ],
-    config=deduplicatorConfig,
+    config=config,
     threads=8,
     dry_run=True
 )

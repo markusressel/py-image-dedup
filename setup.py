@@ -70,5 +70,10 @@ setup(
         'Programming Language :: Python :: 3.7'
     ],
     install_requires=install_requirements(),
-    tests_require=test_requirements()
+    tests_require=test_requirements(),
+    entry_points={
+        'console_scripts': [
+            'py-image-dedup=py_image_dedup.cli.Main:cli'
+        ]
+    }
 )
