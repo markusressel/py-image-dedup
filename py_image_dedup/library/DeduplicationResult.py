@@ -1,7 +1,7 @@
-import click
 from tabulate import tabulate
 
 from py_image_dedup.persistence import MetadataKey
+from py_image_dedup.util import echo
 
 BYTE_IN_A_MB = 1048576
 
@@ -31,7 +31,7 @@ class DeduplicationResult:
         """
         return self._removed_files
 
-    def add_removed_file(self, file):
+    def add_removed_file(self, file: str):
         """
         Adds a file to the list of removed files
         :param file: the file to add
@@ -44,7 +44,7 @@ class DeduplicationResult:
         """
         return self._removed_folders
 
-    def add_removed_empty_folder(self, folder):
+    def add_removed_empty_folder(self, folder: str):
         """
         Adds a folder to the list of removed empty folders
         :param folder: the folder to add
@@ -68,20 +68,20 @@ class DeduplicationResult:
         return self._file_duplicates
 
     def print_to_console(self):
-        title = "Summary"
-        click.echo(title)
-        click.echo('=' * 20)
-        click.echo("Files with duplicates: %s" % self.get_duplicate_count())
+        title = "" * 7 + "Summary"
+        echo(title, color='cyan')
+        echo('=' * 21, color='cyan')
+        echo("Files with duplicates: %s" % self.get_duplicate_count())
 
         headers = ("Action", "File path", "Dist", "Filesize", "Pixels")
 
-        for reference_file_path, duplicates in self.get_file_duplicates().items():
-            duplicate_count = len(duplicates)
+        for reference_file_path, folder in self.get_file_duplicates().items():
+            duplicate_count = len(folder)
             if duplicate_count > 0:
                 columns = []
-                click.echo()
+                echo()
 
-                for item in [self._reference_files[reference_file_path]] + duplicates:
+                for item in [self._reference_files[reference_file_path]] + folder:
                     row = []
                     file_path = item[MetadataKey.PATH.value]
                     distance = item[MetadataKey.DISTANCE.value]
@@ -102,9 +102,22 @@ class DeduplicationResult:
 
                     columns.append(row)
 
-                click.echo(tabulate(columns, headers=headers, stralign='center'))
+                self._echo_table(tabulate(columns, headers=headers, stralign='center'))
 
-        click.echo()
-        click.echo("Removed (empty) folders (%s):" % len(self.get_removed_empty_folders()))
-        for duplicates in self.get_removed_empty_folders():
-            click.echo("  %s" % duplicates)
+        echo()
+        echo("Removed (empty) folders (%s):" % len(self.get_removed_empty_folders()))
+        for folder in self.get_removed_empty_folders():
+            echo("%s" % folder, color='red')
+
+    @staticmethod
+    def _echo_table(table: str):
+        lines = table.splitlines()
+
+        for line in lines[:2]:
+            echo(line, color='cyan')
+
+        for line in lines[2:]:
+            if line.lstrip().startswith("remove"):
+                echo(line, color='red')
+            else:
+                echo(line, color='green')

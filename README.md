@@ -6,6 +6,8 @@ in a prioritized way.
 It is build upon [Image-Match](https://github.com/ascribe/image-match) a very popular library to compute
 a pHash for an image and store the result in an ElasticSearch backend for very high scalability.
 
+[![asciicast](https://asciinema.org/a/3WbBxMXnZyT1QnuTP9fm37wkS.svg)](https://asciinema.org/a/3WbBxMXnZyT1QnuTP9fm37wkS)
+
 # Work in progress
 
 This library is still a work in progress

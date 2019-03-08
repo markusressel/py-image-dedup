@@ -3,6 +3,7 @@ import click
 from py_image_dedup.library.DeduplicatorConfig import DeduplicatorConfig
 from py_image_dedup.library.ImageMatchDeduplicator import ImageMatchDeduplicator
 from py_image_dedup.persistence.ElasticSearchStoreBackend import ElasticSearchStoreBackend
+from py_image_dedup.util import echo
 
 IMAGE_HASH_MAP = {}
 
@@ -109,19 +110,20 @@ def c_deduplicate(directories: click.Path, recursive: bool, search_across_dirs: 
         dry_run=dry_run
     )
 
+    echo()
     result.print_to_console()
 
 
 def console_print_default(message):
-    click.echo(str(message))
+    echo(message)
 
 
 def console_print_warn(message):
-    click.echo(click.style('Warn: %s' % message, fg='yellow'))
+    echo('Warn: %s' % message, color='yellow')
 
 
 def console_print_error(message):
-    click.echo(click.style('Error: %s' % message, fg='red'))
+    echo('Error: %s' % message, color='red')
 
 
 if __name__ == '__main__':

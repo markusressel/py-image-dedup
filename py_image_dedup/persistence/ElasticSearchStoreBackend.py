@@ -3,6 +3,7 @@ from image_match.elasticsearch_driver import SignatureES
 
 from py_image_dedup.persistence import ImageSignatureStore
 from py_image_dedup.persistence.StoreEntry import StoreEntry
+from py_image_dedup.util import echo
 
 
 class ElasticSearchStoreBackend(ImageSignatureStore):
@@ -86,7 +87,7 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
         hits = query_result['hits']['hits']
 
         if len(hits) > 1:
-            print("WARNING: More than a single entry for a file, cleaning up: %s" % image_file_path)
+            echo("WARNING: More than a single entry for a file, cleaning up: %s" % image_file_path, color='yellow')
             self.remove(image_file_path)
             self.add(image_file_path)
 

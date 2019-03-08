@@ -1,7 +1,6 @@
 import math
 import os
 import sys
-import time
 from concurrent.futures import ThreadPoolExecutor
 
 import click
@@ -11,7 +10,7 @@ from py_image_dedup.library.DeduplicationResult import DeduplicationResult
 from py_image_dedup.library.DeduplicatorConfig import DeduplicatorConfig, ConfigParam
 from py_image_dedup.persistence import ImageSignatureStore
 from py_image_dedup.persistence.MetadataKey import MetadataKey
-from py_image_dedup.util import FileUtils
+from py_image_dedup.util import FileUtils, echo
 
 
 class ImageMatchDeduplicator:
@@ -59,36 +58,38 @@ class ImageMatchDeduplicator:
 
         for directory in directories:
             if not os.path.exists(directory):
-                self._print("Missing directory will be ignored: '%s'" % directory)
+                echo("Missing directory will be ignored: '%s'" % directory)
                 continue
             if not os.path.isdir(directory):
-                self._print("Directory path is not a directory and will be ignored: '%s'" % directory)
+                echo("Directory path is not a directory and will be ignored: '%s'" % directory)
                 continue
             else:
                 self._directories.append(directory)
 
         if len(self._directories) <= 0:
-            self._print("No root directories to scan", color='yellow')
+            echo("No root directories to scan", color='yellow')
             return self._deduplication_result
 
         if dry_run:
-            self._print("DRY RUN! No files or folders will actually be deleted!", color='yellow')
+            echo("DRY RUN! No files or folders will actually be deleted!", color='yellow')
 
-        self._print("Phase 1/6: Cleaning up database ...")
+        echo("Phase 1/6: Cleaning up database ...", color='cyan')
         self._cleanup_database()
 
-        self._print("Phase 2/6: Counting files ...")
+        echo("Phase 2/6: Counting files ...", color='cyan')
         self._count_files()
 
+        phase_3_text = "Phase 3/6: Analyzing files"
         if skip_analyze_phase:
-            self._print("Phase 3/6: Skipping: Analyzing files")
+            echo(phase_3_text + " - Skipping", color='yellow')
         else:
+            echo(phase_3_text, color='cyan')
             self._analyze(threads)
 
-        self._print("Phase 4/6: Finding duplicate files ...")
+        echo("Phase 4/6: Finding duplicate files ...", color='cyan')
         self._processed_files = {}
         for directory, file_count in self._directory_map.items():
-            self._print("Finding duplicates in '%s' ..." % directory)
+            echo("Finding duplicates in '%s' ..." % directory)
             with self._create_file_progressbar(file_count):
                 self.__walk_directory_files(
                     root_directory=directory,
@@ -98,10 +99,10 @@ class ImageMatchDeduplicator:
                         file_dir,
                         file_path))
 
-        self._print("Phase 5/6: Removing duplicates ...")
+        echo("Phase 5/6: Removing duplicates ...", color='cyan')
         self._remove_files_marked_as_delete(dry_run)
 
-        self._print("Phase 6/6: Removing empty folders ...")
+        echo("Phase 6/6: Removing empty folders ...", color='cyan')
         self._remove_empty_folders(dry_run)
 
         return self._deduplication_result
@@ -114,7 +115,7 @@ class ImageMatchDeduplicator:
         """
 
         for directory, file_count in self._directory_map.items():
-            self._print("Analyzing files in '%s' ..." % directory)
+            echo("Analyzing files in '%s' ..." % directory)
             with self._create_file_progressbar(file_count):
                 self.__walk_directory_files(
                     root_directory=directory,
@@ -140,13 +141,13 @@ class ImageMatchDeduplicator:
             file_path = image_entry[MetadataKey.PATH.value]
 
             if MetadataKey.DATAMODEL_VERSION.value not in metadata:
-                click.echo("Removing db entry with missing db model version number: %s" % file_path)
+                echo("Removing db entry with missing db model version number: %s" % file_path)
                 self._persistence.remove(file_path)
                 continue
 
             data_version = metadata[MetadataKey.DATAMODEL_VERSION.value]
             if data_version != self._persistence.DATAMODEL_VERSION:
-                click.echo("Removing db entry with old db model version: %s" % file_path)
+                echo("Removing db entry with old db model version: %s" % file_path)
                 self._persistence.remove(file_path)
                 continue
 
@@ -157,7 +158,7 @@ class ImageMatchDeduplicator:
                 continue
 
             if not os.path.exists(file_path):
-                click.echo("Removing db entry for missing file: %s" % file_path)
+                echo("Removing db entry for missing file: %s" % file_path)
                 self._persistence.remove(file_path)
 
     def _remove_empty_folders(self, dry_run: bool):
@@ -287,7 +288,7 @@ class ImageMatchDeduplicator:
                 candidate_path = candidate[MetadataKey.PATH.value]
 
                 if candidate_path != reference_file_path:
-                    self._print("Unexpected single candidate!", color='yellow')
+                    echo("Unexpected single candidate!", color='yellow')
 
                 self._processed_files[candidate_path] = True
 
@@ -413,7 +414,7 @@ class ImageMatchDeduplicator:
         :param root_path:
         """
 
-        self._print("Removing empty folders in: '%s' ..." % root_path)
+        echo("Removing empty folders in: '%s' ..." % root_path)
 
         if len(folders) == 0:
             return
@@ -504,14 +505,6 @@ class ImageMatchDeduplicator:
             self._deduplication_result.add_removed_file(file)
 
             self._increment_progress()
-
-    @staticmethod
-    def _print(text: str, color=None):
-        if color:
-            text = click.style(text, fg=color)
-        click.echo(text)
-        # delay a little so it is in line
-        time.sleep(0.1)
 
     @staticmethod
     def _truncate_middle(text: str, max_length: int = 50):
