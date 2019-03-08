@@ -288,7 +288,7 @@ class ImageMatchDeduplicator:
                 # nothing to do here since the result is unique
                 return
 
-        # sort by criteria and redo the search to use the best candidate as the reference image
+        # sort by quality criteria and redo the search to use the best candidate as the reference image
         sorted_duplicate_candidates = self._sort_by_quality_descending(duplicate_candidates)
         new_reference_file_path = sorted_duplicate_candidates[0][MetadataKey.PATH.value]
         duplicate_candidates = self._persistence.find_similar(new_reference_file_path)
@@ -322,6 +322,63 @@ class ImageMatchDeduplicator:
 
         # keep first and mark others for removal
         return duplicate_candidates[0], duplicate_candidates[1:]
+
+    def _sort_by_quality_descending(self, duplicate_candidates) -> []:
+        """
+        Sorts images according to the desired priorities.
+        The first item in the list will be the most preferred one of all found duplicates.
+
+        :param duplicate_candidates: the images to analyze
+        :return: duplicate candidates sorted by given criteria
+        """
+
+        duplicate_candidates = sorted(duplicate_candidates, key=lambda candidate: (
+
+            # reverse, bigger is better
+            candidate[MetadataKey.METADATA.value][MetadataKey.FILE_SIZE.value] * -1,
+
+            # reverse, bigger (later time) is better
+            candidate[MetadataKey.METADATA.value][MetadataKey.FILE_MODIFICATION_DATE.value] * -1,
+
+            # more exif data is better
+            len(candidate[MetadataKey.METADATA.value][MetadataKey.EXIF_DATA.value]) * -1,
+
+            # higher pixel count is better
+            candidate[MetadataKey.METADATA.value][MetadataKey.PIXELCOUNT.value] * -1,
+
+            # smaller distance is better
+            candidate[MetadataKey.DISTANCE.value],
+
+            # if the filename contains "copy" it is less good
+            "copy" in FileUtils.get_file_name(candidate[MetadataKey.PATH.value]).lower(),
+
+            # longer filename is better (for "edited" versions)
+            len(FileUtils.get_file_name(candidate[MetadataKey.PATH.value])) * -1,
+
+            # shorter folder path is better
+            len(FileUtils.get_containing_folder(candidate[MetadataKey.PATH.value])),
+
+            # reverse, bigger is better
+            candidate[MetadataKey.SCORE.value] * -1,
+
+            # just to assure the order in the result is the same
+            # if all other criteria (above) are equal
+            # and recurring runs will result in the same order
+            # (although they shouldn't be compared twice to begin with)
+            candidate[MetadataKey.PATH.value],
+
+        ))
+
+        max_mod_time_diff = self._config[ConfigParam.MAX_FILE_MODIFICATION_TIME_DIFF]
+        if max_mod_time_diff is not None:
+            best_candidate = duplicate_candidates[0]
+            best_match_mod_time = best_candidate[MetadataKey.METADATA.value][MetadataKey.FILE_MODIFICATION_DATE.value]
+
+            duplicate_candidates = [c for c in duplicate_candidates if math.fabs(
+                c[MetadataKey.METADATA.value][
+                    MetadataKey.FILE_MODIFICATION_DATE.value] - best_match_mod_time) <= max_mod_time_diff]
+
+        return duplicate_candidates
 
     def _find_empty_folders(self, root_path: str) -> [str]:
         """
@@ -447,60 +504,3 @@ class ImageMatchDeduplicator:
         click.echo(text)
         # delay a little so it is in line
         time.sleep(0.1)
-
-    def _sort_by_quality_descending(self, duplicate_candidates) -> []:
-        """
-        Sorts images according to the desired priorities.
-        The first item in the list will be the most preferred one of all found duplicates.
-
-        :param duplicate_candidates: the images to analyze
-        :return: duplicate candidates sorted by given criteria
-        """
-
-        duplicate_candidates = sorted(duplicate_candidates, key=lambda candidate: (
-
-            # reverse, bigger is better
-            candidate[MetadataKey.METADATA.value][MetadataKey.FILE_SIZE.value] * -1,
-
-            # reverse, bigger (later time) is better
-            candidate[MetadataKey.METADATA.value][MetadataKey.FILE_MODIFICATION_DATE.value] * -1,
-
-            # more exif data is better
-            len(candidate[MetadataKey.METADATA.value][MetadataKey.EXIF_DATA.value]) * -1,
-
-            # higher pixel count is better
-            candidate[MetadataKey.METADATA.value][MetadataKey.PIXELCOUNT.value] * -1,
-
-            # smaller distance is better
-            candidate[MetadataKey.DISTANCE.value],
-
-            # if the filename contains "copy" it is less good
-            "copy" in FileUtils.get_file_name(candidate[MetadataKey.PATH.value]).lower(),
-
-            # longer filename is better (for "edited" versions)
-            len(FileUtils.get_file_name(candidate[MetadataKey.PATH.value])) * -1,
-
-            # shorter folder path is better
-            len(FileUtils.get_containing_folder(candidate[MetadataKey.PATH.value])),
-
-            # reverse, bigger is better
-            candidate[MetadataKey.SCORE.value] * -1,
-
-            # just to assure the order in the result is the same
-            # if all other criteria (above) are equal
-            # and recurring runs will result in the same order
-            # (although they shouldn't be compared twice to begin with)
-            candidate[MetadataKey.PATH.value],
-
-        ))
-
-        max_mod_time_diff = self._config[ConfigParam.MAX_FILE_MODIFICATION_TIME_DIFF]
-        if max_mod_time_diff is not None:
-            best_candidate = duplicate_candidates[0]
-            best_match_mod_time = best_candidate[MetadataKey.METADATA.value][MetadataKey.FILE_MODIFICATION_DATE.value]
-
-            duplicate_candidates = [c for c in duplicate_candidates if math.fabs(
-                c[MetadataKey.METADATA.value][
-                    MetadataKey.FILE_MODIFICATION_DATE.value] - best_match_mod_time) <= max_mod_time_diff]
-
-        return duplicate_candidates
