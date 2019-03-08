@@ -1,4 +1,4 @@
-# py-image-dedup [![Build Status](https://travis-ci.org/markusressel/py-image-dedup.svg?branch=master)](https://travis-ci.org/markusressel/gopass-chrome-importer) [![PyPI version](https://badge.fury.io/py/py-image-dedup.svg)](https://badge.fury.io/py/py-image-dedup)
+# py-image-dedup [![Build Status](https://travis-ci.org/markusressel/py-image-dedup.svg?branch=master)](https://travis-ci.org/markusressel/py-image-dedup) [![PyPI version](https://badge.fury.io/py/py-image-dedup.svg)](https://badge.fury.io/py/py-image-dedup)
 
 **py-image-dedup** is a tool to scan through a library of photos, find duplicates and remove them
 in a prioritized way.
@@ -9,9 +9,6 @@ a pHash for an image and store the result in an ElasticSearch backend for very h
 [![asciicast](https://asciinema.org/a/3WbBxMXnZyT1QnuTP9fm37wkS.svg)](https://asciinema.org/a/3WbBxMXnZyT1QnuTP9fm37wkS)
 
 # How it works
-
-This library has been optimized to be able to run this tool regularly
-on an expanding set of data.
 
 ### Phase 1 - Database cleanup
 
@@ -38,8 +35,8 @@ Since we might already have a previous version of this file in the database
 before analysing a given file the file modification time is compared to the
 given one. If the database content seems to be still correct the signature 
 for this file will **not** be recalculated. Because of this supsequent
-runs will be much faster. There has to happen some file access still though 
-so it is probably still limited to that. 
+runs will be much faster. There still has to happen some file access though 
+so it is probably limited by that. 
  
 ### Phase 4 - Finding duplicates
 
@@ -175,7 +172,7 @@ pkg install png
 ```
 
 I still ran into issues after installing all these and just threw those
-to in the mix and it finally worked:
+two in the mix and it finally worked:
 ```
 pkg install freetype
 pkg install py27-matplotlib  # this has a LOT of dependencies
