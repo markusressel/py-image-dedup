@@ -8,13 +8,34 @@ a pHash for an image and store the result in an ElasticSearch backend for very h
 
 [![asciicast](https://asciinema.org/a/3WbBxMXnZyT1QnuTP9fm37wkS.svg)](https://asciinema.org/a/3WbBxMXnZyT1QnuTP9fm37wkS)
 
-# Work in progress
-
-This library is still a work in progress
-
 # How to use
 
 ## Setup elasticsearch backend
+
+### Elasticsearch version
+
+This library requires elasticsearch version 5 or later. Sadly the
+[Image-Match](https://github.com/ascribe/image-match) library 
+specifies version 2 for no apparent reason, so you have to remove this
+requirement from it's requirements.
+
+Because of this **py-image-dedup** will exit with an **error on first install**.
+
+To fix this find the installed files of the image-match library, f.ex.
+
+```
+../venv/lib/python3.6/site-packages/image_match-1.1.2-py3.6.egg-info/requires.txt    
+```
+
+and remove the second line
+```
+elasticsearch<2.4,>=2.3
+```
+
+from the file.  
+After that py-image-dedup should install and run as expected.
+
+### Set up the index
 
 Since this library is based on [Image-Match](https://github.com/ascribe/image-match) 
 you need a running elasticsearch instance for efficient storing and 
