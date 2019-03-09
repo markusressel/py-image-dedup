@@ -23,13 +23,14 @@ config = DeduplicatorConfig(
 )
 
 result = deduplicator.deduplicate(
-    skip_analyze_phase=False,
     directories=[
         # r'/home/markus/py-image-dedup/dir1',
         # r'/home/markus/py-image-dedup/dir2'
         r'/mnt/data/py-dedup-test/Syncthing'
     ],
     config=config,
+    skip_analyze_phase=False,
+    remove_empty_folders=False,
     threads=8,
     dry_run=True
 )

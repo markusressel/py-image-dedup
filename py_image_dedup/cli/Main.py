@@ -29,6 +29,7 @@ PARAM_ES_HOSTNAME = "es-hostname"
 PARAM_THREADS = "threads"
 PARAM_MAX_DIST = "maximum-distance"
 PARAM_SKIP_ANALYSE_PHASE = "skip-analyse-phase"
+PARAM_REMOVE_EMPTY_FOLDERS = "remove-empty-folders"
 PARAM_DRY_RUN = "dry-run"
 
 CMD_OPTION_NAMES = {
@@ -40,6 +41,7 @@ CMD_OPTION_NAMES = {
     PARAM_THREADS: ['--threads', '-t'],
     PARAM_MAX_DIST: ['--maximum-distance', '-md'],
     PARAM_SKIP_ANALYSE_PHASE: ['--skip-analyse-phase', '-sap'],
+    PARAM_REMOVE_EMPTY_FOLDERS: ['--remove-empty-folders', '-ref', 'remove_empty_folders'],
     PARAM_DRY_RUN: ['--dry-run', '-dr']
 }
 
@@ -115,7 +117,6 @@ def c_analyse(directories: click.Path, recursive: bool, search_across_dirs: bool
     deduplicator = ImageMatchDeduplicator(
         image_signature_store=ElasticSearchStoreBackend(
             host=elasticsearch_hostname,
-            max_dist=0.5,
             use_exif_data=True
         )
     )
@@ -140,12 +141,16 @@ def c_analyse(directories: click.Path, recursive: bool, search_across_dirs: bool
               help='Maximum signature distance [0..1] to query from elasticsearch backend.')
 @click.option(*get_option_names(PARAM_SKIP_ANALYSE_PHASE), required=False, default=False, is_flag=True,
               help='When set the image analysis phase will be skipped. Useful if you already did a dry-run.')
+@click.option(*get_option_names(PARAM_REMOVE_EMPTY_FOLDERS), required=False, type=bool, default=True,
+              help='Whether to remove empty folders or not.')
 @click.option(*get_option_names(PARAM_DRY_RUN), required=False, default=False, is_flag=True,
               help='When set no files or folders will actually be deleted but a preview of '
                    'what WOULD be done will be printed.')
-def c_deduplicate(directories: click.Path, recursive: bool, search_across_dirs: bool, file_extensions: str,
-                  threads: int,
-                  elasticsearch_hostname: str, maximum_distance: float, skip_analyse_phase: bool, dry_run: bool):
+def c_deduplicate(directories: click.Path, recursive: bool,
+                  search_across_dirs: bool, file_extensions: str,
+                  threads: int, elasticsearch_hostname: str,
+                  maximum_distance: float, skip_analyse_phase: bool,
+                  remove_empty_folders: bool, dry_run: bool):
     deduplicator = ImageMatchDeduplicator(
         image_signature_store=ElasticSearchStoreBackend(
             host=elasticsearch_hostname,
@@ -163,6 +168,7 @@ def c_deduplicate(directories: click.Path, recursive: bool, search_across_dirs: 
 
     result = deduplicator.deduplicate(
         skip_analyze_phase=skip_analyse_phase,
+        remove_empty_folders=remove_empty_folders,
         directories=directories,
         config=config,
         threads=threads,

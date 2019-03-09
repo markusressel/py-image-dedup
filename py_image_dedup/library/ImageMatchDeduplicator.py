@@ -54,7 +54,8 @@ class ImageMatchDeduplicator:
                     config: DeduplicatorConfig = None,
                     threads: int = 1,
                     dry_run: bool = True,
-                    skip_analyze_phase: bool = False) -> DeduplicationResult:
+                    skip_analyze_phase: bool = False,
+                    remove_empty_folders: bool = True) -> DeduplicationResult:
         """
         Runs the full 6 deduplication phases.
 
@@ -65,6 +66,7 @@ class ImageMatchDeduplicator:
                         Note though that the signature store will be written even when using this option
                         as the search wouldn't work without it.
         :param skip_analyze_phase: useful if you already did a dry run and want to do a real run afterwards
+        :param remove_empty_folders: whether to remove empty folders
         :return: result of the operation
         """
 
@@ -115,8 +117,12 @@ class ImageMatchDeduplicator:
         echo("Phase 5/6: Removing duplicates ...", color='cyan')
         self._remove_files_marked_as_delete(dry_run)
 
-        echo("Phase 6/6: Removing empty folders ...", color='cyan')
-        self._remove_empty_folders(directories, dry_run)
+        phase_6_text = "Phase 6/6: Removing empty folders"
+        if not remove_empty_folders:
+            echo(phase_6_text + " - Skipping", color='yellow')
+        else:
+            echo(phase_6_text, color='cyan')
+            self._remove_empty_folders(directories, self._config[ConfigParam.RECURSIVE], dry_run)
 
         return self._deduplication_result
 
@@ -186,7 +192,7 @@ class ImageMatchDeduplicator:
                 finally:
                     self._increment_progress()
 
-    def _remove_empty_folders(self, directories: [], dry_run: bool):
+    def _remove_empty_folders(self, directories: [], recursive: bool, dry_run: bool):
         """
         Searches for empty folders and removes them
 
@@ -195,7 +201,7 @@ class ImageMatchDeduplicator:
 
         # remove empty folders
         for directory in directories:
-            empty_folders = self._find_empty_folders(directory)
+            empty_folders = self._find_empty_folders(directory, recursive)
 
             self._remove_folders(directory, empty_folders, dry_run)
             # self._increment_progress(increase_count_by=1)
@@ -434,9 +440,9 @@ class ImageMatchDeduplicator:
 
         return duplicate_candidates
 
-    def _find_empty_folders(self, root_path: str) -> [str]:
+    def _find_empty_folders(self, root_path: str, recursive: bool) -> [str]:
         """
-        Function to remove empty folders
+        Finds empty folders within the given root_path
         :param root_path: folder to search in
         """
 
@@ -448,7 +454,7 @@ class ImageMatchDeduplicator:
                 if len([directory for directory in result if directory.startswith(root)]) == 0:
                     result.append(root)
 
-            if not self._config[ConfigParam.RECURSIVE]:
+            if not recursive:
                 break
 
         return result
