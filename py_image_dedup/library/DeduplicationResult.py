@@ -72,6 +72,7 @@ class DeduplicationResult:
         echo(title, color='cyan')
         echo('=' * 21, color='cyan')
         echo("Files with duplicates: %s" % self.get_duplicate_count())
+        echo("Files removed: %s" % len(self.get_removed_files()))
 
         headers = ("Action", "File path", "Dist", "Filesize", "Pixels")
 
