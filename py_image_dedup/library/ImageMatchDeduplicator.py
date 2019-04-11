@@ -4,6 +4,7 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 
 import click
+from PIL import ImageFile
 from tqdm import tqdm
 
 from py_image_dedup import util
@@ -132,6 +133,9 @@ class ImageMatchDeduplicator:
 
         :return: file_path -> identifier
         """
+
+        # load truncated images too
+        ImageFile.LOAD_TRUNCATED_IMAGES = True
 
         for directory, file_count in directory_map.items():
             echo("Analyzing files in '%s' ..." % directory)
