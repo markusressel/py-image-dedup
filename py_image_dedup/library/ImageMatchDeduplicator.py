@@ -218,7 +218,7 @@ class ImageMatchDeduplicator:
     def _count_files(self, directories: []) -> dict:
         """
         Counts the amount of files to analyze (used in progress) and stores them in a map
-        :return map "directory file count" -> "directory path"
+        :return map "directory path" -> "directory file count"
         """
 
         directory_map = {}
