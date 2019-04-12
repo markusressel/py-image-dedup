@@ -26,13 +26,15 @@ result = deduplicator.deduplicate(
     directories=[
         # r'/home/markus/py-image-dedup/dir1',
         # r'/home/markus/py-image-dedup/dir2'
-        r'/mnt/data/py-dedup-test/Syncthing'
+        # r'/mnt/data/py-dedup-test/Syncthing'
+        r'/home/markus/pictures'
     ],
     config=config,
+    duplicate_target_folder=r'/home/markus/picture_duplicates',
     skip_analyze_phase=False,
     remove_empty_folders=False,
     threads=8,
-    dry_run=True
+    dry_run=False
 )
 
 result.print_to_console()

@@ -81,7 +81,8 @@ class ImageMatchDeduplicator:
             self._config: DeduplicatorConfig = config
 
         directories = validate_directories_exist(directories)
-        if not os.path.exists(duplicate_target_folder) or not os.path.isdir(duplicate_target_folder):
+        if duplicate_target_folder and (not os.path.exists(duplicate_target_folder) or not os.path.isdir(
+                duplicate_target_folder)):
             raise AttributeError(
                 "Duplicate target folder does not exist or is not a folder: {}".format(duplicate_target_folder))
 
@@ -358,9 +359,6 @@ class ImageMatchDeduplicator:
 
         candidates_to_keep, candidates_to_delete = self._select_images_to_delete(duplicate_candidates)
         self._save_duplicates_for_result(candidates_to_keep[0], candidates_to_delete)
-        for candidate in candidates_to_delete:
-            candidate_path = candidate[MetadataKey.PATH.value]
-            self._deduplication_result.add_removed_file(candidate_path)
 
     def _save_duplicates_for_result(self, file_to_keep: dict, duplicates_to_remove: dict) -> None:
         """
@@ -538,11 +536,11 @@ class ImageMatchDeduplicator:
             return
 
         with self._create_file_progressbar(total_file_count=marked_files_count):
-            self._delete_files(self._deduplication_result.get_removed_files(), dry_run)
+            self._delete_files(self._deduplication_result.get_file_duplicates(), dry_run)
 
     def _move_files_marked_as_delete(self, target_dir: str, dry_run: bool):
         """
-        Moves files that were marked to be deleted in previous deduplication step to the target_dir
+        Moves files that were marked to be deleted in previous deduplication step to the target directory
         :param target_dir: the directory to move duplicates to
         :param dry_run: set to true to simulate this action
         """
@@ -552,7 +550,7 @@ class ImageMatchDeduplicator:
             return
 
         with self._create_file_progressbar(total_file_count=marked_files_count):
-            self._move_files(self._deduplication_result.get_removed_files(), target_dir, dry_run)
+            self._move_files(self._deduplication_result.get_file_duplicates(), target_dir, dry_run)
 
     def _delete_files(self, files_to_delete: [str], dry_run: bool):
         """
@@ -561,23 +559,23 @@ class ImageMatchDeduplicator:
         :param dry_run: set to true to simulate this action
         """
 
-        for file in files_to_delete:
-            self._progress_bar.set_postfix_str(self._truncate_middle(file))
+        for reference_file, duplicates in files_to_delete.items():
+            for duplicate in duplicates:
+                duplicate_file_path = duplicate[MetadataKey.PATH.value]
+                self._progress_bar.set_postfix_str(self._truncate_middle(duplicate_file_path))
 
-            # remove the smaller/equal sized and/or older/equally old file
-            if dry_run:
-                pass
-            else:
-                # remove from file system
-                if os.path.exists(file):
-                    os.remove(file)
+                # remove the smaller/equal sized and/or older/equally old file
+                if dry_run:
+                    pass
+                else:
+                    # remove from file system
+                    if os.path.exists(duplicate_file_path):
+                        os.remove(duplicate_file_path)
 
-                # remove from persistence
-                self._persistence.remove(file)
+                    # remove from persistence
+                    self._persistence.remove(duplicate_file_path)
 
-            self._deduplication_result.add_removed_file(file)
-
-            self._increment_progress()
+                self._increment_progress()
 
     def _move_files(self, files_to_move: [str], target_dir: str, dry_run: bool):
         """
@@ -586,22 +584,30 @@ class ImageMatchDeduplicator:
         :param target_dir: directory to move files to
         """
 
-        for file in files_to_move:
-            self._progress_bar.set_postfix_str(self._truncate_middle(file))
+        for reference_file, duplicates in files_to_move.items():
+            for duplicate in duplicates:
+                duplicate_file_path = duplicate[MetadataKey.PATH.value]
+                self._progress_bar.set_postfix_str(self._truncate_middle(duplicate_file_path))
 
-            if dry_run:
-                pass
-            else:
-                # move file
-                if os.path.exists(file):
-                    shutil.move(file, os.path.join(target_dir, FileUtils.get_file_name(file)))
+                if dry_run:
+                    pass
+                else:
+                    # move file
+                    if os.path.exists(duplicate_file_path):
+                        target_subdir = os.path.join(target_dir + FileUtils.get_containing_folder(duplicate_file_path))
+                        target_file_path = os.path.join(target_subdir, FileUtils.get_file_name(duplicate_file_path))
 
-                # remove from persistence
-                self._persistence.remove(file)
+                        if os.path.exists(target_file_path):
+                            raise ValueError("Cant move duplicate file because the target already exists: {}".format(
+                                target_file_path))
 
-            self._deduplication_result.add_removed_file(file)
+                        os.makedirs(target_subdir, exist_ok=True)
+                        shutil.move(duplicate_file_path, target_file_path)
 
-            self._increment_progress()
+                    # remove from persistence
+                    self._persistence.remove(duplicate_file_path)
+
+                self._increment_progress()
 
     @staticmethod
     def _truncate_middle(text: str, max_length: int = 50):

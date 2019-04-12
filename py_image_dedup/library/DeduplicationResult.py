@@ -29,14 +29,7 @@ class DeduplicationResult:
         """
         :return: a list of all the files that have been removed
         """
-        return self._removed_files
-
-    def add_removed_file(self, file: str):
-        """
-        Adds a file to the list of removed files
-        :param file: the file to add
-        """
-        self._removed_files.add(file)
+        return [item[MetadataKey.PATH.value] for sublist in self.get_file_duplicates().values() for item in sublist]
 
     def get_removed_empty_folders(self) -> []:
         """
