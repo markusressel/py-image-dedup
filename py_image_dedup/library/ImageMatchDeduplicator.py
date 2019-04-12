@@ -1,5 +1,6 @@
 import math
 import os
+import shutil
 import sys
 from concurrent.futures import ThreadPoolExecutor
 
@@ -34,7 +35,6 @@ class ImageMatchDeduplicator:
                 threads: int = 1):
         """
         Runs the analysis phase independently.
-
         :param directories: list of directories to process
         :param config: deduplication configuration
         :param threads: number of threads to use for concurrent processing
@@ -52,15 +52,16 @@ class ImageMatchDeduplicator:
 
     def deduplicate(self, directories: [str],
                     config: DeduplicatorConfig = None,
+                    duplicate_target_folder: str = None,
                     threads: int = 1,
                     dry_run: bool = True,
                     skip_analyze_phase: bool = False,
                     remove_empty_folders: bool = True) -> DeduplicationResult:
         """
         Runs the full 6 deduplication phases.
-
         :param directories: list of directories to process
         :param config: deduplication configuration
+        :param duplicate_target_folder: folder path to move duplicates to instead of deleting them
         :param threads: number of threads to use for concurrent processing
         :param dry_run: If true, no files will actually be removed.
                         Note though that the signature store will be written even when using this option
@@ -80,6 +81,9 @@ class ImageMatchDeduplicator:
             self._config: DeduplicatorConfig = config
 
         directories = validate_directories_exist(directories)
+        if not os.path.exists(duplicate_target_folder) or not os.path.isdir(duplicate_target_folder):
+            raise AttributeError(
+                "Duplicate target folder does not exist or is not a folder: {}".format(duplicate_target_folder))
 
         if len(directories) <= 0:
             echo("No root directories to scan", color='yellow')
@@ -114,8 +118,12 @@ class ImageMatchDeduplicator:
                         root_dir,
                         file_path))
 
-        echo("Phase 5/6: Removing duplicates ...", color='cyan')
-        self._remove_files_marked_as_delete(dry_run)
+        if duplicate_target_folder:
+            echo("Phase 5/6: Moving duplicates ...", color='cyan')
+            self._move_files_marked_as_delete(duplicate_target_folder, dry_run)
+        else:
+            echo("Phase 5/6: Removing duplicates ...", color='cyan')
+            self._remove_files_marked_as_delete(dry_run)
 
         phase_6_text = "Phase 6/6: Removing empty folders"
         if not remove_empty_folders:
@@ -129,7 +137,6 @@ class ImageMatchDeduplicator:
     def _analyze(self, directory_map: dict, threads: int = 1) -> {str, str}:
         """
         Analyzes all files, generates identifiers (if necessary) and stores them for later access
-
         :return: file_path -> identifier
         """
 
@@ -151,7 +158,6 @@ class ImageMatchDeduplicator:
         Note that this cleanup will only consider files within one
         of the root directories specified in constructor, as other file paths
         might have been added on other machines.
-
         :param directories: directories in this run
         """
 
@@ -199,7 +205,6 @@ class ImageMatchDeduplicator:
     def _remove_empty_folders(self, directories: [], recursive: bool, dry_run: bool):
         """
         Searches for empty folders and removes them
-
         :param directories: directories to scan
         """
 
@@ -213,8 +218,7 @@ class ImageMatchDeduplicator:
     def _count_files(self, directories: []) -> dict:
         """
         Counts the amount of files to analyze (used in progress) and stores them in a map
-
-        @:return map "directory file count" -> "directory path"
+        :return map "directory file count" -> "directory path"
         """
 
         directory_map = {}
@@ -233,7 +237,6 @@ class ImageMatchDeduplicator:
     def __walk_directory_files(self, root_directory: str, command, threads: int):
         """
         Walks through the files of the given directory
-
         :param root_directory: the directory to start with
         :param command: the method to execute for every file found
         :return: file_path -> identifier
@@ -303,7 +306,6 @@ class ImageMatchDeduplicator:
     def _find_duplicates(self, root_directories: [str], root_directory: str, reference_file_path: str):
         """
         Finds duplicates and marks all but the best copy as "to-be-deleted".
-
         :param root_directories: valid root directories
         :param root_directory: root directory of reference_file_path
         :param reference_file_path: the file to check for duplicates
@@ -528,6 +530,7 @@ class ImageMatchDeduplicator:
     def _remove_files_marked_as_delete(self, dry_run: bool):
         """
         Removes files that were marked to be deleted in previous deduplication step
+        :param dry_run: set to true to simulate this action
         """
 
         marked_files_count = len(self._deduplication_result.get_removed_files())
@@ -537,10 +540,25 @@ class ImageMatchDeduplicator:
         with self._create_file_progressbar(total_file_count=marked_files_count):
             self._delete_files(self._deduplication_result.get_removed_files(), dry_run)
 
+    def _move_files_marked_as_delete(self, target_dir: str, dry_run: bool):
+        """
+        Moves files that were marked to be deleted in previous deduplication step to the target_dir
+        :param target_dir: the directory to move duplicates to
+        :param dry_run: set to true to simulate this action
+        """
+
+        marked_files_count = len(self._deduplication_result.get_removed_files())
+        if marked_files_count == 0:
+            return
+
+        with self._create_file_progressbar(total_file_count=marked_files_count):
+            self._move_files(self._deduplication_result.get_removed_files(), target_dir, dry_run)
+
     def _delete_files(self, files_to_delete: [str], dry_run: bool):
         """
         Deletes files on disk
         :param files_to_delete: list of absolute file paths
+        :param dry_run: set to true to simulate this action
         """
 
         for file in files_to_delete:
@@ -553,6 +571,30 @@ class ImageMatchDeduplicator:
                 # remove from file system
                 if os.path.exists(file):
                     os.remove(file)
+
+                # remove from persistence
+                self._persistence.remove(file)
+
+            self._deduplication_result.add_removed_file(file)
+
+            self._increment_progress()
+
+    def _move_files(self, files_to_move: [str], target_dir: str, dry_run: bool):
+        """
+        Moves files on disk
+        :param files_to_move: list of absolute file paths
+        :param target_dir: directory to move files to
+        """
+
+        for file in files_to_move:
+            self._progress_bar.set_postfix_str(self._truncate_middle(file))
+
+            if dry_run:
+                pass
+            else:
+                # move file
+                if os.path.exists(file):
+                    shutil.move(file, os.path.join(target_dir, FileUtils.get_file_name(file)))
 
                 # remove from persistence
                 self._persistence.remove(file)
