@@ -72,18 +72,29 @@ class ImageSignatureStore:
 
         if self._use_exif_data:
             exif_data = ImageUtils.get_exif_data(image_file_path)
-            self._convert_bytes_to_str(exif_data)
+            exif_data = self._normalize_meta_data_for_db(exif_data)
             image_data[MetadataKey.EXIF_DATA.value] = exif_data
 
         return image_data
 
-    def _convert_bytes_to_str(self, dictionary: dict):
+    def _normalize_meta_data_for_db(self, dictionary: dict) -> dict:
+        """
+        :param dictionary:
+        :return:
+        """
+        result = {}
         for k, v in dictionary.items():
             if isinstance(v, dict):
-                self._convert_bytes_to_str(v)
-            else:
-                if isinstance(v, bytes):
-                    dictionary[k] = str(v)
+                result[k] = self._normalize_meta_data_for_db(v)
+                continue
+
+            normalized_value = v
+            if isinstance(v, bytes) or isinstance(v, tuple):
+                normalized_value = str(v)
+
+            result[k] = normalized_value
+
+        return result
 
     def _add(self, image_file_path: str, image_data: dict) -> None:
         """
