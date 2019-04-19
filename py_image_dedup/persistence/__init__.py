@@ -1,7 +1,6 @@
 import os
 
 from py_image_dedup.persistence.MetadataKey import MetadataKey
-from py_image_dedup.persistence.StoreEntry import StoreEntry
 
 
 class ImageSignatureStore:
@@ -105,7 +104,7 @@ class ImageSignatureStore:
         """
         raise NotImplementedError()
 
-    def get(self, image_file_path: str) -> StoreEntry or None:
+    def get(self, image_file_path: str) -> dict or None:
         """
         Get a store entry by it's file_path
         :param image_file_path: file path to search for
