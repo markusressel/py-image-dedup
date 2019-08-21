@@ -1,8 +1,8 @@
 import click
 
-from py_image_dedup.library.DeduplicatorConfig import DeduplicatorConfig
-from py_image_dedup.library.ImageMatchDeduplicator import ImageMatchDeduplicator
-from py_image_dedup.persistence.ElasticSearchStoreBackend import ElasticSearchStoreBackend
+from py_image_dedup.library.deduplicator_config import DeduplicatorConfig
+from py_image_dedup.library.image_match_deduplicator import ImageMatchDeduplicator
+from py_image_dedup.persistence.elasticsearchstorebackend import ElasticSearchStoreBackend
 from py_image_dedup.util import echo
 
 IMAGE_HASH_MAP = {}

@@ -1,6 +1,6 @@
 import os
 
-from py_image_dedup.persistence.MetadataKey import MetadataKey
+from py_image_dedup.persistence.metadata_key import MetadataKey
 
 
 class ImageSignatureStore:
@@ -54,7 +54,7 @@ class ImageSignatureStore:
         :return: dictionary containing all relevant information
         """
 
-        from py_image_dedup.util import ImageUtils
+        from py_image_dedup.util import image
 
         image_data = {}
         image_data[MetadataKey.PATH.value] = image_file_path
@@ -67,10 +67,10 @@ class ImageSignatureStore:
         image_data[MetadataKey.FILE_SIZE.value] = file_size
         image_data[MetadataKey.FILE_MODIFICATION_DATE.value] = file_modification_date
 
-        image_data[MetadataKey.PIXELCOUNT.value] = ImageUtils.get_pixel_count(image_file_path)
+        image_data[MetadataKey.PIXELCOUNT.value] = image.get_pixel_count(image_file_path)
 
         if self._use_exif_data:
-            exif_data = ImageUtils.get_exif_data(image_file_path)
+            exif_data = image.get_exif_data(image_file_path)
             exif_data = self._normalize_meta_data_for_db(exif_data)
             image_data[MetadataKey.EXIF_DATA.value] = exif_data
 

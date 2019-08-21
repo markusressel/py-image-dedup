@@ -8,12 +8,12 @@ import click
 from tqdm import tqdm
 
 from py_image_dedup import util
-from py_image_dedup.library.DeduplicationResult import DeduplicationResult
-from py_image_dedup.library.DeduplicatorConfig import DeduplicatorConfig, ConfigParam
+from py_image_dedup.library.deduplication_result import DeduplicationResult
+from py_image_dedup.library.deduplicator_config import DeduplicatorConfig, ConfigParam
 from py_image_dedup.persistence import ImageSignatureStore
-from py_image_dedup.persistence.MetadataKey import MetadataKey
-from py_image_dedup.util import FileUtils, echo
-from py_image_dedup.util.FileUtils import validate_directories_exist
+from py_image_dedup.persistence.metadata_key import MetadataKey
+from py_image_dedup.util import file, echo
+from py_image_dedup.util.file import validate_directories_exist
 
 
 class ImageMatchDeduplicator:
@@ -423,13 +423,13 @@ class ImageMatchDeduplicator:
             candidate[MetadataKey.DISTANCE.value],
 
             # if the filename contains "copy" it is less good
-            "copy" in FileUtils.get_file_name(candidate[MetadataKey.PATH.value]).lower(),
+            "copy" in file.get_file_name(candidate[MetadataKey.PATH.value]).lower(),
 
             # longer filename is better (for "edited" versions)
-            len(FileUtils.get_file_name(candidate[MetadataKey.PATH.value])) * -1,
+            len(file.get_file_name(candidate[MetadataKey.PATH.value])) * -1,
 
             # shorter folder path is better
-            len(FileUtils.get_containing_folder(candidate[MetadataKey.PATH.value])),
+            len(file.get_containing_folder(candidate[MetadataKey.PATH.value])),
 
             # reverse, bigger is better
             candidate[MetadataKey.SCORE.value] * -1,
@@ -594,8 +594,8 @@ class ImageMatchDeduplicator:
                 else:
                     # move file
                     if os.path.exists(duplicate_file_path):
-                        target_subdir = os.path.join(target_dir + FileUtils.get_containing_folder(duplicate_file_path))
-                        target_file_path = os.path.join(target_subdir, FileUtils.get_file_name(duplicate_file_path))
+                        target_subdir = os.path.join(target_dir + file.get_containing_folder(duplicate_file_path))
+                        target_file_path = os.path.join(target_subdir, file.get_file_name(duplicate_file_path))
 
                         if os.path.exists(target_file_path):
                             raise ValueError("Cant move duplicate file because the target already exists: {}".format(
