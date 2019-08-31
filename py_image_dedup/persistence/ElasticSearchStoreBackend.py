@@ -2,7 +2,6 @@ from elasticsearch import Elasticsearch
 from image_match.elasticsearch_driver import SignatureES
 
 from py_image_dedup.persistence import ImageSignatureStore
-from py_image_dedup.persistence.StoreEntry import StoreEntry
 from py_image_dedup.util import echo
 
 
@@ -55,7 +54,7 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
 
         self._store.add_image(image_file_path, metadata=image_data)
 
-    def get(self, image_file_path: str) -> StoreEntry or None:
+    def get(self, image_file_path: str) -> dict or None:
         """
         Get a store entry by it's file_path
         :param image_file_path: file path to search for
@@ -63,7 +62,6 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
         """
         db_entity = self._get(image_file_path)
         return db_entity
-        # return self._createStoreEntity(db_entity)
 
     def _get(self, image_file_path: str) -> dict or None:
         """
@@ -98,10 +96,11 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
 
     def get_all(self) -> (int, object):
         es_query = {
+            "track_total_hits": True,
             'query': {'match_all': {}}
         }
 
-        item_count = self._store.es.search(self._el_index, body=es_query, size=0)['hits']['total']
+        item_count = self._store.es.search(self._el_index, body=es_query, size=0)['hits']['total']['value']
 
         from elasticsearch.helpers import scan
         return item_count, scan(
@@ -192,9 +191,3 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
     def _remove_by_query(self, es_query: dict):
         return self._store.es.delete_by_query(index=self._el_index, body=es_query,
                                               doc_type=self._el_doctype)
-
-    def _createStoreEntity(self, db_entity: dict) -> StoreEntry:
-        # TODO (?)
-        StoreEntry()
-
-        pass
