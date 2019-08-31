@@ -1,5 +1,4 @@
 import datetime
-import math
 import os
 import sys
 from concurrent.futures import ThreadPoolExecutor
@@ -367,9 +366,12 @@ class ImageMatchDeduplicator:
             best_match_mod_timestamp = best_candidate[MetadataKey.METADATA.value][
                 MetadataKey.FILE_MODIFICATION_DATE.value]
 
-            keep_unfitting = [c for c in duplicate_candidates if not math.fabs(
-                datetime.timedelta(seconds=(c[MetadataKey.METADATA.value][
-                                                MetadataKey.FILE_MODIFICATION_DATE.value] - best_match_mod_timestamp)) <= max_mod_time_diff)]
+            for c in duplicate_candidates:
+                c_timestamp = c[MetadataKey.METADATA.value][MetadataKey.FILE_MODIFICATION_DATE.value]
+                timestamp_diff = abs(c_timestamp - best_match_mod_timestamp)
+                timedelta = datetime.timedelta(seconds=timestamp_diff)
+                if not timedelta <= max_mod_time_diff:
+                    keep_unfitting.append(c)
 
         # remember that we have processed these files
         for candidate in duplicate_candidates:
