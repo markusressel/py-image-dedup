@@ -2,7 +2,7 @@ import unittest
 from random import shuffle
 from random import uniform
 
-from py_image_dedup.library.DeduplicatorConfig import DeduplicatorConfig
+from py_image_dedup.config.DeduplicatorConfig import DeduplicatorConfig
 from py_image_dedup.library.ImageMatchDeduplicator import ImageMatchDeduplicator
 from py_image_dedup.persistence.MetadataKey import MetadataKey
 from tests import TestBase

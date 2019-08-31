@@ -1,4 +1,5 @@
 setuptools
+container-app-conf
 scipy
 numpy
 image_match
