@@ -1,4 +1,5 @@
 import unittest
+from datetime import timedelta
 from random import shuffle
 from random import uniform
 
@@ -11,11 +12,11 @@ from tests import TestBase
 class SelectImagesToDeleteTest(TestBase):
 
     def setUp(self):
-        self.under_test = ImageMatchDeduplicator(image_signature_store=None)
+        config = DeduplicatorConfig()
+        config.MAX_FILE_MODIFICATION_TIME_DELTA.value = timedelta(seconds=100)
+        self.under_test = ImageMatchDeduplicator(config)
 
     def test_select_images_to_delete__filter_max_mod_time_diff(self):
-        self.under_test._config = DeduplicatorConfig(max_file_modification_time_diff=100)
-
         keep = [
             self._create_default_candidate(modification_date=100),
             self._create_default_candidate(modification_date=-1000)  # file modification time is too far apart
