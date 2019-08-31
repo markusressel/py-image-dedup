@@ -92,9 +92,9 @@ class DeduplicatorConfig(Config):
             NODE_FILE_EXTENSIONS
         ],
         default=[
-            "png",
-            "jpg",
-            "jpeg"
+            ".png",
+            ".jpg",
+            ".jpeg"
         ]
     )
 

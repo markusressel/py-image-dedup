@@ -1,3 +1,4 @@
+import datetime
 import math
 import os
 import sys
@@ -363,11 +364,12 @@ class ImageMatchDeduplicator:
         if max_mod_time_diff is not None:
             # filter files that don't match max mod time diff criteria
             best_candidate = duplicate_candidates[0]
-            best_match_mod_time = best_candidate[MetadataKey.METADATA.value][MetadataKey.FILE_MODIFICATION_DATE.value]
+            best_match_mod_timestamp = best_candidate[MetadataKey.METADATA.value][
+                MetadataKey.FILE_MODIFICATION_DATE.value]
 
             keep_unfitting = [c for c in duplicate_candidates if not math.fabs(
-                c[MetadataKey.METADATA.value][
-                    MetadataKey.FILE_MODIFICATION_DATE.value] - best_match_mod_time) <= max_mod_time_diff]
+                datetime.timedelta(seconds=(c[MetadataKey.METADATA.value][
+                                                MetadataKey.FILE_MODIFICATION_DATE.value] - best_match_mod_timestamp)) <= max_mod_time_diff)]
 
         # remember that we have processed these files
         for candidate in duplicate_candidates:
