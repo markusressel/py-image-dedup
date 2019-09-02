@@ -36,6 +36,7 @@ class ImageMatchDeduplicator:
             host=config.ELASTICSEARCH_HOST.value,
             use_exif_data=config.ANALYSIS_USE_EXIF_DATA.value,
             max_dist=config.ELASTICSEARCH_MAX_DISTANCE.value,
+            setup_database=config.ELASTICSEARCH_AUTO_CREATE_INDEX.value
         )
 
     def analyse(self):
