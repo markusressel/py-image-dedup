@@ -43,7 +43,7 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
             # self._clear_database()
             self._setup_database()
         except Exception as e:
-            logging.exceotion(e)
+            logging.exception(e)
             raise AssertionError("Could not setup database")
 
         # noinspection PyTypeChecker
