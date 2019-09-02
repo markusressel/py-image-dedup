@@ -1,5 +1,7 @@
 import datetime
+import logging
 import os
+import shutil
 import sys
 from concurrent.futures import ThreadPoolExecutor
 
@@ -7,13 +9,14 @@ import click
 from tqdm import tqdm
 
 from py_image_dedup import util
-from py_image_dedup.config.DeduplicatorConfig import DeduplicatorConfig
-from py_image_dedup.library.DeduplicationResult import DeduplicationResult
+from py_image_dedup.config.deduplicator_config import DeduplicatorConfig
+from py_image_dedup.library import ActionEnum
+from py_image_dedup.library.deduplication_result import DeduplicationResult
 from py_image_dedup.persistence import ImageSignatureStore
-from py_image_dedup.persistence.ElasticSearchStoreBackend import ElasticSearchStoreBackend
-from py_image_dedup.persistence.MetadataKey import MetadataKey
-from py_image_dedup.util import FileUtils, echo
-from py_image_dedup.util.FileUtils import validate_directories_exist
+from py_image_dedup.persistence.elasticsearchstorebackend import ElasticSearchStoreBackend
+from py_image_dedup.persistence.metadata_key import MetadataKey
+from py_image_dedup.util import file, echo
+from py_image_dedup.util.file import validate_directories_exist
 
 
 class ImageMatchDeduplicator:
@@ -33,6 +36,7 @@ class ImageMatchDeduplicator:
             host=config.ELASTICSEARCH_HOST.value,
             use_exif_data=config.ANALYSIS_USE_EXIF_DATA.value,
             max_dist=config.ELASTICSEARCH_MAX_DISTANCE.value,
+            setup_database=config.ELASTICSEARCH_AUTO_CREATE_INDEX.value
         )
 
     def analyse(self):
@@ -52,7 +56,6 @@ class ImageMatchDeduplicator:
                     skip_analyze_phase: bool = False) -> DeduplicationResult:
         """
         Runs the full 6 deduplication phases.
-
         :param dry_run: If true, no files will actually be removed.
                         Note though that the signature store will be written even when using this option
                         as the search wouldn't work without it.
@@ -67,6 +70,15 @@ class ImageMatchDeduplicator:
         self._deduplication_result = DeduplicationResult()
 
         directories = validate_directories_exist(self._config.SOURCE_DIRECTORIES.value)
+        duplicate_target_directory = self._config.DEDUPLICATOR_DUPLICATES_TARGET_DIRECTORY.value
+        if duplicate_target_directory is not None:
+            if not os.path.exists(duplicate_target_directory):
+                raise ValueError(
+                    "Duplicate target folder does not exist: {}".format(duplicate_target_directory))
+            if not os.path.isdir(duplicate_target_directory):
+                raise NotADirectoryError(
+                    "Duplicate target folder is not a directory: {}".format(duplicate_target_directory))
+
         if len(directories) <= 0:
             echo("No root directories to scan", color='yellow')
             return self._deduplication_result
@@ -100,8 +112,12 @@ class ImageMatchDeduplicator:
                         root_dir,
                         file_path))
 
-        echo("Phase 5/6: Removing duplicates ...", color='cyan')
-        self._remove_files_marked_as_delete(dry_run)
+        if duplicate_target_directory:
+            echo("Phase 5/6: Moving duplicates ...", color='cyan')
+            self._move_files_marked_as_delete(duplicate_target_directory, dry_run)
+        else:
+            echo("Phase 5/6: Removing duplicates ...", color='cyan')
+            self._remove_files_marked_as_delete(dry_run)
 
         phase_6_text = "Phase 6/6: Removing empty folders"
         if not self._config.REMOVE_EMPTY_FOLDERS.value:
@@ -115,7 +131,6 @@ class ImageMatchDeduplicator:
     def _analyze(self, directory_map: dict) -> {str, str}:
         """
         Analyzes all files, generates identifiers (if necessary) and stores them for later access
-
         :return: file_path -> identifier
         """
         threads = self._config.ANALYSIS_THREADS.value
@@ -138,7 +153,6 @@ class ImageMatchDeduplicator:
         Note that this cleanup will only consider files within one
         of the root directories specified in constructor, as other file paths
         might have been added on other machines.
-
         :param directories: directories in this run
         """
         # TODO: This iterates through all db entries - even the ones we are ignoring.
@@ -185,7 +199,6 @@ class ImageMatchDeduplicator:
     def _remove_empty_folders(self, directories: [], recursive: bool, dry_run: bool):
         """
         Searches for empty folders and removes them
-
         :param directories: directories to scan
         """
         # remove empty folders
@@ -198,8 +211,7 @@ class ImageMatchDeduplicator:
     def _count_files(self, directories: []) -> dict:
         """
         Counts the amount of files to analyze (used in progress) and stores them in a map
-
-        @:return map "directory file count" -> "directory path"
+        :return map "directory path" -> "directory file count"
         """
         directory_map = {}
 
@@ -217,7 +229,6 @@ class ImageMatchDeduplicator:
     def __walk_directory_files(self, root_directory: str, command, threads: int):
         """
         Walks through the files of the given directory
-
         :param root_directory: the directory to start with
         :param command: the method to execute for every file found
         :return: file_path -> identifier
@@ -243,8 +254,7 @@ class ImageMatchDeduplicator:
                         continue
 
                     try:
-                        future = self.EXECUTOR.submit(util.reraise_with_stack(command), root_directory, root, file_path)
-                        future.result()
+                        self.EXECUTOR.submit(util.reraise_with_stack(command), root_directory, root, file_path)
                     except Exception as e:
                         click.echo(e, err=True)
                         sys.exit(1)
@@ -279,6 +289,7 @@ class ImageMatchDeduplicator:
         try:
             self._persistence.add(file_path)
         except Exception as e:
+            logging.exception(e)
             echo("Error analyzing file '%s': %s" % (file_path, e))
         finally:
             self._increment_progress()
@@ -286,7 +297,6 @@ class ImageMatchDeduplicator:
     def _find_duplicates(self, root_directories: [str], root_directory: str, reference_file_path: str):
         """
         Finds duplicates and marks all but the best copy as "to-be-deleted".
-
         :param root_directories: valid root directories
         :param root_directory: root directory of reference_file_path
         :param reference_file_path: the file to check for duplicates
@@ -337,19 +347,26 @@ class ImageMatchDeduplicator:
         duplicate_candidates = self._persistence.find_similar(new_reference_file_path)
 
         candidates_to_keep, candidates_to_delete = self._select_images_to_delete(duplicate_candidates)
-        self._save_duplicates_for_result(candidates_to_keep[0], candidates_to_delete)
-        for candidate in candidates_to_delete:
-            candidate_path = candidate[MetadataKey.PATH.value]
-            self._deduplication_result.add_removed_file(candidate_path)
+        self._save_duplicates_for_result(candidates_to_keep, candidates_to_delete)
 
-    def _save_duplicates_for_result(self, file_to_keep: dict, duplicates_to_remove: dict) -> None:
+    def _save_duplicates_for_result(self, files_to_keep: dict, duplicates: dict) -> None:
         """
         Saves the comparison result for the final summary
 
-        :param file_to_keep: the best image that shall be kept
-        :param duplicates_to_remove: less good duplicates
+        :param files_to_keep: list of image that shall be kept
+        :param duplicates: less good duplicates
         """
-        self._deduplication_result.set_file_duplicates(file_to_keep, duplicates_to_remove)
+        self._deduplication_result.set_file_duplicates(files_to_keep, duplicates)
+
+        for file_to_keep in files_to_keep:
+            self._deduplication_result.add_file_action(file_to_keep[MetadataKey.PATH.value], ActionEnum.NONE)
+
+        if self._config.DEDUPLICATOR_DUPLICATES_TARGET_DIRECTORY.value is None:
+            action = ActionEnum.REMOVE
+        else:
+            action = ActionEnum.MOVE
+        for duplicate in duplicates:
+            self._deduplication_result.add_file_action(duplicate[MetadataKey.PATH.value], action)
 
     def _select_images_to_delete(self, duplicate_candidates: [{}]) -> tuple:
         """
@@ -358,11 +375,15 @@ class ImageMatchDeduplicator:
         """
         duplicate_candidates = self._sort_by_quality_descending(duplicate_candidates)
 
-        keep_unfitting = []
+        # keep first and mark others for removal
+        keep = [duplicate_candidates[0]]
+        dont_keep = duplicate_candidates[1:]
+
+        # move files that don't fit criteria to "keep" list
         max_mod_time_diff = self._config.MAX_FILE_MODIFICATION_TIME_DELTA.value
         if max_mod_time_diff is not None:
             # filter files that don't match max mod time diff criteria
-            best_candidate = duplicate_candidates[0]
+            best_candidate = keep[0]
             best_match_mod_timestamp = best_candidate[MetadataKey.METADATA.value][
                 MetadataKey.FILE_MODIFICATION_DATE.value]
 
@@ -371,14 +392,14 @@ class ImageMatchDeduplicator:
                 timestamp_diff = abs(c_timestamp - best_match_mod_timestamp)
                 timedelta = datetime.timedelta(seconds=timestamp_diff)
                 if not timedelta <= max_mod_time_diff:
-                    keep_unfitting.append(c)
+                    keep.append(c)
+                    dont_keep.remove(c)
 
         # remember that we have processed these files
         for candidate in duplicate_candidates:
             self._processed_files[candidate[MetadataKey.PATH.value]] = True
 
-        # keep first and mark others for removal
-        return [duplicate_candidates[0]] + keep_unfitting, duplicate_candidates[1:]
+        return keep, dont_keep
 
     @staticmethod
     def _sort_by_quality_descending(duplicate_candidates) -> []:
@@ -389,42 +410,45 @@ class ImageMatchDeduplicator:
         :param duplicate_candidates: the images to analyze
         :return: duplicate candidates sorted by given criteria
         """
-        duplicate_candidates = sorted(duplicate_candidates, key=lambda candidate: (
 
+        def sort_criteria(candidate: dict) -> ():
+            criteria = []
             # reverse, bigger is better
-            candidate[MetadataKey.METADATA.value][MetadataKey.FILE_SIZE.value] * -1,
-
+            criteria.append(candidate[MetadataKey.METADATA.value][MetadataKey.FILE_SIZE.value] * -1)
             # reverse, bigger (later time) is better
-            candidate[MetadataKey.METADATA.value][MetadataKey.FILE_MODIFICATION_DATE.value] * -1,
+            criteria.append(candidate[MetadataKey.METADATA.value][MetadataKey.FILE_MODIFICATION_DATE.value] * -1)
 
-            # more exif data is better
-            len(candidate[MetadataKey.METADATA.value][MetadataKey.EXIF_DATA.value]) * -1,
+            if MetadataKey.EXIF_DATA.value in candidate[MetadataKey.METADATA.value]:
+                # more exif data is better
+                criteria.append(len(candidate[MetadataKey.METADATA.value][MetadataKey.EXIF_DATA.value]) * -1)
 
             # higher pixel count is better
-            candidate[MetadataKey.METADATA.value][MetadataKey.PIXELCOUNT.value] * -1,
+            criteria.append(candidate[MetadataKey.METADATA.value][MetadataKey.PIXELCOUNT.value] * -1)
 
             # smaller distance is better
-            candidate[MetadataKey.DISTANCE.value],
+            criteria.append(candidate[MetadataKey.DISTANCE.value])
 
             # if the filename contains "copy" it is less good
-            "copy" in FileUtils.get_file_name(candidate[MetadataKey.PATH.value]).lower(),
+            criteria.append("copy" in file.get_file_name(candidate[MetadataKey.PATH.value]).lower())
 
             # longer filename is better (for "edited" versions)
-            len(FileUtils.get_file_name(candidate[MetadataKey.PATH.value])) * -1,
+            criteria.append(len(file.get_file_name(candidate[MetadataKey.PATH.value])) * -1)
 
             # shorter folder path is better
-            len(FileUtils.get_containing_folder(candidate[MetadataKey.PATH.value])),
+            criteria.append(len(file.get_containing_folder(candidate[MetadataKey.PATH.value])))
 
             # reverse, bigger is better
-            candidate[MetadataKey.SCORE.value] * -1,
+            criteria.append(candidate[MetadataKey.SCORE.value] * -1)
 
             # just to assure the order in the result is the same
             # if all other criteria (above) are equal
             # and recurring runs will result in the same order
             # (although they shouldn't be compared twice to begin with)
-            candidate[MetadataKey.PATH.value],
+            criteria.append(candidate[MetadataKey.PATH.value])
 
-        ))
+            return tuple(criteria)
+
+        duplicate_candidates = sorted(duplicate_candidates, key=sort_criteria)
 
         return duplicate_candidates
 
@@ -510,34 +534,78 @@ class ImageMatchDeduplicator:
     def _remove_files_marked_as_delete(self, dry_run: bool):
         """
         Removes files that were marked to be deleted in previous deduplication step
+        :param dry_run: set to true to simulate this action
         """
-        marked_files_count = len(self._deduplication_result.get_removed_files())
+        items_to_remove = self._deduplication_result.get_file_with_action(ActionEnum.REMOVE)
+        marked_files_count = len(items_to_remove)
         if marked_files_count == 0:
             return
 
         with self._create_file_progressbar(total_file_count=marked_files_count):
-            self._delete_files(self._deduplication_result.get_removed_files(), dry_run)
+            self._delete_files(items_to_remove, dry_run)
+
+    def _move_files_marked_as_delete(self, target_dir: str, dry_run: bool):
+        """
+        Moves files that were marked to be deleted in previous deduplication step to the target directory
+        :param target_dir: the directory to move duplicates to
+        :param dry_run: set to true to simulate this action
+        """
+        items_to_move = self._deduplication_result.get_file_with_action(ActionEnum.MOVE)
+        marked_files_count = len(items_to_move)
+        if marked_files_count == 0:
+            return
+
+        with self._create_file_progressbar(total_file_count=marked_files_count):
+            self._move_files(items_to_move, target_dir, dry_run)
 
     def _delete_files(self, files_to_delete: [str], dry_run: bool):
         """
         Deletes files on disk
         :param files_to_delete: list of absolute file paths
+        :param dry_run: set to true to simulate this action
         """
-        for file in files_to_delete:
-            self._progress_bar.set_postfix_str(self._truncate_middle(file))
+        for file_path in files_to_delete:
+            self._progress_bar.set_postfix_str(self._truncate_middle(file_path))
 
-            # remove the smaller/equal sized and/or older/equally old file
             if dry_run:
                 pass
             else:
                 # remove from file system
-                if os.path.exists(file):
-                    os.remove(file)
+                if os.path.exists(file_path):
+                    os.remove(file_path)
 
                 # remove from persistence
-                self._persistence.remove(file)
+                self._persistence.remove(file_path)
 
-            self._deduplication_result.add_removed_file(file)
+            self._increment_progress()
+
+    def _move_files(self, files_to_move: [str], target_dir: str, dry_run: bool):
+        """
+        Moves files on disk
+        :param files_to_move: list of absolute file paths
+        :param target_dir: directory to move files to
+        """
+
+        for file_path in files_to_move:
+            self._progress_bar.set_postfix_str(self._truncate_middle(file_path))
+
+            if dry_run:
+                pass
+            else:
+                # move file
+                if os.path.exists(file_path):
+                    target_subdir = os.path.join(target_dir + file.get_containing_folder(file_path))
+                    target_file_path = os.path.join(target_subdir, file.get_file_name(file_path))
+
+                    if os.path.exists(target_file_path):
+                        raise ValueError("Cant move duplicate file because the target already exists: {}".format(
+                            target_file_path))
+
+                    os.makedirs(target_subdir, exist_ok=True)
+                    shutil.move(file_path, target_file_path)
+
+                # remove from persistence
+                self._persistence.remove(file_path)
 
             self._increment_progress()
 

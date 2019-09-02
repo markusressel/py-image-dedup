@@ -1,20 +1,12 @@
 import unittest
-from datetime import timedelta
 from random import shuffle
 from random import uniform
 
-from py_image_dedup.config.DeduplicatorConfig import DeduplicatorConfig
-from py_image_dedup.library.ImageMatchDeduplicator import ImageMatchDeduplicator
-from py_image_dedup.persistence.MetadataKey import MetadataKey
+from py_image_dedup.persistence.metadata_key import MetadataKey
 from tests import TestBase
 
 
 class SelectImagesToDeleteTest(TestBase):
-
-    def setUp(self):
-        config = DeduplicatorConfig()
-        config.MAX_FILE_MODIFICATION_TIME_DELTA.value = timedelta(seconds=100)
-        self.under_test = ImageMatchDeduplicator(config)
 
     def test_select_images_to_delete__filter_max_mod_time_diff(self):
         keep = [

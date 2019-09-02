@@ -32,13 +32,16 @@ def validate_directories_exist(directories: [str]) -> [str]:
 
     safe_directories = []
     for directory in directories:
-        if not os.path.exists(directory):
-            echo("Missing directory will be ignored: '%s'" % directory, color='yellow')
+        abs_path = os.path.abspath(directory)
+
+        if not os.path.exists(abs_path):
+            echo("Missing directory will be ignored: '{}' ({})".format(abs_path, directory), color='yellow')
             continue
-        if not os.path.isdir(directory):
-            echo("Directory path is not a directory and will be ignored: '%s'" % directory, color='yellow')
+        if not os.path.isdir(abs_path):
+            echo("Directory path is not a directory and will be ignored: '{}".format(abs_path, directory),
+                 color='yellow')
             continue
         else:
-            safe_directories.append(directory)
+            safe_directories.append(abs_path)
 
     return safe_directories

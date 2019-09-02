@@ -11,7 +11,8 @@ from container_app_conf.entry.timedelta import TimeDeltaConfigEntry
 from py_image_dedup.config import NODE_MAIN, NODE_RECURSIVE, NODE_SEARCH_ACROSS_ROOT_DIRS, \
     NODE_FILE_EXTENSIONS, NODE_MAX_FILE_MODIFICATION_TIME_DIFF, NODE_SOURCE_DIRECTORIES, \
     NODE_ELASTICSEARCH, NODE_HOST, NODE_MAX_DISTANCE, NODE_ANALYSIS, \
-    NODE_USE_EXIF_DATA, NODE_DEDUPLICATION, NODE_REMOVE_EMPTY_FOLDERS
+    NODE_USE_EXIF_DATA, NODE_DEDUPLICATION, NODE_REMOVE_EMPTY_FOLDERS, NODE_DUPLICATES_TARGET_DIRECTORY, \
+    NODE_AUTO_CREATE_INDEX, NODE_THREADS
 
 
 class DeduplicatorConfig(Config):
@@ -38,6 +39,16 @@ class DeduplicatorConfig(Config):
             NODE_MAX_DISTANCE
         ],
         default=0.10
+    )
+
+    ELASTICSEARCH_AUTO_CREATE_INDEX = BoolConfigEntry(
+        description="Whether to automatically create an index in the target database.",
+        yaml_path=[
+            NODE_MAIN,
+            NODE_ELASTICSEARCH,
+            NODE_AUTO_CREATE_INDEX
+        ],
+        default=True
     )
 
     ANALYSIS_USE_EXIF_DATA = BoolConfigEntry(
@@ -103,7 +114,7 @@ class DeduplicatorConfig(Config):
         yaml_path=[
             NODE_MAIN,
             NODE_ANALYSIS,
-            NODE_FILE_EXTENSIONS
+            NODE_THREADS
         ],
         default=1
     )
@@ -127,4 +138,15 @@ class DeduplicatorConfig(Config):
             NODE_REMOVE_EMPTY_FOLDERS
         ],
         default=False
+    )
+
+    DEDUPLICATOR_DUPLICATES_TARGET_DIRECTORY = StringConfigEntry(
+        description="Directory path to move duplicates to instead of deleting them.",
+        yaml_path=[
+            NODE_MAIN,
+            NODE_DEDUPLICATION,
+            NODE_DUPLICATES_TARGET_DIRECTORY
+        ],
+        default=None,
+        example="/home/myuser/pictures/duplicates"
     )

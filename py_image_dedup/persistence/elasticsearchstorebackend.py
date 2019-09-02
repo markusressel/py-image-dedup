@@ -1,3 +1,6 @@
+import logging
+
+import requests
 from elasticsearch import Elasticsearch
 from image_match.elasticsearch_driver import SignatureES
 
@@ -18,7 +21,8 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
                  el_index: str = DEFAULT_EL_INDEX,
                  el_doctype: str = DEFAULT_EL_DOC_TYPE,
                  max_dist: float = 0.03,
-                 use_exif_data: bool = True):
+                 use_exif_data: bool = True,
+                 setup_database: bool = True):
         """
         Image signature persistence backed by image_match and elasticsearch
 
@@ -30,23 +34,58 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
         """
         super().__init__(use_exif_data)
 
+        self.host = self.DEFAULT_DATABASE_HOST if host is None else host
+        self.port = self.DEFAULT_DATABASE_PORT if port is None else port
+
         self._el_index = el_index
         self._el_doctype = el_doctype
+        self.setup_database = setup_database
 
-        if port is None:
-            port = self.DEFAULT_DATABASE_PORT
+        if setup_database:
+            try:
+                # self._clear_database()
+                self._setup_database()
+            except Exception as e:
+                logging.exception(e)
+                raise AssertionError("Could not setup database")
 
         # noinspection PyTypeChecker
         self._store = SignatureES(
             es=Elasticsearch(
                 hosts=[
-                    {'host': host, 'port': port}
+                    {'host': self.host, 'port': self.port}
                 ]
             ),
             index=self._el_index,
             doc_type=self._el_doctype,
             distance_cutoff=max_dist
         )
+
+    def _setup_database(self):
+        response = requests.get('http://{}:{}/{}'.format(self.host, self.port, self._el_index))
+        if response.status_code == 200:
+            return
+        elif response.status_code == 404:
+            response = requests.put(
+                url='http://{}:{}/{}'.format(self.host, self.port, self._el_index),
+                json={
+                    "mappings": {
+                        "properties": {
+                            "path": {
+                                "type": "keyword",
+                                "ignore_above": 256
+                            }
+                        }
+                    }
+                }
+            )
+
+            response.raise_for_status()
+        else:
+            response.raise_for_status()
+
+    def _clear_database(self):
+        requests.delete('http://{}:{}/{}'.format(self.host, self.port, self._el_index))
 
     def _add(self, image_file_path: str, image_data: dict) -> None:
         # remove existing entries
@@ -106,7 +145,8 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
         return item_count, scan(
             self._store.es,
             index=self._el_index,
-            doc_type=self._el_doctype,
+            # disabled for elasticseach v7+
+            # doc_type=self._el_doctype,
             preserve_order=True,
             query=es_query,
         )
@@ -189,5 +229,9 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
         self._remove_by_query(es_query)
 
     def _remove_by_query(self, es_query: dict):
-        return self._store.es.delete_by_query(index=self._el_index, body=es_query,
-                                              doc_type=self._el_doctype)
+        return self._store.es.delete_by_query(
+            index=self._el_index,
+            body=es_query,
+            # disabled for elasticseach v7+
+            # doc_type=self._el_doctype
+        )

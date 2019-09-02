@@ -1,6 +1,6 @@
 import os
 
-from py_image_dedup.persistence.MetadataKey import MetadataKey
+from py_image_dedup.persistence.metadata_key import MetadataKey
 
 
 class ImageSignatureStore:
@@ -54,7 +54,7 @@ class ImageSignatureStore:
         :return: dictionary containing all relevant information
         """
 
-        from py_image_dedup.util import ImageUtils
+        from py_image_dedup.util import image
 
         image_data = {}
         image_data[MetadataKey.PATH.value] = image_file_path
@@ -67,22 +67,33 @@ class ImageSignatureStore:
         image_data[MetadataKey.FILE_SIZE.value] = file_size
         image_data[MetadataKey.FILE_MODIFICATION_DATE.value] = file_modification_date
 
-        image_data[MetadataKey.PIXELCOUNT.value] = ImageUtils.get_pixel_count(image_file_path)
+        image_data[MetadataKey.PIXELCOUNT.value] = image.get_pixel_count(image_file_path)
 
         if self._use_exif_data:
-            exif_data = ImageUtils.get_exif_data(image_file_path)
-            self._convert_bytes_to_str(exif_data)
+            exif_data = image.get_exif_data(image_file_path)
+            exif_data = self._normalize_meta_data_for_db(exif_data)
             image_data[MetadataKey.EXIF_DATA.value] = exif_data
 
         return image_data
 
-    def _convert_bytes_to_str(self, dictionary: dict):
+    def _normalize_meta_data_for_db(self, dictionary: dict) -> dict:
+        """
+        :param dictionary:
+        :return:
+        """
+        result = {}
         for k, v in dictionary.items():
             if isinstance(v, dict):
-                self._convert_bytes_to_str(v)
-            else:
-                if isinstance(v, bytes):
-                    dictionary[k] = str(v)
+                result[k] = self._normalize_meta_data_for_db(v)
+                continue
+
+            normalized_value = v
+            if isinstance(v, bytes) or isinstance(v, tuple):
+                normalized_value = str(v)
+
+            result[k] = normalized_value
+
+        return result
 
     def _add(self, image_file_path: str, image_data: dict) -> None:
         """
