@@ -463,10 +463,16 @@ class ImageMatchDeduplicator:
         for root, directories, files in os.walk(root_path, topdown=False):
             abs_file_paths = list(map(lambda x: os.path.abspath(os.path.join(root, x)), files))
             abs_folder_paths = list(map(lambda x: os.path.abspath(os.path.join(root, x)), directories))
+
+            files_deleted = list(
+                filter(lambda x: x in self._deduplication_result.get_removed_or_moved_files(), abs_file_paths))
             filtered_files = list(
-                filter(lambda x: x not in self._deduplication_result.get_removed_or_moved_files(), abs_file_paths))
-            filtered_directories = list(filter(lambda x: x not in result, abs_folder_paths))
-            if len(filtered_files) == 0 and (len(filtered_directories) == 0):
+                filter(lambda x: x not in files_deleted, abs_file_paths))
+
+            folders_deleted = list(filter(lambda x: x in result, abs_folder_paths))
+            filtered_directories = list(filter(lambda x: x not in folders_deleted, abs_folder_paths))
+            if (len(filtered_files) == 0 and (len(filtered_directories) == 0) and (
+                    len(folders_deleted) > 0 or len(files_deleted) > 0)):
                 # check if a parent directory is already added
                 if len([directory for directory in filtered_directories if directory.startswith(root)]) == 0:
                     result.append(root)
