@@ -1,5 +1,7 @@
+import click
 from tabulate import tabulate
 
+from py_image_dedup.library import ActionEnum
 from py_image_dedup.persistence import MetadataKey
 from py_image_dedup.util import echo
 
@@ -7,12 +9,15 @@ BYTE_IN_A_MB = 1048576
 
 
 class DeduplicationResult:
+    _item_actions = {}
 
     def __init__(self):
-        self._removed_files = set()
         self._removed_folders = set()
         self._reference_files = {}
         self._file_duplicates = {}
+
+    def add_file_action(self, file_path: str, action: ActionEnum):
+        self._item_actions[file_path] = action
 
     def get_duplicate_count(self) -> int:
         """
@@ -31,6 +36,12 @@ class DeduplicationResult:
         """
         return [item[MetadataKey.PATH.value] for sublist in self.get_file_duplicates().values() for item in sublist]
 
+    def get_moved_files(self) -> []:
+        """
+        :return: a list of all the files that have been moved
+        """
+        return self.get_removed_files()
+
     def get_removed_empty_folders(self) -> []:
         """
         :return: a list of empty folders that have been removed
@@ -44,12 +55,13 @@ class DeduplicationResult:
         """
         self._removed_folders.add(folder)
 
-    def set_file_duplicates(self, reference_file: dict, duplicate_files: []):
+    def set_file_duplicates(self, reference_files: [dict], duplicate_files: []):
         """
         Set a list of files that are duplicates of the reference file
-        :param reference_file: the file that is used as a baseline
+        :param reference_files: the file that is used as a baseline
         :param duplicate_files: duplicates of the reference_file
         """
+        reference_file = reference_files[0]
         reference_file_path = reference_file[MetadataKey.PATH.value]
         self._reference_files[reference_file_path] = reference_file
         self._file_duplicates[reference_file_path] = duplicate_files
@@ -84,16 +96,15 @@ class DeduplicationResult:
                     file_size_mb = round(file_size / BYTE_IN_A_MB, 3)
                     pixel_count = item[MetadataKey.METADATA.value][MetadataKey.PIXELCOUNT.value]
 
-                    if file_path in self.get_removed_files():
-                        row.append("remove")
-                    else:
-                        row.append("-")
-
+                    action = self._item_actions.get(file_path, ActionEnum.NONE)
+                    row.append(action.name)
                     row.append(file_path)
                     row.append(distance_rounded)
                     row.append(file_size_mb)
                     row.append(pixel_count)
 
+                    # apply action style
+                    row = list(map(lambda x: str(click.style(str(x), action.color)), row))
                     columns.append(row)
 
                 self._echo_table(tabulate(columns, headers=headers, stralign='center'))
@@ -111,7 +122,4 @@ class DeduplicationResult:
             echo(line, color='cyan')
 
         for line in lines[2:]:
-            if line.lstrip().startswith("remove"):
-                echo(line, color='red')
-            else:
-                echo(line, color='green')
+            echo(line)

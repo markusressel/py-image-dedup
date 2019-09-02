@@ -10,6 +10,7 @@ from tqdm import tqdm
 
 from py_image_dedup import util
 from py_image_dedup.config.deduplicator_config import DeduplicatorConfig
+from py_image_dedup.library import ActionEnum
 from py_image_dedup.library.deduplication_result import DeduplicationResult
 from py_image_dedup.persistence import ImageSignatureStore
 from py_image_dedup.persistence.elasticsearchstorebackend import ElasticSearchStoreBackend
@@ -345,16 +346,26 @@ class ImageMatchDeduplicator:
         duplicate_candidates = self._persistence.find_similar(new_reference_file_path)
 
         candidates_to_keep, candidates_to_delete = self._select_images_to_delete(duplicate_candidates)
-        self._save_duplicates_for_result(candidates_to_keep[0], candidates_to_delete)
+        self._save_duplicates_for_result(candidates_to_keep, candidates_to_delete)
 
-    def _save_duplicates_for_result(self, file_to_keep: dict, duplicates_to_remove: dict) -> None:
+    def _save_duplicates_for_result(self, files_to_keep: dict, duplicates: dict) -> None:
         """
         Saves the comparison result for the final summary
 
-        :param file_to_keep: the best image that shall be kept
-        :param duplicates_to_remove: less good duplicates
+        :param files_to_keep: list of image that shall be kept
+        :param duplicates: less good duplicates
         """
-        self._deduplication_result.set_file_duplicates(file_to_keep, duplicates_to_remove)
+        self._deduplication_result.set_file_duplicates(files_to_keep, duplicates)
+
+        for file_to_keep in files_to_keep:
+            self._deduplication_result.add_file_action(file_to_keep[MetadataKey.PATH.value], ActionEnum.NONE)
+
+        if self._config.DEDUPLICATOR_DUPLICATES_TARGET_DIRECTORY.value is None:
+            action = ActionEnum.REMOVE
+        else:
+            action = ActionEnum.MOVE
+        for duplicate in duplicates:
+            self._deduplication_result.add_file_action(duplicate[MetadataKey.PATH.value], action)
 
     def _select_images_to_delete(self, duplicate_candidates: [{}]) -> tuple:
         """
