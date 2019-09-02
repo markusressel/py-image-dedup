@@ -36,7 +36,7 @@ class DeduplicationResult:
         return count
 
     def get_removed_or_moved_files(self):
-        return self.item_actions.get(ActionEnum.MOVE, []) + self.item_actions.get(ActionEnum.REMOVE, [])
+        return self.get_file_with_action(ActionEnum.MOVE) + self.get_file_with_action(ActionEnum.REMOVE)
 
     def get_removed_empty_folders(self) -> []:
         """

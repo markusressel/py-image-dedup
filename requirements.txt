@@ -9,3 +9,4 @@ tabulate
 tqdm
 click
 Pillow
+ordered-set

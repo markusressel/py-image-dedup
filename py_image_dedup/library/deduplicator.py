@@ -6,6 +6,7 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 
 import click
+from ordered_set import OrderedSet
 from tqdm import tqdm
 
 from py_image_dedup import util
@@ -16,7 +17,7 @@ from py_image_dedup.persistence import ImageSignatureStore
 from py_image_dedup.persistence.elasticsearchstorebackend import ElasticSearchStoreBackend
 from py_image_dedup.persistence.metadata_key import MetadataKey
 from py_image_dedup.util import file, echo
-from py_image_dedup.util.file import validate_directories_exist, get_containing_folder
+from py_image_dedup.util.file import validate_directories_exist
 
 
 class ImageMatchDeduplicator:
@@ -206,7 +207,6 @@ class ImageMatchDeduplicator:
             empty_folders = self._find_empty_folders(directory, recursive)
 
             self._remove_folders(directory, empty_folders, dry_run)
-            # self._increment_progress(increase_count_by=1)
 
     def _count_files(self, directories: []) -> dict:
         """
@@ -457,21 +457,19 @@ class ImageMatchDeduplicator:
         Finds empty folders within the given root_path
         :param root_path: folder to search in
         """
-        result = []
+        result = OrderedSet()
 
-        for root, directories, files in os.walk(root_path):
+        # traverse bottom-up to remove folders that are empty due to file removal
+        for root, directories, files in os.walk(root_path, topdown=False):
+            abs_file_paths = list(map(lambda x: os.path.abspath(os.path.join(root, x)), files))
+            abs_folder_paths = list(map(lambda x: os.path.abspath(os.path.join(root, x)), directories))
             filtered_files = list(
-                filter(lambda x: x not in self._deduplication_result.get_removed_or_moved_files(), files))
-
-            if len(filtered_files) == 0 and len(directories) == 0:
+                filter(lambda x: x not in self._deduplication_result.get_removed_or_moved_files(), abs_file_paths))
+            filtered_directories = list(filter(lambda x: x not in result, abs_folder_paths))
+            if len(filtered_files) == 0 and (len(filtered_directories) == 0):
                 # check if a parent directory is already added
-                if len([directory for directory in result if directory.startswith(root)]) == 0:
-                    for file_path, action in self._deduplication_result.item_actions.items():
-                        if action == ActionEnum.NONE:
-                            continue
-                        folder = get_containing_folder(file_path)
-                        if folder == root:
-                            result.append(root)
+                if len([directory for directory in filtered_directories if directory.startswith(root)]) == 0:
+                    result.append(root)
 
             if not recursive:
                 break
