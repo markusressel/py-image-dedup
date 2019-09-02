@@ -4,6 +4,7 @@ NODE_ELASTICSEARCH = "elasticsearch"
 
 NODE_HOST = "host"
 NODE_MAX_DISTANCE = "max_distance"
+NODE_AUTO_CREATE_INDEX = "auto_create_index"
 
 NODE_ANALYSIS = "analysis"
 

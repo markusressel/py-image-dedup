@@ -21,7 +21,8 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
                  el_index: str = DEFAULT_EL_INDEX,
                  el_doctype: str = DEFAULT_EL_DOC_TYPE,
                  max_dist: float = 0.03,
-                 use_exif_data: bool = True):
+                 use_exif_data: bool = True,
+                 setup_database: bool = True):
         """
         Image signature persistence backed by image_match and elasticsearch
 
@@ -38,13 +39,15 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
 
         self._el_index = el_index
         self._el_doctype = el_doctype
+        self.setup_database = setup_database
 
-        try:
-            # self._clear_database()
-            self._setup_database()
-        except Exception as e:
-            logging.exception(e)
-            raise AssertionError("Could not setup database")
+        if setup_database:
+            try:
+                # self._clear_database()
+                self._setup_database()
+            except Exception as e:
+                logging.exception(e)
+                raise AssertionError("Could not setup database")
 
         # noinspection PyTypeChecker
         self._store = SignatureES(

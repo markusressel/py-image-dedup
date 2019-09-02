@@ -17,6 +17,8 @@ class DeduplicationResult:
         self._file_duplicates = {}
 
     def add_file_action(self, file_path: str, action: ActionEnum):
+        if file_path in self._item_actions:
+            raise ValueError("File path already in result: {}".format(file_path))
         self._item_actions[file_path] = action
 
     def get_file_with_action(self, action: ActionEnum) -> []:
