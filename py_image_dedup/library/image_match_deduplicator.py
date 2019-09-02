@@ -8,10 +8,10 @@ import click
 from tqdm import tqdm
 
 from py_image_dedup import util
+from py_image_dedup.config.deduplicator_config import DeduplicatorConfig
 from py_image_dedup.library.deduplication_result import DeduplicationResult
-from py_image_dedup.library.deduplicator_config import DeduplicatorConfig, ConfigParam
 from py_image_dedup.persistence import ImageSignatureStore
-from py_image_dedup.persistence.ElasticSearchStoreBackend import ElasticSearchStoreBackend
+from py_image_dedup.persistence.elasticsearchstorebackend import ElasticSearchStoreBackend
 from py_image_dedup.persistence.metadata_key import MetadataKey
 from py_image_dedup.util import file, echo
 from py_image_dedup.util.file import validate_directories_exist
@@ -67,11 +67,14 @@ class ImageMatchDeduplicator:
         self._deduplication_result = DeduplicationResult()
 
         directories = validate_directories_exist(self._config.SOURCE_DIRECTORIES.value)
-        duplicate_target_folder = self._config.MOVE_DUPLICATES_TO_FOLDER.value
-        if duplicate_target_folder and (not os.path.exists(duplicate_target_folder) or not os.path.isdir(
-                duplicate_target_folder)):
-            raise AttributeError(
-                "Duplicate target folder does not exist or is not a folder: {}".format(duplicate_target_folder))
+        duplicate_target_directory = self._config.DEDUPLICATOR_DUPLICATES_TARGET_DIRECTORY.value
+        if duplicate_target_directory is not None:
+            if not os.path.exists(duplicate_target_directory):
+                raise ValueError(
+                    "Duplicate target folder does not exist: {}".format(duplicate_target_directory))
+            if not os.path.isdir(duplicate_target_directory):
+                raise NotADirectoryError(
+                    "Duplicate target folder is not a directory: {}".format(duplicate_target_directory))
 
         if len(directories) <= 0:
             echo("No root directories to scan", color='yellow')
@@ -106,9 +109,9 @@ class ImageMatchDeduplicator:
                         root_dir,
                         file_path))
 
-        if duplicate_target_folder:
+        if duplicate_target_directory:
             echo("Phase 5/6: Moving duplicates ...", color='cyan')
-            self._move_files_marked_as_delete(duplicate_target_folder, dry_run)
+            self._move_files_marked_as_delete(duplicate_target_directory, dry_run)
         else:
             echo("Phase 5/6: Removing duplicates ...", color='cyan')
             self._remove_files_marked_as_delete(dry_run)

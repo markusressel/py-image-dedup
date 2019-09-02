@@ -17,3 +17,4 @@ NODE_DEDUPLICATION = "deduplication"
 
 NODE_MAX_FILE_MODIFICATION_TIME_DIFF = "max_file_modification_time_diff"
 NODE_REMOVE_EMPTY_FOLDERS = "remove_empty_folders"
+NODE_DUPLICATES_TARGET_DIRECTORY = "duplicates_target_directory"
