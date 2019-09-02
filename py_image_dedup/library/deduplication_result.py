@@ -19,6 +19,9 @@ class DeduplicationResult:
     def add_file_action(self, file_path: str, action: ActionEnum):
         self._item_actions[file_path] = action
 
+    def get_file_with_action(self, action: ActionEnum) -> []:
+        return list({k: v for k, v in self._item_actions.items() if v == action}.keys())
+
     def get_duplicate_count(self) -> int:
         """
         :return: amount of files that have at least one duplicate
@@ -29,18 +32,6 @@ class DeduplicationResult:
                 count += 1
 
         return count
-
-    def get_removed_files(self) -> []:
-        """
-        :return: a list of all the files that have been removed
-        """
-        return [item[MetadataKey.PATH.value] for sublist in self.get_file_duplicates().values() for item in sublist]
-
-    def get_moved_files(self) -> []:
-        """
-        :return: a list of all the files that have been moved
-        """
-        return self.get_removed_files()
 
     def get_removed_empty_folders(self) -> []:
         """
@@ -64,7 +55,7 @@ class DeduplicationResult:
         reference_file = reference_files[0]
         reference_file_path = reference_file[MetadataKey.PATH.value]
         self._reference_files[reference_file_path] = reference_file
-        self._file_duplicates[reference_file_path] = duplicate_files
+        self._file_duplicates[reference_file_path] = reference_files[1:] + duplicate_files
 
     def get_file_duplicates(self) -> {}:
         """
@@ -77,7 +68,8 @@ class DeduplicationResult:
         echo(title, color='cyan')
         echo('=' * 21, color='cyan')
         echo("Files with duplicates: %s" % self.get_duplicate_count())
-        echo("Files removed: %s" % len(self.get_removed_files()))
+        echo("Files moved: %s" % len(self.get_file_with_action(ActionEnum.MOVE)))
+        echo("Files removed: %s" % len(self.get_file_with_action(ActionEnum.REMOVE)))
 
         headers = ("Action", "File path", "Dist", "Filesize", "Pixels")
 
