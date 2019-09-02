@@ -1,4 +1,5 @@
 import datetime
+import logging
 import os
 import shutil
 import sys
@@ -251,8 +252,7 @@ class ImageMatchDeduplicator:
                         continue
 
                     try:
-                        future = self.EXECUTOR.submit(util.reraise_with_stack(command), root_directory, root, file_path)
-                        future.result()
+                        self.EXECUTOR.submit(util.reraise_with_stack(command), root_directory, root, file_path)
                     except Exception as e:
                         click.echo(e, err=True)
                         sys.exit(1)
@@ -287,6 +287,7 @@ class ImageMatchDeduplicator:
         try:
             self._persistence.add(file_path)
         except Exception as e:
+            logging.exception(e)
             echo("Error analyzing file '%s': %s" % (file_path, e))
         finally:
             self._increment_progress()
@@ -393,42 +394,45 @@ class ImageMatchDeduplicator:
         :param duplicate_candidates: the images to analyze
         :return: duplicate candidates sorted by given criteria
         """
-        duplicate_candidates = sorted(duplicate_candidates, key=lambda candidate: (
 
+        def sort_criteria(candidate: dict) -> ():
+            criteria = []
             # reverse, bigger is better
-            candidate[MetadataKey.METADATA.value][MetadataKey.FILE_SIZE.value] * -1,
-
+            criteria.append(candidate[MetadataKey.METADATA.value][MetadataKey.FILE_SIZE.value] * -1)
             # reverse, bigger (later time) is better
-            candidate[MetadataKey.METADATA.value][MetadataKey.FILE_MODIFICATION_DATE.value] * -1,
+            criteria.append(candidate[MetadataKey.METADATA.value][MetadataKey.FILE_MODIFICATION_DATE.value] * -1)
 
-            # more exif data is better
-            len(candidate[MetadataKey.METADATA.value][MetadataKey.EXIF_DATA.value]) * -1,
+            if MetadataKey.EXIF_DATA.value in candidate[MetadataKey.METADATA.value]:
+                # more exif data is better
+                criteria.append(len(candidate[MetadataKey.METADATA.value][MetadataKey.EXIF_DATA.value]) * -1)
 
             # higher pixel count is better
-            candidate[MetadataKey.METADATA.value][MetadataKey.PIXELCOUNT.value] * -1,
+            criteria.append(candidate[MetadataKey.METADATA.value][MetadataKey.PIXELCOUNT.value] * -1)
 
             # smaller distance is better
-            candidate[MetadataKey.DISTANCE.value],
+            criteria.append(candidate[MetadataKey.DISTANCE.value])
 
             # if the filename contains "copy" it is less good
-            "copy" in file.get_file_name(candidate[MetadataKey.PATH.value]).lower(),
+            criteria.append("copy" in file.get_file_name(candidate[MetadataKey.PATH.value]).lower())
 
             # longer filename is better (for "edited" versions)
-            len(file.get_file_name(candidate[MetadataKey.PATH.value])) * -1,
+            criteria.append(len(file.get_file_name(candidate[MetadataKey.PATH.value])) * -1)
 
             # shorter folder path is better
-            len(file.get_containing_folder(candidate[MetadataKey.PATH.value])),
+            criteria.append(len(file.get_containing_folder(candidate[MetadataKey.PATH.value])))
 
             # reverse, bigger is better
-            candidate[MetadataKey.SCORE.value] * -1,
+            criteria.append(candidate[MetadataKey.SCORE.value] * -1)
 
             # just to assure the order in the result is the same
             # if all other criteria (above) are equal
             # and recurring runs will result in the same order
             # (although they shouldn't be compared twice to begin with)
-            candidate[MetadataKey.PATH.value],
+            criteria.append(candidate[MetadataKey.PATH.value])
 
-        ))
+            return tuple(criteria)
+
+        duplicate_candidates = sorted(duplicate_candidates, key=sort_criteria)
 
         return duplicate_candidates
 

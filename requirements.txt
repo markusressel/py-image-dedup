@@ -1,5 +1,6 @@
 setuptools
 container-app-conf>=1.3.0
+requests
 scipy
 numpy
 image_match
