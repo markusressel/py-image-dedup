@@ -14,11 +14,12 @@ config.SOURCE_DIRECTORIES.value = [
 config.SEARCH_ACROSS_ROOT_DIRS.value = True
 
 config.ANALYSIS_THREADS.value = 8
-config.ANALYSIS_USE_EXIF_DATA.value = True
+config.ANALYSIS_USE_EXIF_DATA.value = False
 
 config.ELASTICSEARCH_MAX_DISTANCE.value = 0.30
-config.MAX_FILE_MODIFICATION_TIME_DELTA.value = timedelta()
+config.MAX_FILE_MODIFICATION_TIME_DELTA.value = timedelta(minutes=5)
 config.DEDUPLICATOR_DUPLICATES_TARGET_DIRECTORY.value = "./duplicates"
+config.REMOVE_EMPTY_FOLDERS.value = True
 
 deduplicator = ImageMatchDeduplicator(config)
 

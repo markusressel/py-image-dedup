@@ -9,7 +9,7 @@ BYTE_IN_A_MB = 1048576
 
 
 class DeduplicationResult:
-    _item_actions = {}
+    item_actions = {}
 
     def __init__(self):
         self._removed_folders = set()
@@ -17,12 +17,12 @@ class DeduplicationResult:
         self._file_duplicates = {}
 
     def add_file_action(self, file_path: str, action: ActionEnum):
-        if file_path in self._item_actions:
+        if file_path in self.item_actions:
             raise ValueError("File path already in result: {}".format(file_path))
-        self._item_actions[file_path] = action
+        self.item_actions[file_path] = action
 
     def get_file_with_action(self, action: ActionEnum) -> []:
-        return list({k: v for k, v in self._item_actions.items() if v == action}.keys())
+        return list({k: v for k, v in self.item_actions.items() if v == action}.keys())
 
     def get_duplicate_count(self) -> int:
         """
@@ -34,6 +34,9 @@ class DeduplicationResult:
                 count += 1
 
         return count
+
+    def get_removed_or_moved_files(self):
+        return self.item_actions.get(ActionEnum.MOVE, []) + self.item_actions.get(ActionEnum.REMOVE, [])
 
     def get_removed_empty_folders(self) -> []:
         """
@@ -90,7 +93,7 @@ class DeduplicationResult:
                     file_size_mb = round(file_size / BYTE_IN_A_MB, 3)
                     pixel_count = item[MetadataKey.METADATA.value][MetadataKey.PIXELCOUNT.value]
 
-                    action = self._item_actions.get(file_path, ActionEnum.NONE)
+                    action = self.item_actions.get(file_path, ActionEnum.NONE)
                     row.append(action.name)
                     row.append(file_path)
                     row.append(distance_rounded)

@@ -16,7 +16,7 @@ from py_image_dedup.persistence import ImageSignatureStore
 from py_image_dedup.persistence.elasticsearchstorebackend import ElasticSearchStoreBackend
 from py_image_dedup.persistence.metadata_key import MetadataKey
 from py_image_dedup.util import file, echo
-from py_image_dedup.util.file import validate_directories_exist
+from py_image_dedup.util.file import validate_directories_exist, get_containing_folder
 
 
 class ImageMatchDeduplicator:
@@ -452,8 +452,7 @@ class ImageMatchDeduplicator:
 
         return duplicate_candidates
 
-    @staticmethod
-    def _find_empty_folders(root_path: str, recursive: bool) -> [str]:
+    def _find_empty_folders(self, root_path: str, recursive: bool) -> [str]:
         """
         Finds empty folders within the given root_path
         :param root_path: folder to search in
@@ -461,10 +460,18 @@ class ImageMatchDeduplicator:
         result = []
 
         for root, directories, files in os.walk(root_path):
-            if len(files) == 0 and len(directories) == 0:
+            filtered_files = list(
+                filter(lambda x: x not in self._deduplication_result.get_removed_or_moved_files(), files))
+
+            if len(filtered_files) == 0 and len(directories) == 0:
                 # check if a parent directory is already added
                 if len([directory for directory in result if directory.startswith(root)]) == 0:
-                    result.append(root)
+                    for file_path, action in self._deduplication_result.item_actions.items():
+                        if action == ActionEnum.NONE:
+                            continue
+                        folder = get_containing_folder(file_path)
+                        if folder == root:
+                            result.append(root)
 
             if not recursive:
                 break
