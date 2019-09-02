@@ -25,8 +25,9 @@ def get_containing_folder(file_path: str) -> str:
 
 def validate_directories_exist(directories: [str]) -> [str]:
     """
-    :param directories:
-    :return:
+    Filters a list of directories to only contain existing ones
+    :param directories: list of directories
+    :return: filtered list
     """
 
     safe_directories = []

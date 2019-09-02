@@ -1,4 +1,4 @@
-import math
+import datetime
 import os
 import shutil
 import sys
@@ -11,6 +11,7 @@ from py_image_dedup import util
 from py_image_dedup.library.deduplication_result import DeduplicationResult
 from py_image_dedup.library.deduplicator_config import DeduplicatorConfig, ConfigParam
 from py_image_dedup.persistence import ImageSignatureStore
+from py_image_dedup.persistence.ElasticSearchStoreBackend import ElasticSearchStoreBackend
 from py_image_dedup.persistence.metadata_key import MetadataKey
 from py_image_dedup.util import file, echo
 from py_image_dedup.util.file import validate_directories_exist
@@ -24,63 +25,49 @@ class ImageMatchDeduplicator:
     _processed_files: dict = {}
     _deduplication_result: DeduplicationResult = None
 
-    def __init__(self, image_signature_store: ImageSignatureStore):
+    def __init__(self, config: DeduplicatorConfig):
         """
-        :param image_signature_store: persistent storage for image signatures and other metadata
+        :param config: configuration
         """
-        self._persistence: ImageSignatureStore = image_signature_store
+        self._config = config
+        self._persistence: ImageSignatureStore = ElasticSearchStoreBackend(
+            host=config.ELASTICSEARCH_HOST.value,
+            use_exif_data=config.ANALYSIS_USE_EXIF_DATA.value,
+            max_dist=config.ELASTICSEARCH_MAX_DISTANCE.value,
+        )
 
-    def analyse(self, directories: [str],
-                config: DeduplicatorConfig = None,
-                threads: int = 1):
+    def analyse(self):
         """
         Runs the analysis phase independently.
-        :param directories: list of directories to process
-        :param config: deduplication configuration
-        :param threads: number of threads to use for concurrent processing
         """
-
-        if config:
-            self._config: DeduplicatorConfig = config
-        directories = validate_directories_exist(directories)
+        directories = validate_directories_exist(self._config.SOURCE_DIRECTORIES.value)
 
         echo("Phase 1/2: Counting files ...", color='cyan')
         directory_map = self._count_files(directories)
 
         echo("Phase 2/2: Analyzing files ...", color='cyan')
-        self._analyze(directory_map, threads)
+        self._analyze(directory_map)
 
-    def deduplicate(self, directories: [str],
-                    config: DeduplicatorConfig = None,
-                    duplicate_target_folder: str = None,
-                    threads: int = 1,
+    def deduplicate(self,
                     dry_run: bool = True,
-                    skip_analyze_phase: bool = False,
-                    remove_empty_folders: bool = True) -> DeduplicationResult:
+                    skip_analyze_phase: bool = False) -> DeduplicationResult:
         """
         Runs the full 6 deduplication phases.
-        :param directories: list of directories to process
-        :param config: deduplication configuration
-        :param duplicate_target_folder: folder path to move duplicates to instead of deleting them
-        :param threads: number of threads to use for concurrent processing
         :param dry_run: If true, no files will actually be removed.
                         Note though that the signature store will be written even when using this option
                         as the search wouldn't work without it.
         :param skip_analyze_phase: useful if you already did a dry run and want to do a real run afterwards
-        :param remove_empty_folders: whether to remove empty folders
         :return: result of the operation
         """
-
         # see: https://stackoverflow.com/questions/14861891/runtimewarning-invalid-value-encountered-in-divide
         # and: https://stackoverflow.com/questions/29347987/why-cant-i-suppress-numpy-warnings
         import numpy
         numpy.warnings.filterwarnings('ignore')
 
         self._deduplication_result = DeduplicationResult()
-        if config:
-            self._config: DeduplicatorConfig = config
 
-        directories = validate_directories_exist(directories)
+        directories = validate_directories_exist(self._config.SOURCE_DIRECTORIES.value)
+        duplicate_target_folder = self._config.MOVE_DUPLICATES_TO_FOLDER.value
         if duplicate_target_folder and (not os.path.exists(duplicate_target_folder) or not os.path.isdir(
                 duplicate_target_folder)):
             raise AttributeError(
@@ -104,7 +91,7 @@ class ImageMatchDeduplicator:
             echo(phase_3_text + " - Skipping", color='yellow')
         else:
             echo(phase_3_text, color='cyan')
-            self._analyze(directory_map, threads)
+            self._analyze(directory_map)
 
         echo("Phase 4/6: Finding duplicate files ...", color='cyan')
         self._processed_files = {}
@@ -127,19 +114,20 @@ class ImageMatchDeduplicator:
             self._remove_files_marked_as_delete(dry_run)
 
         phase_6_text = "Phase 6/6: Removing empty folders"
-        if not remove_empty_folders:
+        if not self._config.REMOVE_EMPTY_FOLDERS.value:
             echo(phase_6_text + " - Skipping", color='yellow')
         else:
             echo(phase_6_text, color='cyan')
-            self._remove_empty_folders(directories, self._config[ConfigParam.RECURSIVE], dry_run)
+            self._remove_empty_folders(directories, self._config.RECURSIVE.value, dry_run)
 
         return self._deduplication_result
 
-    def _analyze(self, directory_map: dict, threads: int = 1) -> {str, str}:
+    def _analyze(self, directory_map: dict) -> {str, str}:
         """
         Analyzes all files, generates identifiers (if necessary) and stores them for later access
         :return: file_path -> identifier
         """
+        threads = self._config.ANALYSIS_THREADS.value
 
         # load truncated images too
         # TODO: this causes an infinite loop on some (truncated) images
@@ -161,7 +149,6 @@ class ImageMatchDeduplicator:
         might have been added on other machines.
         :param directories: directories in this run
         """
-
         # TODO: This iterates through all db entries - even the ones we are ignoring.
         # The db query should be improved to speed this up
 
@@ -208,7 +195,6 @@ class ImageMatchDeduplicator:
         Searches for empty folders and removes them
         :param directories: directories to scan
         """
-
         # remove empty folders
         for directory in directories:
             empty_folders = self._find_empty_folders(directory, recursive)
@@ -221,7 +207,6 @@ class ImageMatchDeduplicator:
         Counts the amount of files to analyze (used in progress) and stores them in a map
         :return map "directory path" -> "directory file count"
         """
-
         directory_map = {}
 
         with self._create_folder_progressbar(len(directories)):
@@ -242,7 +227,6 @@ class ImageMatchDeduplicator:
         :param command: the method to execute for every file found
         :return: file_path -> identifier
         """
-
         # to avoid ascii char problems
         root_directory = str(root_directory)
 
@@ -270,7 +254,7 @@ class ImageMatchDeduplicator:
                         click.echo(e, err=True)
                         sys.exit(1)
 
-                if not self._config[ConfigParam.RECURSIVE]:
+                if not self._config.RECURSIVE.value:
                     return
 
     def __file_extension_matches_filter(self, file: str) -> bool:
@@ -279,12 +263,12 @@ class ImageMatchDeduplicator:
         :param file: the file to check
         :return: true if it matches, false otherwise
         """
-        if not self._config[ConfigParam.FILE_EXTENSION_FILTER]:
+        if not self._config.FILE_EXTENSION_FILTER.value:
             return True
 
         filename, file_extension = os.path.splitext(file)
 
-        if file_extension.lower() not in (ext.lower() for ext in self._config[ConfigParam.FILE_EXTENSION_FILTER]):
+        if file_extension.lower() not in (ext.lower() for ext in self._config.FILE_EXTENSION_FILTER.value):
             # skip file with unwanted file extension
             return False
         else:
@@ -311,7 +295,6 @@ class ImageMatchDeduplicator:
         :param root_directory: root directory of reference_file_path
         :param reference_file_path: the file to check for duplicates
         """
-
         self._increment_progress()
         self._progress_bar.set_postfix_str(self._truncate_middle(reference_file_path))
 
@@ -322,7 +305,7 @@ class ImageMatchDeduplicator:
 
         duplicate_candidates = self._persistence.find_similar(reference_file_path)
 
-        if self._config[ConfigParam.SEARCH_ACROSS_ROOT_DIRS]:
+        if self._config.SEARCH_ACROSS_ROOT_DIRS.value:
             # filter by files in at least one of the specified root directories
             # this is necessary because the database might hold items for other paths already
             # and those are not interesting to us
@@ -374,19 +357,22 @@ class ImageMatchDeduplicator:
         Selects which image to keep and wich to remove
         :return: tuple (image to keep, list of images to remove)
         """
-
         duplicate_candidates = self._sort_by_quality_descending(duplicate_candidates)
 
         keep_unfitting = []
-        max_mod_time_diff = self._config[ConfigParam.MAX_FILE_MODIFICATION_TIME_DIFF]
+        max_mod_time_diff = self._config.MAX_FILE_MODIFICATION_TIME_DELTA.value
         if max_mod_time_diff is not None:
             # filter files that don't match max mod time diff criteria
             best_candidate = duplicate_candidates[0]
-            best_match_mod_time = best_candidate[MetadataKey.METADATA.value][MetadataKey.FILE_MODIFICATION_DATE.value]
+            best_match_mod_timestamp = best_candidate[MetadataKey.METADATA.value][
+                MetadataKey.FILE_MODIFICATION_DATE.value]
 
-            keep_unfitting = [c for c in duplicate_candidates if not math.fabs(
-                c[MetadataKey.METADATA.value][
-                    MetadataKey.FILE_MODIFICATION_DATE.value] - best_match_mod_time) <= max_mod_time_diff]
+            for c in duplicate_candidates:
+                c_timestamp = c[MetadataKey.METADATA.value][MetadataKey.FILE_MODIFICATION_DATE.value]
+                timestamp_diff = abs(c_timestamp - best_match_mod_timestamp)
+                timedelta = datetime.timedelta(seconds=timestamp_diff)
+                if not timedelta <= max_mod_time_diff:
+                    keep_unfitting.append(c)
 
         # remember that we have processed these files
         for candidate in duplicate_candidates:
@@ -404,7 +390,6 @@ class ImageMatchDeduplicator:
         :param duplicate_candidates: the images to analyze
         :return: duplicate candidates sorted by given criteria
         """
-
         duplicate_candidates = sorted(duplicate_candidates, key=lambda candidate: (
 
             # reverse, bigger is better
@@ -444,12 +429,12 @@ class ImageMatchDeduplicator:
 
         return duplicate_candidates
 
-    def _find_empty_folders(self, root_path: str, recursive: bool) -> [str]:
+    @staticmethod
+    def _find_empty_folders(root_path: str, recursive: bool) -> [str]:
         """
         Finds empty folders within the given root_path
         :param root_path: folder to search in
         """
-
         result = []
 
         for root, directories, files in os.walk(root_path):
@@ -468,7 +453,6 @@ class ImageMatchDeduplicator:
         Function to remove empty folders
         :param root_path:
         """
-
         echo("Removing empty folders in: '%s' ..." % root_path)
 
         if len(folders) == 0:
@@ -489,13 +473,12 @@ class ImageMatchDeduplicator:
         :param directory: the directory to analyze
         :return: number of files in the given directory that match the currently set file filter
         """
-
         files_count = 0
         for r, d, files in os.walk(directory):
             for file in files:
                 if self.__file_extension_matches_filter(file):
                     files_count += 1
-            if not self._config[ConfigParam.RECURSIVE]:
+            if not self._config.RECURSIVE.value:
                 break
 
         return files_count
@@ -544,7 +527,6 @@ class ImageMatchDeduplicator:
         :param target_dir: the directory to move duplicates to
         :param dry_run: set to true to simulate this action
         """
-
         marked_files_count = len(self._deduplication_result.get_removed_files())
         if marked_files_count == 0:
             return
@@ -558,7 +540,6 @@ class ImageMatchDeduplicator:
         :param files_to_delete: list of absolute file paths
         :param dry_run: set to true to simulate this action
         """
-
         for reference_file, duplicates in files_to_delete.items():
             for duplicate in duplicates:
                 duplicate_file_path = duplicate[MetadataKey.PATH.value]

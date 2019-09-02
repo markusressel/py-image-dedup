@@ -96,10 +96,11 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
 
     def get_all(self) -> (int, object):
         es_query = {
+            "track_total_hits": True,
             'query': {'match_all': {}}
         }
 
-        item_count = self._store.es.search(self._el_index, body=es_query, size=0)['hits']['total']
+        item_count = self._store.es.search(self._el_index, body=es_query, size=0)['hits']['total']['value']
 
         from elasticsearch.helpers import scan
         return item_count, scan(
