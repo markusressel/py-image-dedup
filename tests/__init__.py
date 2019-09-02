@@ -1,10 +1,18 @@
 import unittest
+from datetime import timedelta
+
+from py_image_dedup.config.deduplicator_config import DeduplicatorConfig
+from py_image_dedup.library.image_match_deduplicator import ImageMatchDeduplicator
 
 
 class TestBase(unittest.TestCase):
 
     def setUp(self):
-        pass
+        config = DeduplicatorConfig()
+        config.ELASTICSEARCH_AUTO_CREATE_INDEX.value = False
+
+        config.MAX_FILE_MODIFICATION_TIME_DELTA.value = timedelta(seconds=100)
+        self.under_test = ImageMatchDeduplicator(config)
 
     def tearDown(self):
         pass

@@ -13,6 +13,7 @@ NODE_RECURSIVE = "recursive"
 NODE_SEARCH_ACROSS_ROOT_DIRS = "across_dirs"
 NODE_FILE_EXTENSIONS = "file_extensions"
 NODE_USE_EXIF_DATA = "use_exif_data"
+NODE_THREADS = "threads"
 
 NODE_DEDUPLICATION = "deduplication"
 
