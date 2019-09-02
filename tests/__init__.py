@@ -2,7 +2,7 @@ import unittest
 from datetime import timedelta
 
 from py_image_dedup.config.deduplicator_config import DeduplicatorConfig
-from py_image_dedup.library.image_match_deduplicator import ImageMatchDeduplicator
+from py_image_dedup.library.deduplicator import ImageMatchDeduplicator
 
 
 class TestBase(unittest.TestCase):
