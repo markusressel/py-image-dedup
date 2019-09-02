@@ -1,7 +1,7 @@
 import click
 
 from py_image_dedup.config.deduplicator_config import DeduplicatorConfig
-from py_image_dedup.library.image_match_deduplicator import ImageMatchDeduplicator
+from py_image_dedup.library.deduplicator import ImageMatchDeduplicator
 from py_image_dedup.util import echo
 
 IMAGE_HASH_MAP = {}
