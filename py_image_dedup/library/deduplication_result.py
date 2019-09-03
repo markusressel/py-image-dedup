@@ -104,7 +104,8 @@ class DeduplicationResult:
                     row = list(map(lambda x: str(click.style(str(x), action.color)), row))
                     columns.append(row)
 
-                self._echo_table(tabulate(columns, headers=headers, stralign='center'))
+                self._echo_table(
+                    tabulate(columns, headers=headers, colalign=['center', 'left', 'left', 'right', 'center']))
 
         echo()
         echo("Removed (empty) folders (%s):" % len(self.get_removed_empty_folders()))
