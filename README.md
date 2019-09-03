@@ -1,7 +1,9 @@
 # py-image-dedup [![Build Status](https://travis-ci.org/markusressel/py-image-dedup.svg?branch=master)](https://travis-ci.org/markusressel/py-image-dedup) [![PyPI version](https://badge.fury.io/py/py-image-dedup.svg)](https://badge.fury.io/py/py-image-dedup)
 
-**py-image-dedup** is a tool to scan through a library of photos, find duplicates and remove them
-in a prioritized way.
+**py-image-dedup** is a tool to sort out or remove duplicates within a photo library. 
+Unlike most other solutions, **py-image-dedup** 
+intentionally uses an approximate image comparison to also detect 
+duplicates of images that differ in resolution, color or other minor details.
 
 It is build upon [Image-Match](https://github.com/ascribe/image-match) a very popular library to compute
 a pHash for an image and store the result in an ElasticSearch backend for very high scalability.
@@ -65,11 +67,30 @@ available version of all candidates.
 All but the best version of duplicate candidates identified in the previous
 phase are now deleted from the file system (if you did not specify `--dry-run` of course).  
  
-### Phase 6 - Removing empty folders
+### Phase 6 - Removing empty folders (Optional)
 
-In the last phase empty folders are deleted.
+In the last phase, folders that are empty due to the deduplication 
+process are deleted.
 
 # How to use
+
+## Install
+
+Install **py-image-dedup** using pip:
+
+```shell
+pip3 install py-image-dedup
+```
+
+## Configuration
+
+**py-image-dedup** uses [container-app-conf](https://github.com/markusressel/container-app-conf)
+to provide configuration via a YAML file as well as ENV variables which
+generates a reference config on startup. Have a look at the 
+[documentation about it](https://github.com/markusressel/container-app-conf#generate-reference-config)
+
+See [py_image_dedup_reference.yaml](/py_image_dedup_reference.yaml) 
+for an example in this repo.
 
 ## Setup elasticsearch backend
 
@@ -84,12 +105,12 @@ Because of this **py-image-dedup** might exit with an **error on first install**
 
 To fix this find the installed files of the image-match library, f.ex.
 
-```
+```shell
 ../venv/lib/python3.6/site-packages/image_match-1.1.2-py3.6.egg-info/requires.txt    
 ```
 
 and remove the second line
-```
+```shell
 elasticsearch<2.4,>=2.3
 ```
 
@@ -120,19 +141,6 @@ curl -X PUT "192.168.2.24:9200/images?pretty" -H "Content-Type: application/json
 }
 ```
 
-## Configuration
-
-**py-image-dedup** offers customization options to make sure it can 
-detect the best image with the highest probability possible.
-
-| Name | Description | Default |
-|------|-------------|---------|
-| threads | Number of threads to use for image analysis | `2` |
-| recursive | Toggle to analyse given directories recursively | `False` |
-| search_across_dirs | Toggle to allow duplicate results across given directories | `False` |
-| file_extensions | Comma separated list of file extensions to analyse | `"png,jpg,jpeg"` |
-| max_dist | Maximum distance of image signatures to consider. This is a value in the range [0..1] | `0.1` |
-
 ## Command line usage
 
 **py-image-dedup** can be used from the command line like this:
@@ -152,6 +160,7 @@ be sure to make a dry run first.
 py-image-dedup -d "/home/mydir" --dry-run
 ```
 
+
 ## FreeBSD
 
 If you want to run this on a FreeBSD host make sure you have an up
@@ -161,20 +170,20 @@ Since [Image-Match](https://github.com/ascribe/image-match) does a lot of
 math it relies on `numpy` and `scipy`. To get those working on FreeBSD
 you have to install them as a port:
 
-```
+```shell
 pkg install pkgconf
 pkg install py36-numpy
 pkg install py27-scipy
 ```
 
 For `.png` support you also need to install
-```
+```shell
 pkg install png
 ```
 
 I still ran into issues after installing all these and just threw those
 two in the mix and it finally worked:
-```
+```shell
 pkg install freetype
 pkg install py27-matplotlib  # this has a LOT of dependencies
 ```
@@ -186,12 +195,11 @@ encoding issues. To mitigate this change your locale from `ANSII` to `UTF-8`
 if possible.
 
 This can be achieved f.ex. by creating a file `~/.login_conf` with the following content:
-```
+```text
 me:\
 	:charset=ISO-8859-1:\
 	:lang=de_DE.UTF-8:
 ```
-
 
 # Contributing
 
@@ -200,7 +208,7 @@ of this repository. Create GitHub tickets for bugs and new features and comment 
 
 # License
 
-```
+```text
 py-image-dedup by Markus Ressel
 Copyright (C) 2018  Markus Ressel
 
