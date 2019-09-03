@@ -413,17 +413,19 @@ class ImageMatchDeduplicator:
 
         def sort_criteria(candidate: dict) -> ():
             criteria = []
-            # reverse, bigger is better
-            criteria.append(candidate[MetadataKey.METADATA.value][MetadataKey.FILE_SIZE.value] * -1)
-            # reverse, bigger (later time) is better
-            criteria.append(candidate[MetadataKey.METADATA.value][MetadataKey.FILE_MODIFICATION_DATE.value] * -1)
+
+            # higher pixel count is better
+            criteria.append(candidate[MetadataKey.METADATA.value][MetadataKey.PIXELCOUNT.value] * -1)
 
             if MetadataKey.EXIF_DATA.value in candidate[MetadataKey.METADATA.value]:
                 # more exif data is better
                 criteria.append(len(candidate[MetadataKey.METADATA.value][MetadataKey.EXIF_DATA.value]) * -1)
 
-            # higher pixel count is better
-            criteria.append(candidate[MetadataKey.METADATA.value][MetadataKey.PIXELCOUNT.value] * -1)
+            # reverse, bigger is better
+            criteria.append(candidate[MetadataKey.METADATA.value][MetadataKey.FILE_SIZE.value] * -1)
+
+            # reverse, bigger (later time) is better
+            criteria.append(candidate[MetadataKey.METADATA.value][MetadataKey.FILE_MODIFICATION_DATE.value] * -1)
 
             # smaller distance is better
             criteria.append(candidate[MetadataKey.DISTANCE.value])

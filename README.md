@@ -49,10 +49,10 @@ If there are images found that match the similarity criteria they are considered
 duplicate candidates. All candidates are then ordered by the following
 criteria (in this exact order):
 
+1. pixel count (more is better)
+1. EXIF data (more exif data is better)
 1. file size (bigger is better)
 1. file modification time (newer is better)
-1. EXIF data (more exif data is better)
-1. pixel count (more is better)
 1. distance (lower is better)
 1. filename contains "copy" (False is better)
 1. filename length (longer is better) - (for "edited" versions)

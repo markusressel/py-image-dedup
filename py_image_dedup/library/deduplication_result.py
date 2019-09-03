@@ -105,7 +105,7 @@ class DeduplicationResult:
                     columns.append(row)
 
                 self._echo_table(
-                    tabulate(columns, headers=headers, colalign=['center', 'left', 'left', 'right', 'center']))
+                    tabulate(columns, headers=headers, colalign=['center', 'left', 'left', 'right', 'right']))
 
         echo()
         echo("Removed (empty) folders (%s):" % len(self.get_removed_empty_folders()))
