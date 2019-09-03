@@ -18,6 +18,7 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
     def __init__(self,
                  host: str = DEFAULT_DATABASE_HOST,
                  port: int = DEFAULT_DATABASE_PORT,
+                 el_version: int = None,
                  el_index: str = DEFAULT_EL_INDEX,
                  el_doctype: str = DEFAULT_EL_DOC_TYPE,
                  max_dist: float = 0.03,
@@ -28,6 +29,7 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
 
         :param host: host address of the elasticsearch server
         :param port: port of the elasticsearch server
+        :param el_version: elasticsearch version
         :param el_index: elasticsearch index where the data is stored
         :param el_doctype: elasticsearch document type of the stored data
         :param max_dist: maximum "difference" allowed, ranging from [0 .. 1] where 0.2 is still a pretty similar image
@@ -36,6 +38,19 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
 
         self.host = self.DEFAULT_DATABASE_HOST if host is None else host
         self.port = self.DEFAULT_DATABASE_PORT if port is None else port
+
+        self._el_version = el_version
+        detected_version = self._detect_db_version()
+        if self._el_version is not None and detected_version is not None and self._el_version != detected_version:
+            raise AssertionError(
+                "Detected database version ({}) does not match expected version ({})".format(detected_version,
+                                                                                             self._el_version))
+
+        if detected_version is not None:
+            self._el_version = detected_version
+        elif self._el_version is None:
+            # assume version 6 by default
+            self._el_version = 6
 
         self._el_index = el_index
         self._el_doctype = el_doctype
@@ -60,6 +75,15 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
             doc_type=self._el_doctype,
             distance_cutoff=max_dist
         )
+
+    def _detect_db_version(self) -> int or None:
+        try:
+            response = requests.get('http://{}:{}'.format(self.host, self.port))
+            response.raise_for_status()
+            return int(str(response.json()["version"]['number']).split(".")[0])
+        except Exception as ex:
+            logging.exception(ex)
+            return None
 
     def _setup_database(self):
         response = requests.get('http://{}:{}/{}'.format(self.host, self.port, self._el_index))
@@ -139,16 +163,21 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
             'query': {'match_all': {}}
         }
 
-        item_count = self._store.es.search(self._el_index, body=es_query, size=0)['hits']['total']['value']
+        item_count = self._store.es.search(self._el_index, body=es_query, size=0)['hits']['total']
+        if self._el_version >= 7:
+            item_count = item_count['value']
 
         from elasticsearch.helpers import scan
+
+        el6_params = {
+            "doc_type": self._el_doctype
+        }
         return item_count, scan(
             self._store.es,
             index=self._el_index,
-            # disabled for elasticseach v7+
-            # doc_type=self._el_doctype,
             preserve_order=True,
             query=es_query,
+            **(el6_params if self._el_version < 7 else {})
         )
 
     def find_similar(self, reference_image_file_path: str) -> []:
@@ -229,9 +258,12 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
         self._remove_by_query(es_query)
 
     def _remove_by_query(self, es_query: dict):
+        el6_params = {
+            "doc_type": self._el_doctype
+        }
+
         return self._store.es.delete_by_query(
             index=self._el_index,
             body=es_query,
-            # disabled for elasticseach v7+
-            # doc_type=self._el_doctype
+            **(el6_params if self._el_version < 7 else {})
         )
