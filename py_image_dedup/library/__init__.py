@@ -6,5 +6,5 @@ class Action:
 
 class ActionEnum:
     NONE = Action("-", "green")
-    REMOVE = Action("remove", "red")
+    DELETE = Action("delete", "red")
     MOVE = Action("move", "yellow")

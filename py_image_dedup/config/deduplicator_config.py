@@ -2,6 +2,7 @@ from datetime import timedelta
 
 from container_app_conf import Config
 from container_app_conf.entry.bool import BoolConfigEntry
+from container_app_conf.entry.file import DirectoryConfigEntry
 from container_app_conf.entry.float import FloatConfigEntry
 from container_app_conf.entry.int import IntConfigEntry
 from container_app_conf.entry.list import ListConfigEntry
@@ -63,7 +64,7 @@ class DeduplicatorConfig(Config):
 
     SOURCE_DIRECTORIES = ListConfigEntry(
         description="Comma separated list of source paths to analyse and deduplicate.",
-        item_type=StringConfigEntry,
+        item_type=DirectoryConfigEntry,
         yaml_path=[
             NODE_MAIN,
             NODE_ANALYSIS,
@@ -140,13 +141,14 @@ class DeduplicatorConfig(Config):
         default=False
     )
 
-    DEDUPLICATOR_DUPLICATES_TARGET_DIRECTORY = StringConfigEntry(
+    DEDUPLICATOR_DUPLICATES_TARGET_DIRECTORY = DirectoryConfigEntry(
         description="Directory path to move duplicates to instead of deleting them.",
         yaml_path=[
             NODE_MAIN,
             NODE_DEDUPLICATION,
             NODE_DUPLICATES_TARGET_DIRECTORY
         ],
+        check_existence=True,
         default=None,
         example="/home/myuser/pictures/duplicates"
     )

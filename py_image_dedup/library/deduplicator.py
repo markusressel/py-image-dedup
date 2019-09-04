@@ -362,7 +362,7 @@ class ImageMatchDeduplicator:
             self._deduplication_result.add_file_action(file_to_keep[MetadataKey.PATH.value], ActionEnum.NONE)
 
         if self._config.DEDUPLICATOR_DUPLICATES_TARGET_DIRECTORY.value is None:
-            action = ActionEnum.REMOVE
+            action = ActionEnum.DELETE
         else:
             action = ActionEnum.MOVE
         for duplicate in duplicates:
@@ -549,7 +549,7 @@ class ImageMatchDeduplicator:
         Removes files that were marked to be deleted in previous deduplication step
         :param dry_run: set to true to simulate this action
         """
-        items_to_remove = self._deduplication_result.get_file_with_action(ActionEnum.REMOVE)
+        items_to_remove = self._deduplication_result.get_file_with_action(ActionEnum.DELETE)
         marked_files_count = len(items_to_remove)
         if marked_files_count == 0:
             return

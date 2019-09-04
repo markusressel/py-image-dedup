@@ -36,11 +36,11 @@ class DeduplicationResult:
         return count
 
     def get_removed_or_moved_files(self):
-        return self.get_file_with_action(ActionEnum.MOVE) + self.get_file_with_action(ActionEnum.REMOVE)
+        return self.get_file_with_action(ActionEnum.MOVE) + self.get_file_with_action(ActionEnum.DELETE)
 
     def get_removed_empty_folders(self) -> []:
         """
-        :return: a list of empty folders that have been removed
+        :return: a list of empty folders that have been deleted
         """
         return self._removed_folders
 
@@ -74,7 +74,7 @@ class DeduplicationResult:
         echo('=' * 21, color='cyan')
         echo("Files with duplicates: %s" % self.get_duplicate_count())
         echo("Files moved: %s" % len(self.get_file_with_action(ActionEnum.MOVE)))
-        echo("Files removed: %s" % len(self.get_file_with_action(ActionEnum.REMOVE)))
+        echo("Files deleted: %s" % len(self.get_file_with_action(ActionEnum.DELETE)))
 
         headers = ("Action", "File path", "Dist", "Filesize", "Pixels")
 
