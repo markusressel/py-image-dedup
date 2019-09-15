@@ -1,5 +1,5 @@
 setuptools
-container-app-conf>=1.4.0
+container-app-conf>=1.5.1
 requests
 scipy
 numpy
@@ -10,3 +10,4 @@ tqdm
 click
 Pillow
 ordered-set
+watchdog>=0.9.0

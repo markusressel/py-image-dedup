@@ -1,4 +1,9 @@
+import time
+from typing import List
+
 import click
+from watchdog.events import PatternMatchingEventHandler
+from watchdog.observers.inotify import InotifyObserver
 
 from py_image_dedup.config.deduplicator_config import DeduplicatorConfig
 from py_image_dedup.library.deduplicator import ImageMatchDeduplicator
@@ -35,7 +40,7 @@ def get_option_names(parameter: str) -> list:
 def c_analyse():
     config = DeduplicatorConfig()
     deduplicator = ImageMatchDeduplicator(config)
-    deduplicator.analyse()
+    deduplicator.analyse_all()
 
 
 @cli.command(name="deduplicate")
@@ -48,13 +53,51 @@ def c_deduplicate(skip_analyse_phase: bool,
                   dry_run: bool):
     config = DeduplicatorConfig()
     deduplicator = ImageMatchDeduplicator(config)
-    result = deduplicator.deduplicate(
+    result = deduplicator.deduplicate_all(
         skip_analyze_phase=skip_analyse_phase,
         dry_run=dry_run
     )
 
     echo()
     result.print_to_console()
+
+
+def _setup_file_observers(source_directories: List[str]):
+    observers = []
+
+    # TODO: add "added" and "changed" files to analysis and deduplication queue
+    # TODO: remove "removed" files from the database (?)
+    event_handler = PatternMatchingEventHandler()
+
+    for directory in source_directories:
+        # observer = PollingObserver()
+        observer = InotifyObserver()
+        observer.schedule(event_handler, directory, recursive=True)
+        observer.start()
+        observers.append(observer)
+
+    return observers
+
+
+@cli.command(name="daemon")
+def c_daemon():
+    config = DeduplicatorConfig()
+
+    observers = _setup_file_observers(config.SOURCE_DIRECTORIES.value)
+
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        for observer in observers:
+            observer.stop()
+            observer.join()
+
+    # deduplicator = ImageMatchDeduplicator(config)
+    # deduplicator.deduplicate_all(
+    #     skip_analyze_phase=False,
+    #     dry_run=dry_run
+    # )
 
 
 if __name__ == '__main__':

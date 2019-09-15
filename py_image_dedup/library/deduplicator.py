@@ -40,7 +40,7 @@ class ImageMatchDeduplicator:
             setup_database=config.ELASTICSEARCH_AUTO_CREATE_INDEX.value
         )
 
-    def analyse(self):
+    def analyse_all(self):
         """
         Runs the analysis phase independently.
         """
@@ -50,11 +50,11 @@ class ImageMatchDeduplicator:
         directory_map = self._count_files(directories)
 
         echo("Phase 2/2: Analyzing files ...", color='cyan')
-        self._analyze(directory_map)
+        self._analyze_directories(directory_map)
 
-    def deduplicate(self,
-                    dry_run: bool = True,
-                    skip_analyze_phase: bool = False) -> DeduplicationResult:
+    def deduplicate_all(self,
+                        dry_run: bool = True,
+                        skip_analyze_phase: bool = False) -> DeduplicationResult:
         """
         Runs the full 6 deduplication phases.
         :param dry_run: If true, no files will actually be removed.
@@ -98,7 +98,7 @@ class ImageMatchDeduplicator:
             echo(phase_3_text + " - Skipping", color='yellow')
         else:
             echo(phase_3_text, color='cyan')
-            self._analyze(directory_map)
+            self._analyze_directories(directory_map)
 
         echo("Phase 4/6: Finding duplicate files ...", color='cyan')
         self._processed_files = {}
@@ -129,10 +129,9 @@ class ImageMatchDeduplicator:
 
         return self._deduplication_result
 
-    def _analyze(self, directory_map: dict) -> {str, str}:
+    def _analyze_directories(self, directory_map: dict):
         """
         Analyzes all files, generates identifiers (if necessary) and stores them for later access
-        :return: file_path -> identifier
         """
         threads = self._config.ANALYSIS_THREADS.value
 
