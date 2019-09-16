@@ -24,13 +24,10 @@ class EventHandler(FileSystemEventHandler):
     def on_moved(self, event):
         # TODO: remove old file(s) from database
         old_path = event.src_path
-        new_path = event.est_path
 
         if event.is_directory:
             # TODO: remove data with path pattern and add the new folder
             return
-
-        self.processing_manager.add(new_path)
 
     def on_deleted(self, event):
         # TODO: remove item from database

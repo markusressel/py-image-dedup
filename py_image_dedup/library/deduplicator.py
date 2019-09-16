@@ -17,7 +17,7 @@ from py_image_dedup.persistence import ImageSignatureStore
 from py_image_dedup.persistence.elasticsearchstorebackend import ElasticSearchStoreBackend
 from py_image_dedup.persistence.metadata_key import MetadataKey
 from py_image_dedup.util import file, echo
-from py_image_dedup.util.file import validate_directories_exist, file_has_extension, get_files_count
+from py_image_dedup.util.file import file_has_extension, get_files_count
 
 
 class ImageMatchDeduplicator:
@@ -44,7 +44,7 @@ class ImageMatchDeduplicator:
         """
         Runs the analysis phase independently.
         """
-        directories = validate_directories_exist(self._config.SOURCE_DIRECTORIES.value)
+        directories = self._config.SOURCE_DIRECTORIES.value
 
         echo("Phase 1/2: Counting files ...", color='cyan')
         directory_map = self._count_files(directories)
@@ -52,14 +52,9 @@ class ImageMatchDeduplicator:
         echo("Phase 2/2: Analyzing files ...", color='cyan')
         self.analyze_directories(directory_map)
 
-    def deduplicate_all(self,
-                        dry_run: bool = True,
-                        skip_analyze_phase: bool = False) -> DeduplicationResult:
+    def deduplicate_all(self, skip_analyze_phase: bool = False) -> DeduplicationResult:
         """
         Runs the full 6 deduplication phases.
-        :param dry_run: If true, no files will actually be removed.
-                        Note though that the signature store will be written even when using this option
-                        as the search wouldn't work without it.
         :param skip_analyze_phase: useful if you already did a dry run and want to do a real run afterwards
         :return: result of the operation
         """
@@ -68,23 +63,11 @@ class ImageMatchDeduplicator:
         import numpy
         numpy.warnings.filterwarnings('ignore')
 
-        self._deduplication_result = DeduplicationResult()
-
-        directories = validate_directories_exist(self._config.SOURCE_DIRECTORIES.value)
-        duplicate_target_directory = self._config.DEDUPLICATOR_DUPLICATES_TARGET_DIRECTORY.value
-        if duplicate_target_directory is not None:
-            if not os.path.exists(duplicate_target_directory):
-                raise ValueError(
-                    "Duplicate target folder does not exist: {}".format(duplicate_target_directory))
-            if not os.path.isdir(duplicate_target_directory):
-                raise NotADirectoryError(
-                    "Duplicate target folder is not a directory: {}".format(duplicate_target_directory))
-
+        directories = self._config.SOURCE_DIRECTORIES.value
         if len(directories) <= 0:
-            echo("No root directories to scan", color='yellow')
-            return self._deduplication_result
+            raise ValueError("No root directories to scan")
 
-        if dry_run:
+        if self._config.DRY_RUN.value:
             echo("==> DRY RUN! No files or folders will actually be deleted! <==", color='yellow')
 
         echo("Phase 1/6: Cleaning up database ...", color='cyan')
@@ -101,22 +84,12 @@ class ImageMatchDeduplicator:
             self.analyze_directories(directory_map)
 
         echo("Phase 4/6: Finding duplicate files ...", color='cyan')
-        self._processed_files = {}
-        self.deduplicate_directories(directory_map)
+        self.find_duplicates(directory_map)
 
-        if duplicate_target_directory:
-            echo("Phase 5/6: Moving duplicates ...", color='cyan')
-            self._move_files_marked_as_delete(duplicate_target_directory, dry_run)
-        else:
-            echo("Phase 5/6: Removing duplicates ...", color='cyan')
-            self._remove_files_marked_as_delete(dry_run)
+        # Phase 5/6: Move or Delete duplicate files
+        self.process_duplicates()
 
-        phase_6_text = "Phase 6/6: Removing empty folders"
-        if not self._config.REMOVE_EMPTY_FOLDERS.value:
-            echo(phase_6_text + " - Skipping", color='yellow')
-        else:
-            echo(phase_6_text, color='cyan')
-            self._remove_empty_folders(directories, self._config.RECURSIVE.value, dry_run)
+        self.remove_empty_folders()
 
         return self._deduplication_result
 
@@ -138,12 +111,14 @@ class ImageMatchDeduplicator:
                     threads=threads,
                     command=lambda root_dir, file_dir, file_path: self.__analyze_file(file_path))
 
-    def deduplicate_directories(self, directory_map: dict):
+    def find_duplicates(self, directory_map: dict):
         """
-        Deduplicates the given directories
+        Finds duplicates in the given directories
         :param directory_map: map of directory path -> file count
         """
-        existing_source_directories = validate_directories_exist(self._config.SOURCE_DIRECTORIES.value)
+        # reset result
+        self._deduplication_result = DeduplicationResult()
+        self._processed_files = {}
 
         for directory, file_count in directory_map.items():
             echo("Finding duplicates in '%s' ..." % directory)
@@ -152,7 +127,7 @@ class ImageMatchDeduplicator:
                     root_directory=directory,
                     threads=1,  # there seems to be no performance advantage in using multiple threads here
                     command=lambda root_dir, _, file_path: self._find_duplicates(
-                        existing_source_directories,
+                        self._config.SOURCE_DIRECTORIES.value,
                         root_dir,
                         file_path))
 
@@ -205,15 +180,16 @@ class ImageMatchDeduplicator:
                 finally:
                     self._increment_progress()
 
-    def _remove_empty_folders(self, directories: [], recursive: bool, dry_run: bool):
+    def _remove_empty_folders(self, directories: [], recursive: bool):
         """
         Searches for empty folders and removes them
         :param directories: directories to scan
         """
+        dry_run = self._config.DRY_RUN.value
+
         # remove empty folders
         for directory in directories:
             empty_folders = self._find_empty_folders(directory, recursive)
-
             self._remove_folders(directory, empty_folders, dry_run)
 
     def _count_files(self, directories: []) -> dict:
@@ -449,6 +425,19 @@ class ImageMatchDeduplicator:
 
         return duplicate_candidates
 
+    def process_duplicates(self):
+        """
+        Moves or removes duplicates based on the configuration
+        """
+        dry_run = self._config.DRY_RUN.value
+        duplicate_target_directory = self._config.DEDUPLICATOR_DUPLICATES_TARGET_DIRECTORY.value
+        if duplicate_target_directory:
+            echo("Phase 5/6: Moving duplicates ...", color='cyan')
+            self._move_files_marked_as_delete(duplicate_target_directory, dry_run)
+        else:
+            echo("Phase 5/6: Removing duplicates ...", color='cyan')
+            self._remove_files_marked_as_delete(dry_run)
+
     def _find_empty_folders(self, root_path: str, recursive: bool) -> [str]:
         """
         Finds empty folders within the given root_path
@@ -612,3 +601,11 @@ class ImageMatchDeduplicator:
         # whatever's left
         n_1 = max_length - n_2 - 3
         return '{0}...{1}'.format(text[:n_1], text[-n_2:])
+
+    def remove_empty_folders(self):
+        phase_6_text = "Phase 6/6: Removing empty folders"
+        if not self._config.REMOVE_EMPTY_FOLDERS.value:
+            echo(phase_6_text + " - Skipping", color='yellow')
+        else:
+            echo(phase_6_text, color='cyan')
+            self._remove_empty_folders(self._config.SOURCE_DIRECTORIES.value, self._config.RECURSIVE.value)

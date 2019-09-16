@@ -265,5 +265,6 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
         return self._store.es.delete_by_query(
             index=self._el_index,
             body=es_query,
+            conflicts="proceed",
             **(el6_params if self._el_version < 7 else {})
         )

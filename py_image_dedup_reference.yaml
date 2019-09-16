@@ -1,4 +1,5 @@
 py_image_dedup:
+  dry_run: True
   analysis:
     across_dirs: false
     file_extensions:

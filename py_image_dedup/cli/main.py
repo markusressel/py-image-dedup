@@ -46,16 +46,17 @@ def c_analyse():
 @cli.command(name="deduplicate")
 @click.option(*get_option_names(PARAM_SKIP_ANALYSE_PHASE), required=False, default=False, is_flag=True,
               help='When set the image analysis phase will be skipped. Useful if you already did a dry-run.')
-@click.option(*get_option_names(PARAM_DRY_RUN), required=False, default=False, is_flag=True,
+@click.option(*get_option_names(PARAM_DRY_RUN), required=False, default=None, is_flag=True,
               help='When set no files or folders will actually be deleted but a preview of '
                    'what WOULD be done will be printed.')
 def c_deduplicate(skip_analyse_phase: bool,
                   dry_run: bool):
     config = DeduplicatorConfig()
+    if dry_run is not None:
+        config.DRY_RUN.value = dry_run
     deduplicator = ImageMatchDeduplicator(config)
     result = deduplicator.deduplicate_all(
         skip_analyze_phase=skip_analyse_phase,
-        dry_run=dry_run
     )
 
     echo()
@@ -79,9 +80,12 @@ def _setup_file_observers(source_directories: List[str], event_handler):
 def c_daemon():
     config = DeduplicatorConfig()
 
-    processing_manager = ProcessingManager()
+    deduplicator = ImageMatchDeduplicator(config)
+    processing_manager = ProcessingManager(deduplicator)
     event_handler = EventHandler(processing_manager)
     observers = _setup_file_observers(config.SOURCE_DIRECTORIES.value, event_handler)
+
+    deduplicator.analyse_all()
 
     processing_manager.process_queue()
 

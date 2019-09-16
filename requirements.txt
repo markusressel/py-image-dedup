@@ -1,5 +1,5 @@
 setuptools
-container-app-conf>=1.5.1
+container-app-conf>=1.5.2
 requests
 scipy
 numpy

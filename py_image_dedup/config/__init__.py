@@ -1,5 +1,7 @@
 NODE_MAIN = "py_image_dedup"
 
+NODE_DRY_RUN = "dry_run"
+
 NODE_ELASTICSEARCH = "elasticsearch"
 
 NODE_HOST = "host"

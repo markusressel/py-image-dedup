@@ -13,7 +13,7 @@ from py_image_dedup.config import NODE_MAIN, NODE_RECURSIVE, NODE_SEARCH_ACROSS_
     NODE_FILE_EXTENSIONS, NODE_MAX_FILE_MODIFICATION_TIME_DIFF, NODE_SOURCE_DIRECTORIES, \
     NODE_ELASTICSEARCH, NODE_HOST, NODE_MAX_DISTANCE, NODE_ANALYSIS, \
     NODE_USE_EXIF_DATA, NODE_DEDUPLICATION, NODE_REMOVE_EMPTY_FOLDERS, NODE_DUPLICATES_TARGET_DIRECTORY, \
-    NODE_AUTO_CREATE_INDEX, NODE_THREADS
+    NODE_AUTO_CREATE_INDEX, NODE_THREADS, NODE_DRY_RUN
 
 
 class DeduplicatorConfig(Config):
@@ -21,6 +21,15 @@ class DeduplicatorConfig(Config):
     @property
     def config_file_names(self) -> [str]:
         return ["py_image_dedup"]
+
+    DRY_RUN = BoolConfigEntry(
+        description="If enabled no source file will be touched",
+        yaml_path=[
+            NODE_MAIN,
+            NODE_DRY_RUN
+        ],
+        default=True
+    )
 
     ELASTICSEARCH_HOST = StringConfigEntry(
         description="Hostname of the elasticsearch backend instance to use",
@@ -73,6 +82,7 @@ class DeduplicatorConfig(Config):
             NODE_ANALYSIS,
             NODE_SOURCE_DIRECTORIES
         ],
+        none_allowed=False,
         example=[
             "/home/myuser/pictures"
         ]
