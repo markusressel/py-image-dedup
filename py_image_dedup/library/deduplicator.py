@@ -40,6 +40,10 @@ class ImageMatchDeduplicator:
             setup_database=config.ELASTICSEARCH_AUTO_CREATE_INDEX.value
         )
 
+    def reset_result(self):
+        self._deduplication_result = DeduplicationResult()
+        self._processed_files = {}
+
     def analyse_all(self):
         """
         Runs the analysis phase independently.
@@ -84,7 +88,7 @@ class ImageMatchDeduplicator:
             self.analyze_directories(directory_map)
 
         echo("Phase 4/6: Finding duplicate files ...", color='cyan')
-        self.find_duplicates(directory_map)
+        self.find_duplicates_in_directories(directory_map)
 
         # Phase 5/6: Move or Delete duplicate files
         self.process_duplicates()
@@ -109,16 +113,14 @@ class ImageMatchDeduplicator:
                 self.__walk_directory_files(
                     root_directory=directory,
                     threads=threads,
-                    command=lambda root_dir, file_dir, file_path: self.__analyze_file(file_path))
+                    command=lambda root_dir, file_dir, file_path: self.analyze_file(file_path))
 
-    def find_duplicates(self, directory_map: dict):
+    def find_duplicates_in_directories(self, directory_map: dict):
         """
         Finds duplicates in the given directories
         :param directory_map: map of directory path -> file count
         """
-        # reset result
-        self._deduplication_result = DeduplicationResult()
-        self._processed_files = {}
+        self.reset_result()
 
         for directory, file_count in directory_map.items():
             echo("Finding duplicates in '%s' ..." % directory)
@@ -126,7 +128,7 @@ class ImageMatchDeduplicator:
                 self.__walk_directory_files(
                     root_directory=directory,
                     threads=1,  # there seems to be no performance advantage in using multiple threads here
-                    command=lambda root_dir, _, file_path: self._find_duplicates(
+                    command=lambda root_dir, _, file_path: self.find_duplicates_of_file(
                         self._config.SOURCE_DIRECTORIES.value,
                         root_dir,
                         file_path))
@@ -250,7 +252,7 @@ class ImageMatchDeduplicator:
                 if not self._config.RECURSIVE.value:
                     return
 
-    def __analyze_file(self, file_path: str):
+    def analyze_file(self, file_path: str):
         """
         Analyzes a single file
         :param file_path: the file path
@@ -265,7 +267,7 @@ class ImageMatchDeduplicator:
         finally:
             self._increment_progress()
 
-    def _find_duplicates(self, root_directories: [str], root_directory: str, reference_file_path: str):
+    def find_duplicates_of_file(self, root_directories: [str], root_directory: str, reference_file_path: str):
         """
         Finds duplicates and marks all but the best copy as "to-be-deleted".
         :param root_directories: valid root directories
@@ -571,9 +573,10 @@ class ImageMatchDeduplicator:
         for file_path in files_to_move:
             self._progress_bar.set_postfix_str(self._truncate_middle(file_path))
 
-            if dry_run:
-                pass
-            else:
+            try:
+                if dry_run:
+                    continue
+
                 # move file
                 if os.path.exists(file_path):
                     target_subdir = os.path.join(target_dir + file.get_containing_folder(file_path))
@@ -588,8 +591,11 @@ class ImageMatchDeduplicator:
 
                 # remove from persistence
                 self._persistence.remove(file_path)
-
-            self._increment_progress()
+            except Exception as ex:
+                logging.exception(ex)
+                # LOGGER.log(ex)
+            finally:
+                self._increment_progress()
 
     @staticmethod
     def _truncate_middle(text: str, max_length: int = 50):

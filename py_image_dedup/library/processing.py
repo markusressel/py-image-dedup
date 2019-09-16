@@ -1,10 +1,8 @@
-import logging
 import os
 from queue import Queue
 
 from py_image_dedup.config.deduplicator_config import DeduplicatorConfig
-from py_image_dedup.util import echo
-from py_image_dedup.util.file import get_files_count, get_containing_folder
+from py_image_dedup.util.file import get_files_count
 
 
 class ProcessingManager:
@@ -26,6 +24,8 @@ class ProcessingManager:
             while True:
                 path = self.queue.get(block=True)
                 if os.path.isdir(path):
+                    self.deduplicator.reset_result()
+
                     files_count = get_files_count(
                         path,
                         self.config.RECURSIVE.value,
@@ -36,28 +36,15 @@ class ProcessingManager:
                     }
 
                     self.deduplicator.analyze_directories(directory_map)
-                    self.deduplicator.find_duplicates(directory_map)
+                    self.deduplicator.find_duplicates_in_directories(directory_map)
                     self.deduplicator.process_duplicates()
 
                 if os.path.isfile(path):
-                    try:
-                        self.deduplicator._persistence.add(path)
-                    except Exception as e:
-                        logging.exception(e)
-                        echo("Error analyzing file '%s': %s" % (path, e))
-
-                    folder_path = get_containing_folder(path)
-
-                    files_count = get_files_count(
-                        folder_path,
-                        self.config.RECURSIVE.value,
-                        self.config.FILE_EXTENSION_FILTER.value
-                    )
-                    directory_map = {
-                        path: files_count
-                    }
-
-                    self.deduplicator.find_duplicates(directory_map)
+                    self.deduplicator._create_file_progressbar(1)
+                    self.deduplicator.reset_result()
+                    self.deduplicator.analyze_file(path)
+                    root_dir = os.path.commonpath([path] + self.config.SOURCE_DIRECTORIES.value)
+                    self.deduplicator.find_duplicates_of_file(self.config.SOURCE_DIRECTORIES.value, root_dir, path)
                     self.deduplicator.process_duplicates()
 
                 self.queued_paths.pop(path)
