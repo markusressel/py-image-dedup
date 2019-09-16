@@ -1,5 +1,3 @@
-from datetime import timedelta
-
 from py_image_dedup.config.deduplicator_config import DeduplicatorConfig
 from py_image_dedup.library.deduplicator import ImageMatchDeduplicator
 
@@ -25,7 +23,7 @@ deduplicator = ImageMatchDeduplicator(config)
 
 # max_file_modification_time_diff=1 * 1000 * 60 * 5,
 
-result = deduplicator.deduplicate(
+result = deduplicator.deduplicate_all(
     skip_analyze_phase=False,
     dry_run=True
 )

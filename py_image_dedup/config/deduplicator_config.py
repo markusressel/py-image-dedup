@@ -65,6 +65,9 @@ class DeduplicatorConfig(Config):
     SOURCE_DIRECTORIES = ListConfigEntry(
         description="Comma separated list of source paths to analyse and deduplicate.",
         item_type=DirectoryConfigEntry,
+        item_args={
+            "check_existence": True
+        },
         yaml_path=[
             NODE_MAIN,
             NODE_ANALYSIS,
@@ -103,6 +106,7 @@ class DeduplicatorConfig(Config):
             NODE_ANALYSIS,
             NODE_FILE_EXTENSIONS
         ],
+        none_allowed=False,
         default=[
             ".png",
             ".jpg",

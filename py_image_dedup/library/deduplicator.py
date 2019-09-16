@@ -17,7 +17,7 @@ from py_image_dedup.persistence import ImageSignatureStore
 from py_image_dedup.persistence.elasticsearchstorebackend import ElasticSearchStoreBackend
 from py_image_dedup.persistence.metadata_key import MetadataKey
 from py_image_dedup.util import file, echo
-from py_image_dedup.util.file import validate_directories_exist
+from py_image_dedup.util.file import validate_directories_exist, file_has_extension, get_files_count
 
 
 class ImageMatchDeduplicator:
@@ -50,7 +50,7 @@ class ImageMatchDeduplicator:
         directory_map = self._count_files(directories)
 
         echo("Phase 2/2: Analyzing files ...", color='cyan')
-        self._analyze_directories(directory_map)
+        self.analyze_directories(directory_map)
 
     def deduplicate_all(self,
                         dry_run: bool = True,
@@ -98,20 +98,11 @@ class ImageMatchDeduplicator:
             echo(phase_3_text + " - Skipping", color='yellow')
         else:
             echo(phase_3_text, color='cyan')
-            self._analyze_directories(directory_map)
+            self.analyze_directories(directory_map)
 
         echo("Phase 4/6: Finding duplicate files ...", color='cyan')
         self._processed_files = {}
-        for directory, file_count in directory_map.items():
-            echo("Finding duplicates in '%s' ..." % directory)
-            with self._create_file_progressbar(file_count):
-                self.__walk_directory_files(
-                    root_directory=directory,
-                    threads=1,  # there seems to be no performance advantage in using multiple threads here
-                    command=lambda root_dir, _, file_path: self._find_duplicates(
-                        directories,
-                        root_dir,
-                        file_path))
+        self.deduplicate_directories(directory_map)
 
         if duplicate_target_directory:
             echo("Phase 5/6: Moving duplicates ...", color='cyan')
@@ -129,7 +120,7 @@ class ImageMatchDeduplicator:
 
         return self._deduplication_result
 
-    def _analyze_directories(self, directory_map: dict):
+    def analyze_directories(self, directory_map: dict):
         """
         Analyzes all files, generates identifiers (if necessary) and stores them for later access
         """
@@ -146,6 +137,24 @@ class ImageMatchDeduplicator:
                     root_directory=directory,
                     threads=threads,
                     command=lambda root_dir, file_dir, file_path: self.__analyze_file(file_path))
+
+    def deduplicate_directories(self, directory_map: dict):
+        """
+        Deduplicates the given directories
+        :param directory_map: map of directory path -> file count
+        """
+        existing_source_directories = validate_directories_exist(self._config.SOURCE_DIRECTORIES.value)
+
+        for directory, file_count in directory_map.items():
+            echo("Finding duplicates in '%s' ..." % directory)
+            with self._create_file_progressbar(file_count):
+                self.__walk_directory_files(
+                    root_directory=directory,
+                    threads=1,  # there seems to be no performance advantage in using multiple threads here
+                    command=lambda root_dir, _, file_path: self._find_duplicates(
+                        existing_source_directories,
+                        root_dir,
+                        file_path))
 
     def _cleanup_database(self, directories: []):
         """
@@ -218,7 +227,11 @@ class ImageMatchDeduplicator:
             for directory in directories:
                 self._progress_bar.set_postfix_str(self._truncate_middle(directory))
 
-                file_count = self._get_files_count(directory)
+                file_count = get_files_count(
+                    directory,
+                    self._config.RECURSIVE.value,
+                    self._config.FILE_EXTENSION_FILTER.value
+                )
                 directory_map[directory] = file_count
 
                 self._increment_progress()
@@ -245,7 +258,7 @@ class ImageMatchDeduplicator:
                     file_path = os.path.abspath(os.path.join(root, file))
 
                     # skip file with unwanted file extension
-                    if not self.__file_extension_matches_filter(file):
+                    if not file_has_extension(file, self._config.FILE_EXTENSION_FILTER.value):
                         continue
 
                     # skip if not existent (probably already deleted)
@@ -260,23 +273,6 @@ class ImageMatchDeduplicator:
 
                 if not self._config.RECURSIVE.value:
                     return
-
-    def __file_extension_matches_filter(self, file: str) -> bool:
-        """
-        Checks if a file matches the filter set for this deduplicator
-        :param file: the file to check
-        :return: true if it matches, false otherwise
-        """
-        if not self._config.FILE_EXTENSION_FILTER.value:
-            return True
-
-        filename, file_extension = os.path.splitext(file)
-
-        if file_extension.lower() not in (ext.lower() for ext in self._config.FILE_EXTENSION_FILTER.value):
-            # skip file with unwanted file extension
-            return False
-        else:
-            return True
 
     def __analyze_file(self, file_path: str):
         """
@@ -502,21 +498,6 @@ class ImageMatchDeduplicator:
 
                 self._deduplication_result.add_removed_empty_folder(folder)
                 self._increment_progress()
-
-    def _get_files_count(self, directory: str) -> int:
-        """
-        :param directory: the directory to analyze
-        :return: number of files in the given directory that match the currently set file filter
-        """
-        files_count = 0
-        for r, d, files in os.walk(directory):
-            for file in files:
-                if self.__file_extension_matches_filter(file):
-                    files_count += 1
-            if not self._config.RECURSIVE.value:
-                break
-
-        return files_count
 
     def _increment_progress(self, increase_count_by: int = 1):
         """

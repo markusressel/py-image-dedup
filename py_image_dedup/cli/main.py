@@ -1,12 +1,12 @@
-import time
 from typing import List
 
 import click
-from watchdog.events import PatternMatchingEventHandler
 from watchdog.observers.inotify import InotifyObserver
 
 from py_image_dedup.config.deduplicator_config import DeduplicatorConfig
 from py_image_dedup.library.deduplicator import ImageMatchDeduplicator
+from py_image_dedup.library.file_watch import EventHandler
+from py_image_dedup.library.processing import ProcessingManager
 from py_image_dedup.util import echo
 
 IMAGE_HASH_MAP = {}
@@ -62,12 +62,8 @@ def c_deduplicate(skip_analyse_phase: bool,
     result.print_to_console()
 
 
-def _setup_file_observers(source_directories: List[str]):
+def _setup_file_observers(source_directories: List[str], event_handler):
     observers = []
-
-    # TODO: add "added" and "changed" files to analysis and deduplication queue
-    # TODO: remove "removed" files from the database (?)
-    event_handler = PatternMatchingEventHandler()
 
     for directory in source_directories:
         # observer = PollingObserver()
@@ -83,15 +79,15 @@ def _setup_file_observers(source_directories: List[str]):
 def c_daemon():
     config = DeduplicatorConfig()
 
-    observers = _setup_file_observers(config.SOURCE_DIRECTORIES.value)
+    processing_manager = ProcessingManager()
+    event_handler = EventHandler(processing_manager)
+    observers = _setup_file_observers(config.SOURCE_DIRECTORIES.value, event_handler)
 
-    try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        for observer in observers:
-            observer.stop()
-            observer.join()
+    processing_manager.process_queue()
+
+    for observer in observers:
+        observer.stop()
+        observer.join()
 
     # deduplicator = ImageMatchDeduplicator(config)
     # deduplicator.deduplicate_all(

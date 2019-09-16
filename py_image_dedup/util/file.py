@@ -1,4 +1,5 @@
 import os
+from typing import List
 
 from py_image_dedup.util import echo
 
@@ -45,3 +46,40 @@ def validate_directories_exist(directories: [str]) -> [str]:
             safe_directories.append(abs_path)
 
     return safe_directories
+
+
+def file_has_extension(file: str, extensions: List[str] or None) -> bool:
+    """
+    Checks if a file matches the filter set for this deduplicator
+    :param file: the file to check
+    :param extensions: allowed extensions
+    :return: true if it matches, false otherwise
+    """
+    if not extensions:
+        return True
+
+    filename, file_extension = os.path.splitext(file)
+
+    if file_extension.lower() not in (ext.lower() for ext in extensions):
+        # skip file with unwanted file extension
+        return False
+    else:
+        return True
+
+
+def get_files_count(directory: str, recursive: bool, file_extensions: List[str] or None) -> int:
+    """
+    :param directory: the directory to analyze
+    :param recursive: whether to search the directory recursively
+    :param file_extensions: file extensions to include
+    :return: number of files in the given directory that match the currently set file filter
+    """
+    files_count = 0
+    for r, d, files in os.walk(directory):
+        for file in files:
+            if file_has_extension(file, file_extensions):
+                files_count += 1
+        if not recursive:
+            break
+
+    return files_count
