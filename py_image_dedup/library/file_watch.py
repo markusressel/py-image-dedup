@@ -1,34 +1,64 @@
-from watchdog.events import FileSystemEventHandler
+import re
 
+from watchdog.events import FileSystemEventHandler, EVENT_TYPE_MODIFIED, EVENT_TYPE_MOVED, EVENT_TYPE_CREATED, \
+    EVENT_TYPE_DELETED
+
+from py_image_dedup.config.deduplicator_config import DeduplicatorConfig
 from py_image_dedup.library.processing import ProcessingManager
+from py_image_dedup.persistence import ImageSignatureStore
 from py_image_dedup.util import echo
 
 
 class EventHandler(FileSystemEventHandler):
+    config = DeduplicatorConfig()
 
-    def __init__(self, processing_manager: ProcessingManager):
+    directory_regex = re.compile(rf"^({'|'.join(config.SOURCE_DIRECTORIES.value)}).*$")
+    file_regex = re.compile(rf"^.*({'|'.join(config.FILE_EXTENSION_FILTER.value)})$", re.IGNORECASE)
+
+    def __init__(self, processing_manager: ProcessingManager, persistence: ImageSignatureStore):
         super().__init__()
         self.processing_manager = processing_manager
+        self.persistence = persistence
 
     def on_any_event(self, event):
-        echo("FileEvent: {} {}".format(event.event_type, event.src_path))
-
-    def on_created(self, event):
-        file_path = event.src_path
-        self.processing_manager.add(file_path)
-
-    def on_modified(self, event):
-        file_path = event.src_path
-        self.processing_manager.add(file_path)
-
-    def on_moved(self, event):
-        # TODO: remove old file(s) from database
-        old_path = event.src_path
-
-        if event.is_directory:
-            # TODO: remove data with path pattern and add the new folder
+        if not self._event_matches_filter(event):
             return
 
-    def on_deleted(self, event):
-        # TODO: remove item from database
-        pass
+        echo("FileSystemEvent: {} {} {}".format(event.event_type,
+                                                "directory" if event.is_directory else "file",
+                                                event.src_path))
+
+        _actions = {
+            EVENT_TYPE_CREATED: self.created,
+            EVENT_TYPE_MODIFIED: self.modified,
+            EVENT_TYPE_MOVED: self.moved,
+            EVENT_TYPE_DELETED: self.deleted,
+        }
+        _actions[event.event_type](event)
+
+    def created(self, event):
+        self._process(event.src_path)
+
+    def modified(self, event):
+        self._process(event.src_path)
+
+    def moved(self, event):
+        self._cleanup(event.src_path)
+        self._process(event.dest_path)
+
+    def deleted(self, event):
+        self._cleanup(event.src_path)
+
+    def _process(self, path):
+        self.processing_manager.add(path)
+
+    def _cleanup(self, path):
+        self.persistence.remove(path)
+
+    def _event_matches_filter(self, event) -> bool:
+        if event.is_directory:
+            return False
+        else:
+            result = bool(self.directory_regex.match(event.src_path))
+            result &= bool(self.file_regex.match(event.src_path))
+        return result

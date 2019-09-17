@@ -22,6 +22,9 @@ class ProcessingManager:
     def process_queue(self):
         try:
             while True:
+                # TODO: only handling file events individually seems painfully slow
+                # TODO: maybe try to aggregate multiple events that happen in quick succession into badges
+
                 path = self.queue.get(block=True)
                 if os.path.isdir(path):
                     self.deduplicator.reset_result()

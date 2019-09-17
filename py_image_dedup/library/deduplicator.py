@@ -75,7 +75,7 @@ class ImageMatchDeduplicator:
             echo("==> DRY RUN! No files or folders will actually be deleted! <==", color='yellow')
 
         echo("Phase 1/6: Cleaning up database ...", color='cyan')
-        self._cleanup_database(directories)
+        self.cleanup_database(directories)
 
         echo("Phase 2/6: Counting files ...", color='cyan')
         directory_map = self._count_files(directories)
@@ -133,7 +133,7 @@ class ImageMatchDeduplicator:
                         root_dir,
                         file_path))
 
-    def _cleanup_database(self, directories: []):
+    def cleanup_database(self, directories: []):
         """
         Removes database entries of files that don't exist on disk.
         Note that this cleanup will only consider files within one

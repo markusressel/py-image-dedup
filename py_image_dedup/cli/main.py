@@ -82,9 +82,12 @@ def c_daemon():
 
     deduplicator = ImageMatchDeduplicator(config)
     processing_manager = ProcessingManager(deduplicator)
-    event_handler = EventHandler(processing_manager)
+    event_handler = EventHandler(processing_manager, deduplicator._persistence)
     observers = _setup_file_observers(config.SOURCE_DIRECTORIES.value, event_handler)
 
+    directories = config.SOURCE_DIRECTORIES.value
+
+    deduplicator.cleanup_database(directories)
     deduplicator.analyse_all()
 
     processing_manager.process_queue()
