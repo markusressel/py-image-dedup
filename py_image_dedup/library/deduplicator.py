@@ -28,16 +28,12 @@ class ImageMatchDeduplicator:
     _processed_files: dict = {}
     _deduplication_result: DeduplicationResult = None
 
-    def __init__(self, config: DeduplicatorConfig):
-        """
-        :param config: configuration
-        """
-        self._config = config
+    def __init__(self):
         self._persistence: ImageSignatureStore = ElasticSearchStoreBackend(
-            host=config.ELASTICSEARCH_HOST.value,
-            use_exif_data=config.ANALYSIS_USE_EXIF_DATA.value,
-            max_dist=config.ELASTICSEARCH_MAX_DISTANCE.value,
-            setup_database=config.ELASTICSEARCH_AUTO_CREATE_INDEX.value
+            host=self._config.ELASTICSEARCH_HOST.value,
+            use_exif_data=self._config.ANALYSIS_USE_EXIF_DATA.value,
+            max_dist=self._config.ELASTICSEARCH_MAX_DISTANCE.value,
+            setup_database=self._config.ELASTICSEARCH_AUTO_CREATE_INDEX.value
         )
 
     def reset_result(self):

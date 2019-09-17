@@ -84,7 +84,7 @@ class DeduplicatorConfig(Config):
         ],
         none_allowed=False,
         example=[
-            "/home/myuser/pictures"
+            "/home/myuser/pictures/"
         ]
     )
 
@@ -164,5 +164,5 @@ class DeduplicatorConfig(Config):
         ],
         check_existence=True,
         default=None,
-        example="/home/myuser/pictures/duplicates"
+        example="/home/myuser/pictures/duplicates/"
     )

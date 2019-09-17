@@ -5,10 +5,10 @@ config = DeduplicatorConfig()
 config.DRY_RUN.value = True
 # config.ELASTICSEARCH_HOST.value = "192.168.2.24"
 config.SOURCE_DIRECTORIES.value = [
-    # r'/home/markus/py-image-dedup/dir1',
-    # r'/home/markus/py-image-dedup/dir2'
-    r'/mnt/data/py-dedup-test/Syncthing',
-    r'./tests/images'
+    # r'/home/markus/py-image-dedup/dir1/',
+    # r'/home/markus/py-image-dedup/dir2/'
+    r'/mnt/data/py-dedup-test/Syncthing/',
+    r'./tests/images/'
 ]
 config.SEARCH_ACROSS_ROOT_DIRS.value = True
 
@@ -17,10 +17,10 @@ config.ANALYSIS_USE_EXIF_DATA.value = False
 
 config.ELASTICSEARCH_MAX_DISTANCE.value = 0.30
 # config.MAX_FILE_MODIFICATION_TIME_DELTA.value = timedelta(minutes=5)
-config.DEDUPLICATOR_DUPLICATES_TARGET_DIRECTORY.value = "./duplicates"
+config.DEDUPLICATOR_DUPLICATES_TARGET_DIRECTORY.value = "./duplicates/"
 config.REMOVE_EMPTY_FOLDERS.value = True
 
-deduplicator = ImageMatchDeduplicator(config)
+deduplicator = ImageMatchDeduplicator()
 
 # max_file_modification_time_diff=1 * 1000 * 60 * 5,
 
