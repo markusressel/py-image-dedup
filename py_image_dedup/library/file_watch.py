@@ -12,7 +12,7 @@ from py_image_dedup.util import echo
 class EventHandler(FileSystemEventHandler):
     config = DeduplicatorConfig()
 
-    directory_regex = re.compile(rf"^({'|'.join(config.SOURCE_DIRECTORIES.value)}).*$")
+    directory_regex = re.compile(rf"^({'|'.join(list(map(str, config.SOURCE_DIRECTORIES.value)))}).*$")
     file_regex = re.compile(rf"^.*({'|'.join(config.FILE_EXTENSION_FILTER.value)})$", re.IGNORECASE)
 
     def __init__(self, processing_manager: ProcessingManager, persistence: ImageSignatureStore):

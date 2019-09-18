@@ -4,6 +4,8 @@ import os
 import shutil
 import sys
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+from typing import List
 
 import click
 from ordered_set import OrderedSet
@@ -17,7 +19,7 @@ from py_image_dedup.persistence import ImageSignatureStore
 from py_image_dedup.persistence.elasticsearchstorebackend import ElasticSearchStoreBackend
 from py_image_dedup.persistence.metadata_key import MetadataKey
 from py_image_dedup.util import file, echo
-from py_image_dedup.util.file import file_has_extension, get_files_count
+from py_image_dedup.util.file import get_files_count, file_has_extension
 
 
 class ImageMatchDeduplicator:
@@ -129,7 +131,7 @@ class ImageMatchDeduplicator:
                         root_dir,
                         file_path))
 
-    def cleanup_database(self, directories: []):
+    def cleanup_database(self, directories: List[Path]):
         """
         Removes database entries of files that don't exist on disk.
         Note that this cleanup will only consider files within one
@@ -150,35 +152,35 @@ class ImageMatchDeduplicator:
                     image_entry = entry['_source']
                     metadata = image_entry[MetadataKey.METADATA.value]
 
-                    file_path = image_entry[MetadataKey.PATH.value]
+                    file_path = Path(image_entry[MetadataKey.PATH.value])
 
-                    self._progress_bar.set_postfix_str(self._truncate_middle(file_path))
+                    self._progress_bar.set_postfix_str(self._truncate_middle(str(file_path)))
 
                     if MetadataKey.DATAMODEL_VERSION.value not in metadata:
-                        echo("Removing db entry with missing db model version number: %s" % file_path)
-                        self._persistence.remove(file_path)
+                        echo(f"Removing db entry with missing db model version number: {file_path}")
+                        self._persistence.remove(str(file_path))
                         continue
 
                     data_version = metadata[MetadataKey.DATAMODEL_VERSION.value]
                     if data_version != self._persistence.DATAMODEL_VERSION:
-                        echo("Removing db entry with old db model version: %s" % file_path)
-                        self._persistence.remove(file_path)
+                        echo(f"Removing db entry with old db model version: {file_path}")
+                        self._persistence.remove(str(file_path))
                         continue
 
                     # filter by files in at least one of the specified root directories
                     # this is necessary because the database might hold items for other paths already
                     # and those are not interesting to us
-                    if not file_path.startswith(tuple(directories)):
+                    if not any(root_dir in file_path.parents for root_dir in directories):
                         continue
 
-                    if not os.path.exists(file_path):
+                    if not file_path.exists():
                         echo("Removing db entry for missing file: %s" % file_path)
-                        self._persistence.remove(file_path)
+                        self._persistence.remove(str(file_path))
 
                 finally:
                     self._increment_progress()
 
-    def _remove_empty_folders(self, directories: [], recursive: bool):
+    def _remove_empty_folders(self, directories: List[Path], recursive: bool):
         """
         Searches for empty folders and removes them
         :param directories: directories to scan
@@ -190,7 +192,7 @@ class ImageMatchDeduplicator:
             empty_folders = self._find_empty_folders(directory, recursive)
             self._remove_folders(directory, empty_folders, dry_run)
 
-    def _count_files(self, directories: []) -> dict:
+    def _count_files(self, directories: List[Path]) -> dict:
         """
         Counts the amount of files to analyze (used in progress) and stores them in a map
         :return map "directory path" -> "directory file count"
@@ -212,31 +214,29 @@ class ImageMatchDeduplicator:
 
         return directory_map
 
-    def __walk_directory_files(self, root_directory: str, command, threads: int):
+    def __walk_directory_files(self, root_directory: Path, command, threads: int):
         """
         Walks through the files of the given directory
         :param root_directory: the directory to start with
         :param command: the method to execute for every file found
         :return: file_path -> identifier
         """
-        # to avoid ascii char problems
-        root_directory = str(root_directory)
-
         with ThreadPoolExecutor(max_workers=threads, thread_name_prefix="py-image-dedup-walker") as self.EXECUTOR:
-            for (root, dirs, files) in os.walk(root_directory):
+            for (root, dirs, files) in os.walk(str(root_directory)):
                 # root is the place you're listing
                 # dirs is a list of directories directly under root
                 # files is a list of files directly under root
+                root = Path(root)
 
                 for file in files:
-                    file_path = os.path.abspath(os.path.join(root, file))
+                    file_path = Path(root, file)
 
                     # skip file with unwanted file extension
-                    if not file_has_extension(file, self._config.FILE_EXTENSION_FILTER.value):
+                    if not file_has_extension(file_path, self._config.FILE_EXTENSION_FILTER.value):
                         continue
 
                     # skip if not existent (probably already deleted)
-                    if not os.path.exists(file_path):
+                    if not file_path.exists():
                         continue
 
                     try:
@@ -248,7 +248,7 @@ class ImageMatchDeduplicator:
                 if not self._config.RECURSIVE.value:
                     return
 
-    def analyze_file(self, file_path: str):
+    def analyze_file(self, file_path: Path):
         """
         Analyzes a single file
         :param file_path: the file path
@@ -256,14 +256,14 @@ class ImageMatchDeduplicator:
         self._progress_bar.set_postfix_str(self._truncate_middle(file_path))
 
         try:
-            self._persistence.add(file_path)
+            self._persistence.add(str(file_path))
         except Exception as e:
             logging.exception(e)
-            echo("Error analyzing file '%s': %s" % (file_path, e))
+            echo(f"Error analyzing file '{file_path}': {e}")
         finally:
             self._increment_progress()
 
-    def find_duplicates_of_file(self, root_directories: [str], root_directory: str, reference_file_path: str):
+    def find_duplicates_of_file(self, root_directories: List[Path], root_directory: Path, reference_file_path: Path):
         """
         Finds duplicates and marks all but the best copy as "to-be-deleted".
         :param root_directories: valid root directories
@@ -278,18 +278,22 @@ class ImageMatchDeduplicator:
             # already found a better candidate for this file
             return
 
-        duplicate_candidates = self._persistence.find_similar(reference_file_path)
+        duplicate_candidates = self._persistence.find_similar(str(reference_file_path))
 
         if self._config.SEARCH_ACROSS_ROOT_DIRS.value:
             # filter by files in at least one of the specified root directories
             # this is necessary because the database might hold items for other paths already
             # and those are not interesting to us
-            duplicate_candidates = [x for x in duplicate_candidates if
-                                    x[MetadataKey.PATH.value].startswith(tuple(root_directories))]
+            duplicate_candidates = [
+                candidate for candidate in duplicate_candidates if
+                any(root_dir in Path(candidate[MetadataKey.PATH.value]).parents for root_dir in root_directories)
+            ]
         else:
             # filter by files in the same root directory
-            duplicate_candidates = [x for x in duplicate_candidates if
-                                    x[MetadataKey.PATH.value].startswith(root_directory)]
+            duplicate_candidates = [
+                candidate for candidate in duplicate_candidates if
+                root_directory in Path(candidate[MetadataKey.PATH.value]).parents
+            ]
 
         if len(duplicate_candidates) <= 0:
             echo("No duplication candidates found in database for '%s'. "
@@ -299,7 +303,7 @@ class ImageMatchDeduplicator:
 
         if len(duplicate_candidates) <= 1:
             for candidate in duplicate_candidates:
-                candidate_path = candidate[MetadataKey.PATH.value]
+                candidate_path = Path(candidate[MetadataKey.PATH.value])
 
                 if candidate_path != reference_file_path:
                     echo("Unexpected unique duplication candidate '%s' for "
@@ -318,7 +322,7 @@ class ImageMatchDeduplicator:
         candidates_to_keep, candidates_to_delete = self._select_images_to_delete(duplicate_candidates)
         self._save_duplicates_for_result(candidates_to_keep, candidates_to_delete)
 
-    def _save_duplicates_for_result(self, files_to_keep: dict, duplicates: dict) -> None:
+    def _save_duplicates_for_result(self, files_to_keep: List[dict], duplicates: List[dict]) -> None:
         """
         Saves the comparison result for the final summary
 
@@ -328,14 +332,16 @@ class ImageMatchDeduplicator:
         self._deduplication_result.set_file_duplicates(files_to_keep, duplicates)
 
         for file_to_keep in files_to_keep:
-            self._deduplication_result.add_file_action(file_to_keep[MetadataKey.PATH.value], ActionEnum.NONE)
+            file_path = Path(file_to_keep[MetadataKey.PATH.value])
+            self._deduplication_result.add_file_action(file_path, ActionEnum.NONE)
 
         if self._config.DEDUPLICATOR_DUPLICATES_TARGET_DIRECTORY.value is None:
             action = ActionEnum.DELETE
         else:
             action = ActionEnum.MOVE
         for duplicate in duplicates:
-            self._deduplication_result.add_file_action(duplicate[MetadataKey.PATH.value], action)
+            file_path = Path(duplicate[MetadataKey.PATH.value])
+            self._deduplication_result.add_file_action(file_path, action)
 
     def _select_images_to_delete(self, duplicate_candidates: [{}]) -> tuple:
         """
@@ -436,7 +442,7 @@ class ImageMatchDeduplicator:
             echo("Phase 5/6: Removing duplicates ...", color='cyan')
             self._remove_files_marked_as_delete(dry_run)
 
-    def _find_empty_folders(self, root_path: str, recursive: bool) -> [str]:
+    def _find_empty_folders(self, root_path: Path, recursive: bool) -> [str]:
         """
         Finds empty folders within the given root_path
         :param root_path: folder to search in
@@ -444,7 +450,7 @@ class ImageMatchDeduplicator:
         result = OrderedSet()
 
         # traverse bottom-up to remove folders that are empty due to file removal
-        for root, directories, files in os.walk(root_path, topdown=False):
+        for root, directories, files in os.walk(str(root_path), topdown=False):
             abs_file_paths = list(map(lambda x: os.path.abspath(os.path.join(root, x)), files))
             abs_folder_paths = list(map(lambda x: os.path.abspath(os.path.join(root, x)), directories))
 
@@ -466,7 +472,7 @@ class ImageMatchDeduplicator:
 
         return result
 
-    def _remove_folders(self, root_path: str, folders: [str], dry_run: bool):
+    def _remove_folders(self, root_path: Path, folders: [str], dry_run: bool):
         """
         Function to remove empty folders
         :param root_path:
@@ -524,7 +530,7 @@ class ImageMatchDeduplicator:
         with self._create_file_progressbar(total_file_count=marked_files_count):
             self._delete_files(items_to_remove, dry_run)
 
-    def _move_files_marked_as_delete(self, target_dir: str, dry_run: bool):
+    def _move_files_marked_as_delete(self, target_dir: Path, dry_run: bool):
         """
         Moves files that were marked to be deleted in previous deduplication step to the target directory
         :param target_dir: the directory to move duplicates to
@@ -559,7 +565,7 @@ class ImageMatchDeduplicator:
 
             self._increment_progress()
 
-    def _move_files(self, files_to_move: [str], target_dir: str, dry_run: bool):
+    def _move_files(self, files_to_move: List[Path], target_dir: Path, dry_run: bool):
         """
         Moves files on disk
         :param files_to_move: list of absolute file paths
@@ -574,19 +580,18 @@ class ImageMatchDeduplicator:
                     continue
 
                 # move file
-                if os.path.exists(file_path):
-                    target_subdir = os.path.join(target_dir + file.get_containing_folder(file_path))
-                    target_file_path = os.path.join(target_subdir, file.get_file_name(file_path))
+                if not file_path.exists():
+                    continue
 
-                    if os.path.exists(target_file_path):
-                        raise ValueError("Cant move duplicate file because the target already exists: {}".format(
-                            target_file_path))
+                target_file = Path(str(target_dir), *file_path.parts[1:])
+                if target_file.exists():
+                    raise ValueError(f"Cant move duplicate file because the target already exists: {target_file}")
 
-                    os.makedirs(target_subdir, exist_ok=True)
-                    shutil.move(file_path, target_file_path)
+                target_file.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(file_path, target_file)
 
                 # remove from persistence
-                self._persistence.remove(file_path)
+                self._persistence.remove(str(file_path))
             except Exception as ex:
                 logging.exception(ex)
                 # LOGGER.log(ex)
@@ -594,7 +599,8 @@ class ImageMatchDeduplicator:
                 self._increment_progress()
 
     @staticmethod
-    def _truncate_middle(text: str, max_length: int = 50):
+    def _truncate_middle(text: any, max_length: int = 50):
+        text = str(text)
         if len(text) <= max_length:
             # string is already short-enough, fill up with spaces
             return text + ((max_length - len(text)) * " ")

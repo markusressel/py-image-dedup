@@ -7,7 +7,8 @@ config.DRY_RUN.value = True
 config.SOURCE_DIRECTORIES.value = [
     # r'/home/markus/py-image-dedup/dir1/',
     # r'/home/markus/py-image-dedup/dir2/'
-    r'/mnt/data/py-dedup-test/Syncthing/',
+    # r'/mnt/data/py-dedup-test/Syncthing/',
+    # r'/mnt/sdb2/Sample/',
     r'./tests/images/'
 ]
 config.SEARCH_ACROSS_ROOT_DIRS.value = True

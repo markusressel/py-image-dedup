@@ -1,3 +1,6 @@
+from pathlib import Path
+from typing import List
+
 import click
 from tabulate import tabulate
 
@@ -16,7 +19,7 @@ class DeduplicationResult:
         self._reference_files = {}
         self._file_duplicates = {}
 
-    def add_file_action(self, file_path: str, action: ActionEnum):
+    def add_file_action(self, file_path: Path, action: ActionEnum):
         if file_path in self.item_actions and self.item_actions[file_path] != action:
             raise ValueError("File path already in result "
                              "but with different action: {}, {}, {}".format(file_path,
@@ -47,21 +50,21 @@ class DeduplicationResult:
         """
         return self._removed_folders
 
-    def add_removed_empty_folder(self, folder: str):
+    def add_removed_empty_folder(self, folder: Path):
         """
         Adds a folder to the list of removed empty folders
         :param folder: the folder to add
         """
         self._removed_folders.add(folder)
 
-    def set_file_duplicates(self, reference_files: [dict], duplicate_files: []):
+    def set_file_duplicates(self, reference_files: List[dict], duplicate_files: []):
         """
         Set a list of files that are duplicates of the reference file
         :param reference_files: the file that is used as a baseline
         :param duplicate_files: duplicates of the reference_file
         """
         reference_file = reference_files[0]
-        reference_file_path = reference_file[MetadataKey.PATH.value]
+        reference_file_path = Path(reference_file[MetadataKey.PATH.value])
         self._reference_files[reference_file_path] = reference_file
         self._file_duplicates[reference_file_path] = reference_files[1:] + duplicate_files
 
@@ -89,7 +92,7 @@ class DeduplicationResult:
 
                 for item in [self._reference_files[reference_file_path]] + folder:
                     row = []
-                    file_path = item[MetadataKey.PATH.value]
+                    file_path = Path(item[MetadataKey.PATH.value])
                     distance = item[MetadataKey.DISTANCE.value]
                     distance_rounded = round(distance, 3)
                     file_size = item[MetadataKey.METADATA.value][MetadataKey.FILE_SIZE.value]

@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import List
 
 import click
@@ -38,8 +39,7 @@ def get_option_names(parameter: str) -> list:
 
 @cli.command(name="analyse")
 def c_analyse():
-    config = DeduplicatorConfig()
-    deduplicator = ImageMatchDeduplicator(config)
+    deduplicator = ImageMatchDeduplicator()
     deduplicator.analyse_all()
 
 
@@ -54,7 +54,7 @@ def c_deduplicate(skip_analyse_phase: bool,
     config = DeduplicatorConfig()
     if dry_run is not None:
         config.DRY_RUN.value = dry_run
-    deduplicator = ImageMatchDeduplicator(config)
+    deduplicator = ImageMatchDeduplicator()
     result = deduplicator.deduplicate_all(
         skip_analyze_phase=skip_analyse_phase,
     )
@@ -63,13 +63,13 @@ def c_deduplicate(skip_analyse_phase: bool,
     result.print_to_console()
 
 
-def _setup_file_observers(source_directories: List[str], event_handler):
+def _setup_file_observers(source_directories: List[Path], event_handler):
     observers = []
 
     for directory in source_directories:
         # observer = PollingObserver()
         observer = InotifyObserver()
-        observer.schedule(event_handler, directory, recursive=True)
+        observer.schedule(event_handler, str(directory), recursive=True)
         observer.start()
         observers.append(observer)
 
@@ -80,7 +80,7 @@ def _setup_file_observers(source_directories: List[str], event_handler):
 def c_daemon():
     config = DeduplicatorConfig()
 
-    deduplicator = ImageMatchDeduplicator(config)
+    deduplicator = ImageMatchDeduplicator()
     processing_manager = ProcessingManager(deduplicator)
     event_handler = EventHandler(processing_manager, deduplicator._persistence)
     observers = _setup_file_observers(config.SOURCE_DIRECTORIES.value, event_handler)

@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from typing import List
 
 
@@ -22,7 +23,7 @@ def get_containing_folder(file_path: str) -> str:
     return folder
 
 
-def file_has_extension(file: str, extensions: List[str] or None) -> bool:
+def file_has_extension(file: Path, extensions: List[str] or None) -> bool:
     """
     Checks if a file matches the filter set for this deduplicator
     :param file: the file to check
@@ -32,16 +33,14 @@ def file_has_extension(file: str, extensions: List[str] or None) -> bool:
     if not extensions:
         return True
 
-    filename, file_extension = os.path.splitext(file)
-
-    if file_extension.lower() not in (ext.lower() for ext in extensions):
+    if file.suffix not in (ext.lower() for ext in extensions):
         # skip file with unwanted file extension
         return False
     else:
         return True
 
 
-def get_files_count(directory: str, recursive: bool, file_extensions: List[str] or None) -> int:
+def get_files_count(directory: Path, recursive: bool, file_extensions: List[str] or None) -> int:
     """
     :param directory: the directory to analyze
     :param recursive: whether to search the directory recursively
@@ -49,8 +48,9 @@ def get_files_count(directory: str, recursive: bool, file_extensions: List[str] 
     :return: number of files in the given directory that match the currently set file filter
     """
     files_count = 0
-    for r, d, files in os.walk(directory):
+    for r, d, files in os.walk(str(directory)):
         for file in files:
+            file = Path(file)
             if file_has_extension(file, file_extensions):
                 files_count += 1
         if not recursive:
