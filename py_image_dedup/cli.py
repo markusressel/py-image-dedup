@@ -89,18 +89,15 @@ def c_daemon():
 
     deduplicator.cleanup_database(directories)
     deduplicator.analyse_all()
+    deduplicator.deduplicate_all(
+        skip_analyze_phase=True,
+    )
 
     processing_manager.process_queue()
 
     for observer in observers:
         observer.stop()
         observer.join()
-
-    # deduplicator = ImageMatchDeduplicator(config)
-    # deduplicator.deduplicate_all(
-    #     skip_analyze_phase=False,
-    #     dry_run=dry_run
-    # )
 
 
 if __name__ == '__main__':

@@ -1,4 +1,5 @@
 import re
+from pathlib import Path
 
 from watchdog.events import FileSystemEventHandler, EVENT_TYPE_MODIFIED, EVENT_TYPE_MOVED, EVENT_TYPE_CREATED, \
     EVENT_TYPE_DELETED
@@ -49,10 +50,10 @@ class EventHandler(FileSystemEventHandler):
     def deleted(self, event):
         self._cleanup(event.src_path)
 
-    def _process(self, path):
-        self.processing_manager.add(path)
+    def _process(self, path: str):
+        self.processing_manager.add(Path(path))
 
-    def _cleanup(self, path):
+    def _cleanup(self, path: str):
         self.persistence.remove(path)
 
     def _event_matches_filter(self, event) -> bool:
