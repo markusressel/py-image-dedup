@@ -15,7 +15,7 @@ py_image_dedup:
     # duplicates_target_directory:
     max_file_modification_time_diff: 0:01:40
   elasticsearch:
-    auto_create_index: false
+    auto_create_index: true
     host: 127.0.0.1
     max_distance: 0.1
   remove_empty_folders: false
