@@ -5,6 +5,7 @@ services:
 
 before_install:
   # - docker pull elasticsearch:7.3.2
+  - cp ./tests/py_image_dedup.yaml ./
   - docker run -d -p 9200:9200 -p 9300:9300 -e "discovery.type=single-node" docker.elastic.co/elasticsearch/elasticsearch:7.3.2
   - docker ps -a
 
@@ -20,4 +21,4 @@ install:
   #- pip install -r requirements.txt
 # command to run tests
 script:
-  - nosetests
+  - nosetests /home/travis/build/markusressel/py-image-dedup/tests
