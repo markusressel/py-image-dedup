@@ -91,7 +91,6 @@ class DeduplicationResult:
                 echo()
 
                 for item in [self._reference_files[reference_file_path]] + folder:
-                    row = []
                     file_path = Path(item[MetadataKey.PATH.value])
                     distance = item[MetadataKey.DISTANCE.value]
                     distance_rounded = round(distance, 3)
@@ -100,11 +99,13 @@ class DeduplicationResult:
                     pixel_count = item[MetadataKey.METADATA.value][MetadataKey.PIXELCOUNT.value]
 
                     action = self.item_actions.get(file_path, ActionEnum.NONE)
-                    row.append(action.name)
-                    row.append(file_path)
-                    row.append(distance_rounded)
-                    row.append(file_size_mb)
-                    row.append(pixel_count)
+                    row = [
+                        action.name,
+                        file_path,
+                        distance_rounded,
+                        file_size_mb,
+                        pixel_count
+                    ]
 
                     # apply action style
                     row = list(map(lambda x: str(click.style(str(x), action.color)), row))
