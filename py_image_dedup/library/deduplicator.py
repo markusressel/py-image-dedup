@@ -12,7 +12,7 @@ from ordered_set import OrderedSet
 from tqdm import tqdm
 
 from py_image_dedup import util
-from py_image_dedup.config.deduplicator_config import DeduplicatorConfig
+from py_image_dedup.config import DeduplicatorConfig
 from py_image_dedup.library import ActionEnum
 from py_image_dedup.library.deduplication_result import DeduplicationResult
 from py_image_dedup.persistence import ImageSignatureStore

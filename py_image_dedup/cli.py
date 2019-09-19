@@ -4,7 +4,7 @@ from typing import List
 import click
 from watchdog.observers.inotify import InotifyObserver
 
-from py_image_dedup.config.deduplicator_config import DeduplicatorConfig
+from py_image_dedup.config import DeduplicatorConfig
 from py_image_dedup.library.deduplicator import ImageMatchDeduplicator
 from py_image_dedup.library.file_watch import EventHandler
 from py_image_dedup.library.processing import ProcessingManager

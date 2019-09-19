@@ -1,7 +1,7 @@
 import os
 from queue import Queue
 
-from py_image_dedup.config.deduplicator_config import DeduplicatorConfig
+from py_image_dedup.config import DeduplicatorConfig
 from py_image_dedup.util.file import get_files_count
 
 

@@ -3,7 +3,7 @@ import re
 from watchdog.events import FileSystemEventHandler, EVENT_TYPE_MODIFIED, EVENT_TYPE_MOVED, EVENT_TYPE_CREATED, \
     EVENT_TYPE_DELETED
 
-from py_image_dedup.config.deduplicator_config import DeduplicatorConfig
+from py_image_dedup.config import DeduplicatorConfig
 from py_image_dedup.library.processing import ProcessingManager
 from py_image_dedup.persistence import ImageSignatureStore
 from py_image_dedup.util import echo

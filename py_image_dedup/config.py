@@ -9,11 +9,30 @@ from container_app_conf.entry.list import ListConfigEntry
 from container_app_conf.entry.string import StringConfigEntry
 from container_app_conf.entry.timedelta import TimeDeltaConfigEntry
 
-from py_image_dedup.config import NODE_MAIN, NODE_RECURSIVE, NODE_SEARCH_ACROSS_ROOT_DIRS, \
-    NODE_FILE_EXTENSIONS, NODE_MAX_FILE_MODIFICATION_TIME_DIFF, NODE_SOURCE_DIRECTORIES, \
-    NODE_ELASTICSEARCH, NODE_HOST, NODE_MAX_DISTANCE, NODE_ANALYSIS, \
-    NODE_USE_EXIF_DATA, NODE_DEDUPLICATION, NODE_REMOVE_EMPTY_FOLDERS, NODE_DUPLICATES_TARGET_DIRECTORY, \
-    NODE_AUTO_CREATE_INDEX, NODE_THREADS, NODE_DRY_RUN
+NODE_MAIN = "py_image_dedup"
+
+NODE_DRY_RUN = "dry_run"
+
+NODE_ELASTICSEARCH = "elasticsearch"
+
+NODE_HOST = "host"
+NODE_MAX_DISTANCE = "max_distance"
+NODE_AUTO_CREATE_INDEX = "auto_create_index"
+
+NODE_ANALYSIS = "analysis"
+
+NODE_SOURCE_DIRECTORIES = "source_directories"
+NODE_RECURSIVE = "recursive"
+NODE_SEARCH_ACROSS_ROOT_DIRS = "across_dirs"
+NODE_FILE_EXTENSIONS = "file_extensions"
+NODE_USE_EXIF_DATA = "use_exif_data"
+NODE_THREADS = "threads"
+
+NODE_DEDUPLICATION = "deduplication"
+
+NODE_MAX_FILE_MODIFICATION_TIME_DIFF = "max_file_modification_time_diff"
+NODE_REMOVE_EMPTY_FOLDERS = "remove_empty_folders"
+NODE_DUPLICATES_TARGET_DIRECTORY = "duplicates_target_directory"
 
 
 class DeduplicatorConfig(Config):
