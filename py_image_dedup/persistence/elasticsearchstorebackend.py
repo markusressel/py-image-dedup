@@ -90,18 +90,30 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
         if response.status_code == 200:
             return
         elif response.status_code == 404:
-            response = requests.put(
-                url='http://{}:{}/{}'.format(self.host, self.port, self._el_index),
-                json={
-                    "mappings": {
-                        "properties": {
-                            "path": {
-                                "type": "keyword",
-                                "ignore_above": 256
-                            }
-                        }
+
+            properties = {
+                "properties": {
+                    "path": {
+                        "type": "keyword",
+                        "ignore_above": 256
                     }
                 }
+            }
+
+            if self._el_version == 7:
+                json_data = {
+                    "mappings": properties
+                }
+            else:
+                json_data = {
+                    "mappings": {
+                        self._el_doctype: properties
+                    }
+                }
+
+            response = requests.put(
+                url='http://{}:{}/{}'.format(self.host, self.port, self._el_index),
+                json=json_data
             )
 
             response.raise_for_status()
