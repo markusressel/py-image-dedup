@@ -12,9 +12,8 @@ BYTE_IN_A_MB = 1048576
 
 
 class DeduplicationResult:
-    item_actions = {}
-
     def __init__(self):
+        self.item_actions = {}
         self._removed_folders = set()
         self._reference_files = {}
         self._file_duplicates = {}

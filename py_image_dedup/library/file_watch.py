@@ -6,7 +6,6 @@ from watchdog.events import FileSystemEventHandler, EVENT_TYPE_MODIFIED, EVENT_T
 
 from py_image_dedup.config import DeduplicatorConfig
 from py_image_dedup.library.processing import ProcessingManager
-from py_image_dedup.persistence import ImageSignatureStore
 from py_image_dedup.util import echo
 
 
@@ -16,10 +15,9 @@ class EventHandler(FileSystemEventHandler):
     directory_regex = re.compile(rf"^({'|'.join(list(map(str, config.SOURCE_DIRECTORIES.value)))}).*$")
     file_regex = re.compile(rf"^.*({'|'.join(config.FILE_EXTENSION_FILTER.value)})$", re.IGNORECASE)
 
-    def __init__(self, processing_manager: ProcessingManager, persistence: ImageSignatureStore):
+    def __init__(self, processing_manager: ProcessingManager):
         super().__init__()
         self.processing_manager = processing_manager
-        self.persistence = persistence
 
     def on_any_event(self, event):
         if not self._event_matches_filter(event):
@@ -54,7 +52,7 @@ class EventHandler(FileSystemEventHandler):
         self.processing_manager.add(Path(path))
 
     def _cleanup(self, path: str):
-        self.persistence.remove(path)
+        self.processing_manager.remove(Path(path))
 
     def _event_matches_filter(self, event) -> bool:
         if event.is_directory:
