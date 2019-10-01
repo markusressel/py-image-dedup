@@ -1,12 +1,13 @@
 setuptools
-container-app-conf>=1.4.0
+container-app-conf>=3.0.0
 requests
 scipy
 numpy
 image_match
-elasticsearch==6.4.0
+elasticsearch>=6
 tabulate
 tqdm
 click
 Pillow
 ordered-set
+watchdog>=0.9.0

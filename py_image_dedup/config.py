@@ -1,6 +1,6 @@
 from datetime import timedelta
 
-from container_app_conf import Config
+from container_app_conf import ConfigBase, EnvSource, YamlSource
 from container_app_conf.entry.bool import BoolConfigEntry
 from container_app_conf.entry.file import DirectoryConfigEntry
 from container_app_conf.entry.float import FloatConfigEntry
@@ -9,22 +9,55 @@ from container_app_conf.entry.list import ListConfigEntry
 from container_app_conf.entry.string import StringConfigEntry
 from container_app_conf.entry.timedelta import TimeDeltaConfigEntry
 
-from py_image_dedup.config import NODE_MAIN, NODE_RECURSIVE, NODE_SEARCH_ACROSS_ROOT_DIRS, \
-    NODE_FILE_EXTENSIONS, NODE_MAX_FILE_MODIFICATION_TIME_DIFF, NODE_SOURCE_DIRECTORIES, \
-    NODE_ELASTICSEARCH, NODE_HOST, NODE_MAX_DISTANCE, NODE_ANALYSIS, \
-    NODE_USE_EXIF_DATA, NODE_DEDUPLICATION, NODE_REMOVE_EMPTY_FOLDERS, NODE_DUPLICATES_TARGET_DIRECTORY, \
-    NODE_AUTO_CREATE_INDEX, NODE_THREADS
+NODE_MAIN = "py_image_dedup"
+
+NODE_DRY_RUN = "dry_run"
+
+NODE_ELASTICSEARCH = "elasticsearch"
+
+NODE_HOST = "host"
+NODE_MAX_DISTANCE = "max_distance"
+NODE_AUTO_CREATE_INDEX = "auto_create_index"
+
+NODE_ANALYSIS = "analysis"
+
+NODE_SOURCE_DIRECTORIES = "source_directories"
+NODE_RECURSIVE = "recursive"
+NODE_SEARCH_ACROSS_ROOT_DIRS = "across_dirs"
+NODE_FILE_EXTENSIONS = "file_extensions"
+NODE_USE_EXIF_DATA = "use_exif_data"
+NODE_THREADS = "threads"
+
+NODE_DEDUPLICATION = "deduplication"
+
+NODE_MAX_FILE_MODIFICATION_TIME_DIFF = "max_file_modification_time_diff"
+NODE_REMOVE_EMPTY_FOLDERS = "remove_empty_folders"
+NODE_DUPLICATES_TARGET_DIRECTORY = "duplicates_target_directory"
 
 
-class DeduplicatorConfig(Config):
+class DeduplicatorConfig(ConfigBase):
 
-    @property
-    def config_file_names(self) -> [str]:
-        return ["py_image_dedup"]
+    def __new__(cls, *args, **kwargs):
+        yaml_source = YamlSource("py_image_dedup")
+        yaml_source.load()
+        data_sources = [
+            EnvSource(),
+            yaml_source
+        ]
+        return super(DeduplicatorConfig, cls).__new__(cls, data_sources=data_sources)
+
+    DRY_RUN = BoolConfigEntry(
+        description="If enabled no source file will be touched",
+        key_path=[
+            NODE_MAIN,
+            NODE_DRY_RUN
+        ],
+        default=True
+    )
 
     ELASTICSEARCH_HOST = StringConfigEntry(
         description="Hostname of the elasticsearch backend instance to use",
-        yaml_path=[
+        key_path=[
             NODE_MAIN,
             NODE_ELASTICSEARCH,
             NODE_HOST
@@ -34,7 +67,7 @@ class DeduplicatorConfig(Config):
 
     ELASTICSEARCH_MAX_DISTANCE = FloatConfigEntry(
         description="Maximum signature distance [0..1] to query from elasticsearch backend.",
-        yaml_path=[
+        key_path=[
             NODE_MAIN,
             NODE_ELASTICSEARCH,
             NODE_MAX_DISTANCE
@@ -44,7 +77,7 @@ class DeduplicatorConfig(Config):
 
     ELASTICSEARCH_AUTO_CREATE_INDEX = BoolConfigEntry(
         description="Whether to automatically create an index in the target database.",
-        yaml_path=[
+        key_path=[
             NODE_MAIN,
             NODE_ELASTICSEARCH,
             NODE_AUTO_CREATE_INDEX
@@ -54,7 +87,7 @@ class DeduplicatorConfig(Config):
 
     ANALYSIS_USE_EXIF_DATA = BoolConfigEntry(
         description="Whether to scan for EXIF data or not.",
-        yaml_path=[
+        key_path=[
             NODE_MAIN,
             NODE_ANALYSIS,
             NODE_USE_EXIF_DATA
@@ -65,19 +98,23 @@ class DeduplicatorConfig(Config):
     SOURCE_DIRECTORIES = ListConfigEntry(
         description="Comma separated list of source paths to analyse and deduplicate.",
         item_type=DirectoryConfigEntry,
-        yaml_path=[
+        item_args={
+            "check_existence": True
+        },
+        key_path=[
             NODE_MAIN,
             NODE_ANALYSIS,
             NODE_SOURCE_DIRECTORIES
         ],
+        none_allowed=False,
         example=[
-            "/home/myuser/pictures"
+            "/home/myuser/pictures/"
         ]
     )
 
     RECURSIVE = BoolConfigEntry(
         description="When set all directories will be recursively analyzed.",
-        yaml_path=[
+        key_path=[
             NODE_MAIN,
             NODE_ANALYSIS,
             NODE_RECURSIVE
@@ -87,7 +124,7 @@ class DeduplicatorConfig(Config):
 
     SEARCH_ACROSS_ROOT_DIRS = BoolConfigEntry(
         description="When set duplicates will be found even if they are located in different root directories.",
-        yaml_path=[
+        key_path=[
             NODE_MAIN,
             NODE_ANALYSIS,
             NODE_SEARCH_ACROSS_ROOT_DIRS
@@ -98,11 +135,12 @@ class DeduplicatorConfig(Config):
     FILE_EXTENSION_FILTER = ListConfigEntry(
         description="Comma separated list of file extensions.",
         item_type=StringConfigEntry,
-        yaml_path=[
+        key_path=[
             NODE_MAIN,
             NODE_ANALYSIS,
             NODE_FILE_EXTENSIONS
         ],
+        none_allowed=False,
         default=[
             ".png",
             ".jpg",
@@ -112,7 +150,7 @@ class DeduplicatorConfig(Config):
 
     ANALYSIS_THREADS = IntConfigEntry(
         description="Number of threads to use for image analysis phase.",
-        yaml_path=[
+        key_path=[
             NODE_MAIN,
             NODE_ANALYSIS,
             NODE_THREADS
@@ -123,7 +161,7 @@ class DeduplicatorConfig(Config):
     MAX_FILE_MODIFICATION_TIME_DELTA = TimeDeltaConfigEntry(
         description="Maximum file modification date difference between multiple "
                     "duplicates to be considered the same image",
-        yaml_path=[
+        key_path=[
             NODE_MAIN,
             NODE_DEDUPLICATION,
             NODE_MAX_FILE_MODIFICATION_TIME_DIFF
@@ -134,7 +172,7 @@ class DeduplicatorConfig(Config):
 
     REMOVE_EMPTY_FOLDERS = BoolConfigEntry(
         description="Whether to remove empty folders or not.",
-        yaml_path=[
+        key_path=[
             NODE_MAIN,
             NODE_REMOVE_EMPTY_FOLDERS
         ],
@@ -143,12 +181,12 @@ class DeduplicatorConfig(Config):
 
     DEDUPLICATOR_DUPLICATES_TARGET_DIRECTORY = DirectoryConfigEntry(
         description="Directory path to move duplicates to instead of deleting them.",
-        yaml_path=[
+        key_path=[
             NODE_MAIN,
             NODE_DEDUPLICATION,
             NODE_DUPLICATES_TARGET_DIRECTORY
         ],
         check_existence=True,
         default=None,
-        example="/home/myuser/pictures/duplicates"
+        example="/home/myuser/pictures/duplicates/"
     )

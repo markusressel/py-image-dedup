@@ -1,3 +1,4 @@
+import random
 import unittest
 from random import shuffle
 from random import uniform
@@ -10,14 +11,19 @@ class SelectImagesToDeleteTest(TestBase):
 
     def test_select_images_to_delete__filter_max_mod_time_diff(self):
         keep = [
-            self._create_default_candidate(modification_date=100),
-            self._create_default_candidate(modification_date=-1000)  # file modification time is too far apart
+            self._create_default_candidate(modification_date=1500),
+            # file modification time is too far apart from the optimal candidate for these
+            self._create_default_candidate(modification_date=1001),
         ]
 
-        dont_keep = []
+        max_delta_seconds = int(self.config.MAX_FILE_MODIFICATION_TIME_DELTA.value.total_seconds())
         for i in range(50):
-            c = self._create_default_candidate(modification_date=0)
-            dont_keep.append(c)
+            c = self._create_default_candidate(modification_date=random.choice(range(0, 1500 - max_delta_seconds)))
+            keep.append(c)
+
+        dont_keep = [
+            self._create_default_candidate(modification_date=1450)
+        ]
 
         self._run_test(keep, dont_keep)
 
