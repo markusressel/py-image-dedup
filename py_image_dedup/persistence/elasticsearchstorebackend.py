@@ -13,14 +13,15 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
     DEFAULT_DATABASE_PORT = 9200
 
     DEFAULT_EL_INDEX = 'images'
-    DEFAULT_EL_DOC_TYPE = 'image'
+    DEFAULT_EL_DOC_TYPE_EL_6 = 'image'
+    DEFAULT_EL_DOC_TYPE_EL_7 = '_doc'
 
     def __init__(self,
                  host: str = DEFAULT_DATABASE_HOST,
                  port: int = DEFAULT_DATABASE_PORT,
                  el_version: int = None,
                  el_index: str = DEFAULT_EL_INDEX,
-                 el_doctype: str = DEFAULT_EL_DOC_TYPE,
+                 el_doctype: str = None,
                  max_dist: float = 0.03,
                  use_exif_data: bool = True,
                  setup_database: bool = True):
@@ -53,7 +54,11 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
             self._el_version = 6
 
         self._el_index = el_index
-        self._el_doctype = el_doctype
+        if el_doctype is not None:
+            self._el_doctype = el_doctype
+        else:
+            self._el_doctype = self.DEFAULT_EL_DOC_TYPE_EL_6 if self._el_version < 7 else self.DEFAULT_EL_DOC_TYPE_EL_7
+
         self.setup_database = setup_database
 
         if setup_database:
