@@ -73,7 +73,7 @@ setup(
     tests_require=test_requirements(),
     entry_points={
         'console_scripts': [
-            'py-image-dedup=py_image_dedup.cli.Main:cli'
+            'py-image-dedup = py_image_dedup.cli:cli'
         ]
     }
 )
