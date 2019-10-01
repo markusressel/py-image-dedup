@@ -1,10 +1,10 @@
 setuptools
-container-app-conf>=2.0.0
+container-app-conf>=3.0.0
 requests
 scipy
 numpy
 image_match
-elasticsearch==6.4.0
+elasticsearch>=6
 tabulate
 tqdm
 click

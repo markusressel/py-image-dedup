@@ -59,8 +59,6 @@ class ProcessingManager:
                     self.deduplicator.process_duplicates()
 
                 if path.is_file():
-                    # TODO: there is still some weird behaviour when moving a couple of files in a short amount of time
-
                     self.deduplicator._create_file_progressbar(1)
                     self.deduplicator.reset_result()
                     self.deduplicator.analyze_file(path)

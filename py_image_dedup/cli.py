@@ -93,6 +93,7 @@ def c_daemon():
         skip_analyze_phase=True,
     )
 
+    # this is a blocking call which will run indefinitely
     processing_manager.process_queue()
 
     for observer in observers:
