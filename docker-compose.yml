@@ -1,0 +1,41 @@
+version: '3.7'
+
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.3.2
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    environment:
+      - discovery.type=single-node
+    networks:
+      - docker-elk
+    restart: on-failure
+  py-image-dedup:
+    build: .
+    environment:
+      - PY_IMAGE_DEDUP_DRY_RUN=False
+      - PY_IMAGE_DEDUP_ANALYSIS_SOURCE_DIRECTORIES=/mnt/source/
+      - PY_IMAGE_DEDUP_ANALYSIS_RECURSIVE=True
+      - PY_IMAGE_DEDUP_ANALYSIS_ACROSS_DIRS=True
+      - PY_IMAGE_DEDUP_ANALYSIS_FILE_EXTENSIONS=.png,.jpg,.jpeg
+      - PY_IMAGE_DEDUP_ANALYSIS_THREADS=8
+      - PY_IMAGE_DEDUP_ANALYSIS_USE_EXIF_DATA=True
+      - PY_IMAGE_DEDUP_DEDUPLICATION_DUPLICATES_TARGET_DIRECTORY=/mnt/duplicates/
+      - PY_IMAGE_DEDUP_ELASTICSEARCH_AUTO_CREATE_INDEX=True
+      - PY_IMAGE_DEDUP_ELASTICSEARCH_HOST=elasticsearch
+      - PY_IMAGE_DEDUP_ELASTICSEARCH_MAX_DISTANCE=0.1
+      - PY_IMAGE_DEDUP_REMOVE_EMPTY_FOLDERS=False
+    volumes:
+      - /mnt/sdb2/Sample:/mnt/source
+      - /mnt/sdb2/py-image-dedup_duplicates:/mnt/duplicates
+    links:
+      - elasticsearch
+    networks:
+      - docker-elk
+    depends_on:
+      - elasticsearch
+    restart: on-failure
+networks:
+  docker-elk:
+    driver: bridge
