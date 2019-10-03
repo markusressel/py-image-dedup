@@ -12,3 +12,4 @@ click
 Pillow
 ordered-set
 watchdog>=0.9.0
+prometheus-client

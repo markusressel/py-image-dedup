@@ -36,6 +36,10 @@ NODE_MAX_FILE_MODIFICATION_TIME_DIFF = "max_file_modification_time_diff"
 NODE_REMOVE_EMPTY_FOLDERS = "remove_empty_folders"
 NODE_DUPLICATES_TARGET_DIRECTORY = "duplicates_target_directory"
 
+NODE_STATS = "stats"
+NODE_ENABLED = "enabled"
+NODE_PORT = "port"
+
 
 class DeduplicatorConfig(ConfigBase):
 
@@ -191,4 +195,24 @@ class DeduplicatorConfig(ConfigBase):
         check_existence=True,
         default=None,
         example="/home/myuser/pictures/duplicates/"
+    )
+
+    STATS_ENABLED = BoolConfigEntry(
+        description="Whether to enable prometheus statistics or not.",
+        key_path=[
+            NODE_MAIN,
+            NODE_STATS,
+            NODE_ENABLED
+        ],
+        default=True
+    )
+
+    STATS_PORT = IntConfigEntry(
+        description="The port to expose statistics on.",
+        key_path=[
+            NODE_MAIN,
+            NODE_STATS,
+            NODE_PORT
+        ],
+        default=8000
     )

@@ -6,6 +6,7 @@ from watchdog.events import FileSystemEventHandler, EVENT_TYPE_MODIFIED, EVENT_T
 
 from py_image_dedup.config import DeduplicatorConfig
 from py_image_dedup.library.processing import ProcessingManager
+from py_image_dedup.stats import FILE_EVENT_COUNT
 from py_image_dedup.util import echo
 
 
@@ -22,6 +23,8 @@ class EventHandler(FileSystemEventHandler):
     def on_any_event(self, event):
         if not self._event_matches_filter(event):
             return
+
+        FILE_EVENT_COUNT.labels(type=event.event_type).inc()
 
         echo("FileSystemEvent: {} {} {}".format(event.event_type,
                                                 "directory" if event.is_directory else "file",
