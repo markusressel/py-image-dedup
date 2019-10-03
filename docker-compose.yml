@@ -14,6 +14,7 @@ services:
   py-image-dedup:
     build: .
     environment:
+      # change configuration to your liking
       - PY_IMAGE_DEDUP_DRY_RUN=False
       - PY_IMAGE_DEDUP_ANALYSIS_SOURCE_DIRECTORIES=/mnt/source/
       - PY_IMAGE_DEDUP_ANALYSIS_RECURSIVE=True
@@ -27,7 +28,9 @@ services:
       - PY_IMAGE_DEDUP_ELASTICSEARCH_MAX_DISTANCE=0.1
       - PY_IMAGE_DEDUP_REMOVE_EMPTY_FOLDERS=False
     volumes:
+      # change this to your local source directory
       - /mnt/sdb2/Sample:/mnt/source
+      # change this to your local duplicates directory
       - /mnt/sdb2/py-image-dedup_duplicates:/mnt/duplicates
     links:
       - elasticsearch
