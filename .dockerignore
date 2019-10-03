@@ -1,0 +1,6 @@
+.github
+.pytest_cache
+duplicates
+mnt
+venv
+*.yaml

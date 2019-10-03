@@ -18,6 +18,8 @@ from py_image_dedup.library.deduplication_result import DeduplicationResult
 from py_image_dedup.persistence import ImageSignatureStore
 from py_image_dedup.persistence.elasticsearchstorebackend import ElasticSearchStoreBackend
 from py_image_dedup.persistence.metadata_key import MetadataKey
+from py_image_dedup.stats import DUPLICATE_ACTION_MOVE_COUNT, DUPLICATE_ACTION_DELETE_COUNT, ANALYSIS_TIME, \
+    FIND_DUPLICATES_TIME
 from py_image_dedup.util import file, echo
 from py_image_dedup.util.file import get_files_count, file_has_extension
 
@@ -248,6 +250,7 @@ class ImageMatchDeduplicator:
                 if not self._config.RECURSIVE.value:
                     return
 
+    @ANALYSIS_TIME.time()
     def analyze_file(self, file_path: Path):
         """
         Analyzes a single file
@@ -263,6 +266,7 @@ class ImageMatchDeduplicator:
         finally:
             self._increment_progress()
 
+    @FIND_DUPLICATES_TIME.time()
     def find_duplicates_of_file(self, root_directories: List[Path], root_directory: Path, reference_file_path: Path):
         """
         Finds duplicates and marks all but the best copy as "to-be-deleted".
@@ -563,6 +567,8 @@ class ImageMatchDeduplicator:
                 # remove from persistence
                 self._persistence.remove(file_path)
 
+                DUPLICATE_ACTION_DELETE_COUNT.inc()
+
             self._increment_progress()
 
     def _move_files(self, files_to_move: List[Path], target_dir: Path, dry_run: bool):
@@ -592,6 +598,8 @@ class ImageMatchDeduplicator:
 
                 # remove from persistence
                 self._persistence.remove(str(file_path))
+
+                DUPLICATE_ACTION_MOVE_COUNT.inc()
             except Exception as ex:
                 logging.exception(ex)
                 # LOGGER.log(ex)

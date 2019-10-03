@@ -81,6 +81,11 @@ def _setup_file_observers(source_directories: List[Path], event_handler):
 def c_daemon():
     config = DeduplicatorConfig()
 
+    if config.STATS_ENABLED.value:
+        from prometheus_client import start_http_server
+        # start prometheus server
+        start_http_server(config.STATS_PORT.value)
+
     deduplicator = ImageMatchDeduplicator()
     processing_manager = ProcessingManager(deduplicator)
     event_handler = EventHandler(processing_manager)
