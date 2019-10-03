@@ -1,4 +1,5 @@
 import logging
+import time
 
 import requests
 from elasticsearch import Elasticsearch
@@ -40,8 +41,12 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
         self.host = self.DEFAULT_DATABASE_HOST if host is None else host
         self.port = self.DEFAULT_DATABASE_PORT if port is None else port
 
+        detected_version = None
+        while detected_version is None:
+            time.sleep(2)
+            detected_version = self._detect_db_version()
+
         self._el_version = el_version
-        detected_version = self._detect_db_version()
         if self._el_version is not None and detected_version is not None and self._el_version != detected_version:
             raise AssertionError(
                 "Detected database version ({}) does not match expected version ({})".format(detected_version,
@@ -76,6 +81,7 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
                     {'host': self.host, 'port': self.port}
                 ]
             ),
+            el_version=self._el_version,
             index=self._el_index,
             doc_type=self._el_doctype,
             distance_cutoff=max_dist

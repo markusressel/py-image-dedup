@@ -1,9 +1,10 @@
 setuptools
-container-app-conf>=3.0.0
+pip>=19.2.3
+container-app-conf>=3.0.2
 requests
 scipy
 numpy
-image_match
+image_match @ git+https://github.com/markusressel/image-match.git@2.0.0#egg=image_match
 elasticsearch>=6
 tabulate
 tqdm
