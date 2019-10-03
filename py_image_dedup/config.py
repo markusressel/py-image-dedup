@@ -1,6 +1,6 @@
 from datetime import timedelta
 
-from container_app_conf import ConfigBase, EnvSource, YamlSource
+from container_app_conf import ConfigBase
 from container_app_conf.entry.bool import BoolConfigEntry
 from container_app_conf.entry.file import DirectoryConfigEntry
 from container_app_conf.entry.float import FloatConfigEntry
@@ -8,6 +8,8 @@ from container_app_conf.entry.int import IntConfigEntry
 from container_app_conf.entry.list import ListConfigEntry
 from container_app_conf.entry.string import StringConfigEntry
 from container_app_conf.entry.timedelta import TimeDeltaConfigEntry
+from container_app_conf.source.env_source import EnvSource
+from container_app_conf.source.yaml_source import YamlSource
 
 NODE_MAIN = "py_image_dedup"
 
