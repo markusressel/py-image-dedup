@@ -3,7 +3,7 @@ container-app-conf>=3.0.2
 requests
 scipy
 numpy
-image_match @ git+https://github.com/markusressel/image-match.git#egg=image_match
+image_match @ git+https://github.com/markusressel/image-match.git@2.0.0#egg=image_match
 elasticsearch>=6
 tabulate
 tqdm
