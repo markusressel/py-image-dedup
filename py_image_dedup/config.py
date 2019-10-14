@@ -45,7 +45,6 @@ class DeduplicatorConfig(ConfigBase):
 
     def __new__(cls, *args, **kwargs):
         yaml_source = YamlSource("py_image_dedup")
-        yaml_source.load()
         data_sources = [
             EnvSource(),
             yaml_source
@@ -112,7 +111,7 @@ class DeduplicatorConfig(ConfigBase):
             NODE_ANALYSIS,
             NODE_SOURCE_DIRECTORIES
         ],
-        none_allowed=False,
+        required=True,
         example=[
             "/home/myuser/pictures/"
         ]
@@ -146,7 +145,7 @@ class DeduplicatorConfig(ConfigBase):
             NODE_ANALYSIS,
             NODE_FILE_EXTENSIONS
         ],
-        none_allowed=False,
+        required=True,
         default=[
             ".png",
             ".jpg",
