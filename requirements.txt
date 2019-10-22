@@ -1,6 +1,6 @@
 setuptools
 pip>=19.2.3
-container-app-conf>=4.1.0
+container-app-conf>=4.2.2
 requests
 scipy
 numpy
