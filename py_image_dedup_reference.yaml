@@ -17,5 +17,10 @@ py_image_dedup:
   elasticsearch:
     auto_create_index: true
     host: 127.0.0.1
+    port: 9200
+    index: images
     max_distance: 0.1
   remove_empty_folders: false
+  stats:
+    enabled: true
+    port: 8000
