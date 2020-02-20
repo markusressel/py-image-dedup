@@ -18,10 +18,10 @@ click = "*"
 tabulate = ">=0.8.3"
 tqdm = "*"
 prometheus-client = "*"
-image-match = {editable = true,git = "https://github.com/markusressel/image-match.git",ref = "2.0.0"}
+image-match = {editable = true,git = "https://github.com/markusressel/image-match.git",ref = "2.0.1"}
 
 [dev-packages]
 pytest = "*"
 
 [requires]
-python_version = "3.6"
+python_version = "3.8"

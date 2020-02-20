@@ -1,11 +1,11 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "996524a5dcaf6095c3fceb2c3daf24be6d932d05157a88ddcae39968ed6ccfc5"
+            "sha256": "893c416fb4b90053c34f34366d6fa7fdb850bac0bc1290ad7c0e442806cbabb7"
         },
         "pipfile-spec": 6,
         "requires": {
-            "python_version": "3.6"
+            "python_version": "3.8"
         },
         "sources": [
             {
@@ -78,7 +78,7 @@
         "image-match": {
             "editable": true,
             "git": "https://github.com/markusressel/image-match.git",
-            "ref": "6d30bc48e97056fd1f13aa87d5fe89380688dba0"
+            "ref": "881e5690859798f3d99e9aa933a055a3ec5f82bc"
         },
         "imageio": {
             "hashes": [

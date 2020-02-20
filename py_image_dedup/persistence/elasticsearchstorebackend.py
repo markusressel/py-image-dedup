@@ -166,7 +166,7 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
             }
         }
 
-        query_result = self._store.es.search(self._el_index, body=es_query)
+        query_result = self._store.es.search(index=self._el_index, body=es_query)
 
         hits = query_result['hits']['hits']
 
@@ -186,7 +186,7 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
             'query': {'match_all': {}}
         }
 
-        item_count = self._store.es.search(self._el_index, body=es_query, size=0)['hits']['total']
+        item_count = self._store.es.search(index=self._el_index, body=es_query, size=0)['hits']['total']
         if self._el_version >= 7:
             item_count = item_count['value']
 
@@ -235,7 +235,7 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
             'query': {'match': search_dict}
         }
 
-        return self._store.es.search(self._el_index, body=es_query)
+        return self._store.es.search(index=self._el_index, body=es_query)
 
     def remove(self, image_file_path: str) -> None:
         # NOTE: this query will only work if the index has been created
