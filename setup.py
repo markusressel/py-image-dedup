@@ -36,12 +36,21 @@ def readme() -> [str]:
         return f.read()
 
 
-def install_requirements() -> [str]:
-    return read_requirements_file("requirements.txt")
+def locked_requirements(section):
+    """
+    Look through the 'Pipfile.lock' to fetch requirements by section.
+    """
+    import json
 
+    with open('Pipfile.lock') as pip_file:
+        pipfile_json = json.load(pip_file)
 
-def test_requirements() -> [str]:
-    return read_requirements_file("test_requirements.txt")
+    if section not in pipfile_json:
+        print("{0} section missing from Pipfile.lock".format(section))
+        return []
+
+    return [package + detail.get('version', "")
+            for package, detail in pipfile_json[section].items()]
 
 
 def read_requirements_file(file_name: str):
@@ -69,8 +78,8 @@ setup(
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7'
     ],
-    install_requires=install_requirements(),
-    tests_require=test_requirements(),
+    install_requires=locked_requirements('default'),
+    tests_require=locked_requirements('develop'),
     entry_points={
         'console_scripts': [
             'py-image-dedup = py_image_dedup.cli:cli'
