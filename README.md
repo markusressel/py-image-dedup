@@ -3,7 +3,7 @@
 **py-image-dedup** is a tool to sort out or remove duplicates within a photo library. 
 Unlike most other solutions, **py-image-dedup** 
 intentionally uses an approximate image comparison to also detect 
-duplicates of images that differ in resolution, color or other minor details.
+duplicates of images that slightly differ in resolution, color or other minor details.
 
 It is build upon [Image-Match](https://github.com/ascribe/image-match) a very popular library to compute
 a pHash for an image and store the result in an ElasticSearch backend for very high scalability.
@@ -37,9 +37,9 @@ is advised to get the best performance.
 Since we might already have a previous version of this file in the database 
 before analysing a given file the file modification time is compared to the
 given one. If the database content seems to be still correct the signature 
-for this file will **not** be recalculated. Because of this supsequent
-runs will be much faster. There still has to happen some file access though 
-so it is probably limited by that. 
+for this file will **not** be recalculated. Because of this, subsequent
+runs will be much faster. There still has to happen some file access though,
+so it is probably limited by that.
  
 ### Phase 4 - Finding duplicates
 
@@ -65,12 +65,12 @@ available version of all candidates.
 ### Phase 5 - Removing duplicates
 
 All but the best version of duplicate candidates identified in the previous
-phase are now deleted from the file system (if you did not specify `--dry-run` of course).  
+phase are now deleted from the file system (if you didn't specify `--dry-run` of course).  
  
 ### Phase 6 - Removing empty folders (Optional)
 
 In the last phase, folders that are empty due to the deduplication 
-process are deleted.
+process are deleted (if turned on in configuration).
 
 # How to use
 
@@ -94,52 +94,21 @@ for an example in this repo.
 
 ## Setup elasticsearch backend
 
-### Elasticsearch version
-
-This library requires elasticsearch version 5 or later. Sadly the
-[Image-Match](https://github.com/ascribe/image-match) library 
-specifies version 2 for no apparent reason, so you have to remove this
-requirement from it's requirements.
-
-Because of this **py-image-dedup** might exit with an **error on first install**.
-
-To fix this find the installed files of the image-match library, f.ex.
-
-```shell
-../venv/lib/python3.6/site-packages/image_match-1.1.2-py3.6.egg-info/requires.txt    
-```
-
-and remove the second line
-```shell
-elasticsearch<2.4,>=2.3
-```
-
-from the file.  
-After that **py-image-dedup** should install and run as expected.
-
-### Set up the index
-
 Since this library is based on [Image-Match](https://github.com/ascribe/image-match) 
 you need a running elasticsearch instance for efficient storing and 
 querying of image signatures.
 
-**py-image-dedup** uses a single index called `images` that you can create using the following command:
+### Elasticsearch version
 
-```shell
-curl -X PUT "192.168.2.24:9200/images?pretty" -H "Content-Type: application/json" -d "
-{
-  \"mappings\": {
-    \"image\": {
-      \"properties\": {
-        \"path\": {
-          \"type\": \"keyword\",
-          \"ignore_above\": 256
-        }
-      }
-    }
-  }
-}
-```
+This library requires elasticsearch version 5 or later. Sadly the
+[Image-Match](https://github.com/ascribe/image-match) library still 
+specifies version 2, so [a fork of the original project](https://github.com/markusressel/image-match)
+ is used instead.
+
+### Set up the index
+
+**py-image-dedup** uses a single index (called `images` by default).
+When configured, this index will be created automatically for you. 
 
 ## Command line usage
 
@@ -151,13 +120,21 @@ py-image-dedup deduplicate --help
 
 Have a look at the help output to see how you can customize it.
 
+### Daemon
+
+**py-image-dedup** has a built in daemon that allows you to continuously
+monitor your source directories and deduplicate them on the fly.
+
+When running the daemon (and enabled in configuration) a prometheus reporter
+is used to allow you to gather some statistical insights.
+
 ## Dry run
 
 To analyze images and get an overview of what images would be deleted 
 be sure to make a dry run first.
 
 ```shell
-py-image-dedup -d "/home/mydir" --dry-run
+py-image-dedup deduplicate --dry-run
 ```
 
 
@@ -190,7 +167,7 @@ pkg install py27-matplotlib  # this has a LOT of dependencies
 
 ### Encoding issues
 
-When using the pythin library `click` on FreeBSD you might run into
+When using the python library `click` on FreeBSD you might run into
 encoding issues. To mitigate this change your locale from `ANSII` to `UTF-8`
 if possible.
 
