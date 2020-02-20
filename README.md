@@ -122,6 +122,9 @@ Have a look at the help output to see how you can customize it.
 
 ### Daemon
 
+**CAUTION!** This feature is still very much a work in progress. 
+**Always** have a backup of your data! 
+
 **py-image-dedup** has a built in daemon that allows you to continuously
 monitor your source directories and deduplicate them on the fly.
 
