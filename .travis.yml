@@ -4,21 +4,19 @@ services:
   - docker
 
 before_install:
-  # - docker pull elasticsearch:7.3.2
-  - docker run -d -p 9200:9200 -p 9300:9300 -e "discovery.type=single-node" docker.elastic.co/elasticsearch/elasticsearch:7.3.2
+  # - docker pull elasticsearch:7.5.1
+  - docker run -d -p 9200:9200 -p 9300:9300 -e "discovery.type=single-node" docker.elastic.co/elasticsearch/elasticsearch:7.5.1
   - docker ps -a
 
 python:
   - "3.6"
-# not yet working (because of scikit-image dependency)
-#  - "3.7"
-#  - "3.7-dev" # 3.7 development branch
-#  - "nightly" # currently points to 3.7-dev
-# command to install dependencies
+  - "3.7"
+  - "3.8"
 install:
   - pip install --upgrade pip
+  - pip install pipenv
+  - pipenv install --system --deploy
   - pip install --no-cache-dir .
-  #- pip install -r requirements.txt
 # command to run tests
 before_script:
   - cd tests

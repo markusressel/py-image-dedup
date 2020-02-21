@@ -10,6 +10,7 @@ from container_app_conf.entry.string import StringConfigEntry
 from container_app_conf.entry.timedelta import TimeDeltaConfigEntry
 from container_app_conf.source.env_source import EnvSource
 from container_app_conf.source.yaml_source import YamlSource
+from py_range_parse import Range
 
 NODE_MAIN = "py_image_dedup"
 
@@ -20,6 +21,7 @@ NODE_ELASTICSEARCH = "elasticsearch"
 NODE_HOST = "host"
 NODE_MAX_DISTANCE = "max_distance"
 NODE_AUTO_CREATE_INDEX = "auto_create_index"
+NODE_INDEX = "index"
 
 NODE_ANALYSIS = "analysis"
 
@@ -70,6 +72,17 @@ class DeduplicatorConfig(ConfigBase):
         default="127.0.0.1"
     )
 
+    ELASTICSEARCH_PORT = IntConfigEntry(
+        description="Hostname of the elasticsearch backend instance to use",
+        key_path=[
+            NODE_MAIN,
+            NODE_ELASTICSEARCH,
+            NODE_PORT
+        ],
+        range=Range(1, 65535),
+        default=9200
+    )
+
     ELASTICSEARCH_MAX_DISTANCE = FloatConfigEntry(
         description="Maximum signature distance [0..1] to query from elasticsearch backend.",
         key_path=[
@@ -88,6 +101,16 @@ class DeduplicatorConfig(ConfigBase):
             NODE_AUTO_CREATE_INDEX
         ],
         default=True
+    )
+
+    ELASTICSEARCH_INDEX = StringConfigEntry(
+        description="The index name to use for storing and querying image analysis data.",
+        key_path=[
+            NODE_MAIN,
+            NODE_ELASTICSEARCH,
+            NODE_INDEX
+        ],
+        default="images"
     )
 
     ANALYSIS_USE_EXIF_DATA = BoolConfigEntry(

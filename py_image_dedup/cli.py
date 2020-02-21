@@ -78,8 +78,13 @@ def _setup_file_observers(source_directories: List[Path], event_handler):
 
 
 @cli.command(name="daemon")
-def c_daemon():
+@click.option(*get_option_names(PARAM_DRY_RUN), required=False, default=None, is_flag=True,
+              help='When set no files or folders will actually be deleted but a preview of '
+                   'what WOULD be done will be printed.')
+def c_daemon(dry_run: bool):
     config = DeduplicatorConfig()
+    if dry_run is not None:
+        config.DRY_RUN.value = dry_run
 
     if config.STATS_ENABLED.value:
         from prometheus_client import start_http_server

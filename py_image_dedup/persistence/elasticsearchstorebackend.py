@@ -10,18 +10,14 @@ from py_image_dedup.util import echo
 
 
 class ElasticSearchStoreBackend(ImageSignatureStore):
-    DEFAULT_DATABASE_HOST = "127.0.0.1"
-    DEFAULT_DATABASE_PORT = 9200
-
-    DEFAULT_EL_INDEX = 'images'
     DEFAULT_EL_DOC_TYPE_EL_6 = 'image'
     DEFAULT_EL_DOC_TYPE_EL_7 = '_doc'
 
     def __init__(self,
-                 host: str = DEFAULT_DATABASE_HOST,
-                 port: int = DEFAULT_DATABASE_PORT,
+                 host: str,
+                 port: int,
+                 el_index: str,
                  el_version: int = None,
-                 el_index: str = DEFAULT_EL_INDEX,
                  el_doctype: str = None,
                  max_dist: float = 0.03,
                  use_exif_data: bool = True,
@@ -38,8 +34,8 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
         """
         super().__init__(use_exif_data)
 
-        self.host = self.DEFAULT_DATABASE_HOST if host is None else host
-        self.port = self.DEFAULT_DATABASE_PORT if port is None else port
+        self.host = host
+        self.port = port
 
         detected_version = None
         while detected_version is None:
@@ -65,7 +61,6 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
             self._el_doctype = self.DEFAULT_EL_DOC_TYPE_EL_6 if self._el_version < 7 else self.DEFAULT_EL_DOC_TYPE_EL_7
 
         self.setup_database = setup_database
-
         if setup_database:
             try:
                 # self._clear_database()
@@ -97,6 +92,9 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
             return None
 
     def _setup_database(self):
+        """
+        Creates the expected index, if it does not exist
+        """
         response = requests.get('http://{}:{}/{}'.format(self.host, self.port, self._el_index))
         if response.status_code == 200:
             return
@@ -132,12 +130,14 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
             response.raise_for_status()
 
     def _clear_database(self):
+        """
+        Removes the index and all data it contains
+        """
         requests.delete('http://{}:{}/{}'.format(self.host, self.port, self._el_index))
 
     def _add(self, image_file_path: str, image_data: dict) -> None:
         # remove existing entries
         self.remove(image_file_path)
-
         self._store.add_image(image_file_path, metadata=image_data)
 
     def get(self, image_file_path: str) -> dict or None:
@@ -155,7 +155,6 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
         :param image_file_path: file path to search for
         :return: elasticsearch result dictionary
         """
-
         es_query = {
             'query': {
                 "constant_score": {
@@ -166,7 +165,7 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
             }
         }
 
-        query_result = self._store.es.search(self._el_index, body=es_query)
+        query_result = self._store.es.search(index=self._el_index, body=es_query)
 
         hits = query_result['hits']['hits']
 
@@ -186,7 +185,7 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
             'query': {'match_all': {}}
         }
 
-        item_count = self._store.es.search(self._el_index, body=es_query, size=0)['hits']['total']
+        item_count = self._store.es.search(index=self._el_index, body=es_query, size=0)['hits']['total']
         if self._el_version >= 7:
             item_count = item_count['value']
 
@@ -226,7 +225,6 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
         :param metadata:
         :return:
         """
-
         search_dict = {}
         for key, value in metadata.items():
             search_dict["metadata.%s" % key] = value
@@ -235,7 +233,7 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
             'query': {'match': search_dict}
         }
 
-        return self._store.es.search(self._el_index, body=es_query)
+        return self._store.es.search(index=self._el_index, body=es_query)
 
     def remove(self, image_file_path: str) -> None:
         # NOTE: this query will only work if the index has been created
