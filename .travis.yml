@@ -12,14 +12,13 @@ python:
   - "3.6"
   - "3.7"
   - "3.8"
+
 install:
   - pip install --upgrade pip
   - pip install pipenv
   - pipenv install --system --deploy
   - pip install --no-cache-dir .
-# command to run tests
-before_script:
-  - cd tests
+
 script:
   - pytest
 
