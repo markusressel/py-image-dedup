@@ -53,12 +53,6 @@ def locked_requirements(section):
             for package, detail in pipfile_json[section].items()]
 
 
-def read_requirements_file(file_name: str):
-    with open(file_name, encoding='utf-8') as f:
-        requirements_file = f.readlines()
-    return [r.strip() for r in requirements_file]
-
-
 setup(
     name='py-image-dedup',
     version=VERSION_NAME,
