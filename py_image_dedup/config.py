@@ -14,6 +14,13 @@ from py_range_parse import Range
 
 NODE_MAIN = "py_image_dedup"
 
+NODE_DAEMON = "daemon"
+NODE_PROCESSING_TIMEOUT = "processing_timeout"
+
+NODE_FILE_OBSERVER_TYPE = "file_observer"
+FILE_OBSERVER_TYPE_POLLING = "polling"
+FILE_OBSERVER_TYPE_INOTIFY = "inotify"
+
 NODE_DRY_RUN = "dry_run"
 
 NODE_ELASTICSEARCH = "elasticsearch"
@@ -217,6 +224,28 @@ class DeduplicatorConfig(ConfigBase):
         check_existence=True,
         default=None,
         example="/home/myuser/pictures/duplicates/"
+    )
+
+    DAEMON_PROCESSING_TIMEOUT = TimeDeltaConfigEntry(
+        description="Time to wait for filesystems changes to settle before analysing.",
+        key_path=[
+            NODE_MAIN,
+            NODE_DAEMON,
+            NODE_PROCESSING_TIMEOUT
+        ],
+        default="30s"
+    )
+
+    DAEMON_FILE_OBSERVER_TYPE = StringConfigEntry(
+        description="Type of file observer to use.",
+        key_path=[
+            NODE_MAIN,
+            NODE_DAEMON,
+            NODE_FILE_OBSERVER_TYPE
+        ],
+        regex="|".join([FILE_OBSERVER_TYPE_POLLING, FILE_OBSERVER_TYPE_INOTIFY]),
+        default=FILE_OBSERVER_TYPE_POLLING,
+        required=True
     )
 
     STATS_ENABLED = BoolConfigEntry(

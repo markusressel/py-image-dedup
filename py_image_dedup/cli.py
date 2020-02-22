@@ -1,13 +1,10 @@
-from pathlib import Path
-from typing import List
+import time
 
 import click
-from watchdog.observers.inotify import InotifyObserver
 
 from py_image_dedup.config import DeduplicatorConfig
 from py_image_dedup.library.deduplicator import ImageMatchDeduplicator
-from py_image_dedup.library.file_watch import EventHandler
-from py_image_dedup.library.processing import ProcessingManager
+from py_image_dedup.library.processing_manager import ProcessingManager
 from py_image_dedup.util import echo
 
 IMAGE_HASH_MAP = {}
@@ -64,52 +61,39 @@ def c_deduplicate(skip_analyse_phase: bool,
     result.print_to_console()
 
 
-def _setup_file_observers(source_directories: List[Path], event_handler):
-    observers = []
-
-    for directory in source_directories:
-        # observer = PollingObserver()
-        observer = InotifyObserver()
-        observer.schedule(event_handler, str(directory), recursive=True)
-        observer.start()
-        observers.append(observer)
-
-    return observers
-
-
 @cli.command(name="daemon")
 @click.option(*get_option_names(PARAM_DRY_RUN), required=False, default=None, is_flag=True,
               help='When set no files or folders will actually be deleted but a preview of '
                    'what WOULD be done will be printed.')
 def c_daemon(dry_run: bool):
-    config = DeduplicatorConfig()
+    echo("Starting daemon...")
+
+    config: DeduplicatorConfig = DeduplicatorConfig()
     if dry_run is not None:
         config.DRY_RUN.value = dry_run
 
     if config.STATS_ENABLED.value:
         from prometheus_client import start_http_server
-        # start prometheus server
+        echo("Starting prometheus reporter...")
         start_http_server(config.STATS_PORT.value)
 
     deduplicator = ImageMatchDeduplicator()
     processing_manager = ProcessingManager(deduplicator)
-    event_handler = EventHandler(processing_manager)
-    observers = _setup_file_observers(config.SOURCE_DIRECTORIES.value, event_handler)
 
     directories = config.SOURCE_DIRECTORIES.value
-
     deduplicator.cleanup_database(directories)
     deduplicator.analyse_all()
     deduplicator.deduplicate_all(
         skip_analyze_phase=True,
     )
 
-    # this is a blocking call which will run indefinitely
-    processing_manager.process_queue()
+    processing_manager.start()
 
-    for observer in observers:
-        observer.stop()
-        observer.join()
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        processing_manager.stop()
 
 
 if __name__ == '__main__':

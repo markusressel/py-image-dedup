@@ -5,7 +5,6 @@ from watchdog.events import FileSystemEventHandler, EVENT_TYPE_MODIFIED, EVENT_T
     EVENT_TYPE_DELETED
 
 from py_image_dedup.config import DeduplicatorConfig
-from py_image_dedup.library.processing import ProcessingManager
 from py_image_dedup.stats import FILE_EVENT_COUNT
 from py_image_dedup.util import echo
 
@@ -16,7 +15,7 @@ class EventHandler(FileSystemEventHandler):
     directory_regex = re.compile(rf"^({'|'.join(list(map(str, config.SOURCE_DIRECTORIES.value)))}).*$")
     file_regex = re.compile(rf"^.*({'|'.join(config.FILE_EXTENSION_FILTER.value)})$", re.IGNORECASE)
 
-    def __init__(self, processing_manager: ProcessingManager):
+    def __init__(self, processing_manager):
         super().__init__()
         self.processing_manager = processing_manager
 
