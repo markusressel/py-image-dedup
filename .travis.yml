@@ -22,3 +22,17 @@ before_script:
   - cd tests
 script:
   - pytest
+
+deploy:
+  - provider: script
+    skip_cleanup: true
+    script: bash travis/docker_push
+    on:
+      branch: master
+      tags: true
+  - provider: script
+    skip_cleanup: true
+    script: bash travis/docker_push_latest
+    on:
+      branch: master
+      tags: false
