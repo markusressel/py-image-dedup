@@ -110,7 +110,7 @@ class ImageMatchDeduplicator:
         # ImageFile.LOAD_TRUNCATED_IMAGES = True
 
         for directory, file_count in directory_map.items():
-            echo("Analyzing files in '%s' ..." % directory)
+            echo(f"Analyzing files in '{directory}' ...")
             with self._create_file_progressbar(file_count):
                 self.__walk_directory_files(
                     root_directory=directory,
@@ -125,7 +125,7 @@ class ImageMatchDeduplicator:
         self.reset_result()
 
         for directory, file_count in directory_map.items():
-            echo("Finding duplicates in '%s' ..." % directory)
+            echo(f"Finding duplicates in '{directory}' ...")
             with self._create_file_progressbar(file_count):
                 self.__walk_directory_files(
                     root_directory=directory,
@@ -178,7 +178,7 @@ class ImageMatchDeduplicator:
                         continue
 
                     if not file_path.exists():
-                        echo("Removing db entry for missing file: %s" % file_path)
+                        echo(f"Removing db entry for missing file: {file_path}")
                         self._persistence.remove(str(file_path))
 
                 finally:
@@ -302,9 +302,9 @@ class ImageMatchDeduplicator:
             ]
 
         if len(duplicate_candidates) <= 0:
-            echo("No duplication candidates found in database for '%s'. "
+            echo(f"No duplication candidates found in database for '{reference_file_path}'. "
                  "This is an indication that the file has not been analysed yet or "
-                 "there was an issue analysing it." % reference_file_path,
+                 "there was an issue analysing it.",
                  color='yellow')
 
         if len(duplicate_candidates) <= 1:
@@ -312,8 +312,8 @@ class ImageMatchDeduplicator:
                 candidate_path = Path(candidate[MetadataKey.PATH.value])
 
                 if candidate_path != reference_file_path:
-                    echo("Unexpected unique duplication candidate '%s' for "
-                         "reference file '%s'" % (candidate_path, reference_file_path), color='yellow')
+                    echo(f"Unexpected unique duplication candidate '{candidate_path}' for "
+                         f"reference file '{reference_file_path}'", color='yellow')
 
                 self._processed_files[candidate_path] = True
 
@@ -457,19 +457,22 @@ class ImageMatchDeduplicator:
 
         # traverse bottom-up to remove folders that are empty due to file removal
         for root, directories, files in os.walk(str(root_path), topdown=False):
+            # get absolute paths of all files and folders in the current root directory
             abs_file_paths = list(map(lambda x: os.path.abspath(os.path.join(root, x)), files))
             abs_folder_paths = list(map(lambda x: os.path.abspath(os.path.join(root, x)), directories))
 
+            # find out which of those files were deleted by the deduplication process
             files_deleted = list(
                 filter(lambda x: x in self._deduplication_result.get_removed_or_moved_files(), abs_file_paths))
-            filtered_files = list(
-                filter(lambda x: x not in files_deleted, abs_file_paths))
+            # find out which of them were not
+            filtered_files = list(filter(lambda x: x not in files_deleted, abs_file_paths))
 
             folders_deleted = list(filter(lambda x: x in result, abs_folder_paths))
             filtered_directories = list(filter(lambda x: x not in folders_deleted, abs_folder_paths))
             if (len(filtered_files) == 0 and (len(filtered_directories) == 0) and (
                     len(folders_deleted) > 0 or len(files_deleted) > 0)):
                 # check if a parent directory is already added
+                # TODO: when running this bottom-up this check should not be necessary
                 if len([directory for directory in filtered_directories if directory.startswith(root)]) == 0:
                     result.append(root)
 
@@ -483,7 +486,7 @@ class ImageMatchDeduplicator:
         Function to remove empty folders
         :param root_path:
         """
-        echo("Removing empty folders in: '%s' ..." % root_path)
+        echo(f"Removing empty folders ({len(folders)}) in: '{root_path}' ...")
 
         if len(folders) == 0:
             return

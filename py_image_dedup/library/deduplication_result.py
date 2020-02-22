@@ -77,9 +77,9 @@ class DeduplicationResult:
         title = "" * 7 + "Summary"
         echo(title, color='cyan')
         echo('=' * 21, color='cyan')
-        echo("Files with duplicates: %s" % self.get_duplicate_count())
-        echo("Files moved: %s" % len(self.get_file_with_action(ActionEnum.MOVE)))
-        echo("Files deleted: %s" % len(self.get_file_with_action(ActionEnum.DELETE)))
+        echo(f"Files with duplicates: {self.get_duplicate_count()}")
+        echo(f"Files moved: {len(self.get_file_with_action(ActionEnum.MOVE))}")
+        echo(f"Files deleted: {len(self.get_file_with_action(ActionEnum.DELETE))}")
 
         headers = ("Action", "File path", "Dist", "Filesize", "Pixels")
 
@@ -114,9 +114,9 @@ class DeduplicationResult:
                     tabulate(columns, headers=headers, colalign=['center', 'left', 'left', 'right', 'right']))
 
         echo()
-        echo("Removed (empty) folders (%s):" % len(self.get_removed_empty_folders()))
+        echo(f"Removed (empty) folders ({len(self.get_removed_empty_folders())}):")
         for folder in self.get_removed_empty_folders():
-            echo("%s" % folder, color='red')
+            echo(f"{folder}", color='red')
 
     @staticmethod
     def _echo_table(table: str):

@@ -32,7 +32,7 @@ class SelectImagesToDeleteTest(TestBase):
 
         dont_keep = []
         for i in range(50):
-            c = self._create_default_candidate(path="C:/1%s-Copy.jpg" % i)
+            c = self._create_default_candidate(path=f"C:/1{i}-Copy.jpg")
             dont_keep.append(c)
 
         self._run_test(keep, dont_keep)
@@ -72,7 +72,7 @@ class SelectImagesToDeleteTest(TestBase):
 
         dont_keep = []
         for i in range(50):
-            c = self._create_default_candidate(path="C:/1%s.jpg" % i)
+            c = self._create_default_candidate(path=f"C:/1{i}.jpg")
             dont_keep.append(c)
 
         self._run_test(keep, dont_keep)
@@ -82,7 +82,7 @@ class SelectImagesToDeleteTest(TestBase):
 
         dont_keep = []
         for i in range(50):
-            c = self._create_default_candidate(path="C:/%s.jpg" % i)
+            c = self._create_default_candidate(path=f"C:/{i}.jpg")
             dont_keep.append(c)
 
         self._run_test(keep, dont_keep)

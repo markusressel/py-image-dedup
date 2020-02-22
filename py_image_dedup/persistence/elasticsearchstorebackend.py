@@ -170,7 +170,7 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
         hits = query_result['hits']['hits']
 
         if len(hits) > 1:
-            echo("WARNING: More than a single entry for a file, cleaning up: %s" % image_file_path, color='yellow')
+            echo(f"WARNING: More than a single entry for a file, cleaning up: {image_file_path}", color='yellow')
             self.remove(image_file_path)
             self.add(image_file_path)
 
@@ -214,7 +214,7 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
             else:
                 return self._store.search_image(reference_image_file_path, all_orientations=True)
         except Exception as e:
-            echo("Error querying database for similar images of '%s': %s" % (reference_image_file_path, e), color="red")
+            echo(f"Error querying database for similar images of '{reference_image_file_path}': {e}", color="red")
             return []
 
     def search_metadata(self, metadata: dict) -> []:
@@ -227,7 +227,7 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
         """
         search_dict = {}
         for key, value in metadata.items():
-            search_dict["metadata.%s" % key] = value
+            search_dict[f"metadata.{key}"] = value
 
         es_query = {
             'query': {'match': search_dict}
