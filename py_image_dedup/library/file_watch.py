@@ -10,14 +10,15 @@ from py_image_dedup.util import echo
 
 
 class EventHandler(FileSystemEventHandler):
-    config = DeduplicatorConfig()
-
-    directory_regex = re.compile(rf"^({'|'.join(list(map(str, config.SOURCE_DIRECTORIES.value)))}).*$")
-    file_regex = re.compile(rf"^.*({'|'.join(config.FILE_EXTENSION_FILTER.value)})$", re.IGNORECASE)
 
     def __init__(self, processing_manager):
         super().__init__()
         self.processing_manager = processing_manager
+
+        self.config = DeduplicatorConfig()
+
+        self.directory_regex = re.compile(rf"^({'|'.join(list(map(str, self.config.SOURCE_DIRECTORIES.value)))}).*$")
+        self.file_regex = re.compile(rf"^.*({'|'.join(self.config.FILE_EXTENSION_FILTER.value)})$", re.IGNORECASE)
 
     def on_any_event(self, event):
         if not self._event_matches_filter(event):

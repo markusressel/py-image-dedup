@@ -12,10 +12,11 @@ services:
       - docker-elk
     restart: on-failure
   py-image-dedup:
-    build: .
+    # build: .
+    image: markusressel/py-image-dedup:latest
     environment:
       # change configuration to your liking
-      - PY_IMAGE_DEDUP_DRY_RUN=False
+      - PY_IMAGE_DEDUP_DRY_RUN=True
       - PY_IMAGE_DEDUP_ANALYSIS_SOURCE_DIRECTORIES=/mnt/source/
       - PY_IMAGE_DEDUP_ANALYSIS_RECURSIVE=True
       - PY_IMAGE_DEDUP_ANALYSIS_ACROSS_DIRS=True
@@ -23,19 +24,28 @@ services:
       - PY_IMAGE_DEDUP_ANALYSIS_THREADS=8
       - PY_IMAGE_DEDUP_ANALYSIS_USE_EXIF_DATA=True
       - PY_IMAGE_DEDUP_DEDUPLICATION_DUPLICATES_TARGET_DIRECTORY=/mnt/duplicates/
-      - PY_IMAGE_DEDUP_ELASTICSEARCH_AUTO_CREATE_INDEX=True
       - PY_IMAGE_DEDUP_ELASTICSEARCH_HOST=elasticsearch
+      - PY_IMAGE_DEDUP_ELASTICSEARCH_PORT=9200
+      - PY_IMAGE_DEDUP_ELASTICSEARCH_INDEX=images
+      - PY_IMAGE_DEDUP_ELASTICSEARCH_AUTO_CREATE_INDEX=True
       - PY_IMAGE_DEDUP_ELASTICSEARCH_MAX_DISTANCE=0.1
       - PY_IMAGE_DEDUP_REMOVE_EMPTY_FOLDERS=False
+      - PY_IMAGE_DEDUP_STATS_ENABLED=True
+      - PY_IMAGE_DEDUP_STATS_PORT=8000
     volumes:
-      # change this to your local source directory
-      - /mnt/sdb2/Sample:/mnt/source
-      # change this to your local duplicates directory
-      - /mnt/sdb2/py-image-dedup_duplicates:/mnt/duplicates
+      # optionally mount a YAML configuration file
+      # into /app/py_image_dedup.yaml instead of using environment:
+      # - /mnt/data3/py_image_dedup.yaml:/app/py_image_dedup.yaml
+      # change this to your local source directory:
+      - /mnt/data3/py-image-dedup_testdata:/mnt/source
+      # change this to your local duplicates directory:
+      - /mnt/data3/py-image-dedup_duplicates:/mnt/duplicates
     links:
       - elasticsearch
     networks:
       - docker-elk
+    ports:
+      - "8000:8000"
     depends_on:
       - elasticsearch
     restart: on-failure

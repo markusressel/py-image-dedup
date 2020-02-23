@@ -181,6 +181,44 @@ me:\
 	:lang=de_DE.UTF-8:
 ```
 
+## Docker
+
+To run **py-image-dedup** using docker you can use the [markusressel/py-image-dedup](https://hub.docker.com/r/markusressel/py-image-dedup) 
+image from DockerHub:
+
+```
+sudo docker run -t \
+    -p 8000:8000 \
+    -v /where/the/original/photolibrary/is/located:/data/in \
+    -v /where/duplicates/should/be/moved/to:/data/out \
+    -e PY_IMAGE_DEDUP_DRY_RUN=False \
+    -e PY_IMAGE_DEDUP_ANALYSIS_SOURCE_DIRECTORIES=/mnt/source/ \
+    -e PY_IMAGE_DEDUP_ANALYSIS_RECURSIVE=True \
+    -e PY_IMAGE_DEDUP_ANALYSIS_ACROSS_DIRS=True \
+    -e PY_IMAGE_DEDUP_ANALYSIS_FILE_EXTENSIONS=.png,.jpg,.jpeg \
+    -e PY_IMAGE_DEDUP_ANALYSIS_THREADS=8 \
+    -e PY_IMAGE_DEDUP_ANALYSIS_USE_EXIF_DATA=True \
+    -e PY_IMAGE_DEDUP_DEDUPLICATION_DUPLICATES_TARGET_DIRECTORY=/mnt/duplicates/ \
+    -e PY_IMAGE_DEDUP_ELASTICSEARCH_AUTO_CREATE_INDEX=True \
+    -e PY_IMAGE_DEDUP_ELASTICSEARCH_HOST=elasticsearch \
+    -e PY_IMAGE_DEDUP_ELASTICSEARCH_PORT=9200 \
+    -e PY_IMAGE_DEDUP_ELASTICSEARCH_INDEX=images \
+    -e PY_IMAGE_DEDUP_ELASTICSEARCH_AUTO_CREATE_INDEX=True \
+    -e PY_IMAGE_DEDUP_ELASTICSEARCH_MAX_DISTANCE=0.1 \
+    -e PY_IMAGE_DEDUP_REMOVE_EMPTY_FOLDERS=False \
+    -e PY_IMAGE_DEDUP_STATS_ENABLED=True \
+    -e PY_IMAGE_DEDUP_STATS_PORT=8000 \
+    markusressel/py-image-dedup:latest
+```
+
+Since an elasticsearch instance is required too, you can 
+also use the `docker-compose.yml` file included in this repo which will
+set up a single-node elasticsearch cluster too:
+
+```shell script
+sudo docker-compose up
+```
+
 # Contributing
 
 GitHub is for social coding: if you want to write code, I encourage contributions through pull requests from forks

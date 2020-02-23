@@ -27,12 +27,13 @@ from py_image_dedup.util.file import get_files_count, file_has_extension
 class ImageMatchDeduplicator:
     EXECUTOR = ThreadPoolExecutor()
 
-    _config: DeduplicatorConfig = DeduplicatorConfig()
+    _config: DeduplicatorConfig
     _progress_bar: tqdm = None
     _processed_files: dict = {}
     _deduplication_result: DeduplicationResult = None
 
     def __init__(self):
+        self._config = DeduplicatorConfig()
         self._persistence: ImageSignatureStore = ElasticSearchStoreBackend(
             host=self._config.ELASTICSEARCH_HOST.value,
             port=self._config.ELASTICSEARCH_PORT.value,
