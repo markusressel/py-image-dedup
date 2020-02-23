@@ -13,6 +13,9 @@ py_image_dedup:
   deduplication:
     duplicates_target_directory: /home/myuser/pictures/duplicates/
     max_file_modification_time_diff: 0:05:00
+  daemon:
+    timeout: 30s
+    file_observer: polling
   dry_run: true
   elasticsearch:
     auto_create_index: true

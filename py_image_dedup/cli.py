@@ -80,13 +80,7 @@ def c_daemon(dry_run: bool):
     deduplicator = ImageMatchDeduplicator()
     processing_manager = ProcessingManager(deduplicator)
 
-    directories = config.SOURCE_DIRECTORIES.value
-    deduplicator.cleanup_database(directories)
-    deduplicator.analyse_all()
-    deduplicator.deduplicate_all(
-        skip_analyze_phase=True,
-    )
-
+    deduplicator.deduplicate_all()
     processing_manager.start()
 
     try:

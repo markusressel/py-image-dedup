@@ -1,7 +1,11 @@
 import functools
+import logging
 import traceback
 
 import click
+
+LOGGER = logging.getLogger(__name__)
+LOGGER.setLevel(logging.DEBUG)
 
 
 def echo(text: str = "", color=None):
@@ -14,6 +18,7 @@ def echo(text: str = "", color=None):
         text = str(text)
     if color:
         text = click.style(text, fg=color)
+    LOGGER.debug(text)
     click.echo(text)
 
 

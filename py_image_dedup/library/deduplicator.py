@@ -23,6 +23,9 @@ from py_image_dedup.stats import DUPLICATE_ACTION_MOVE_COUNT, DUPLICATE_ACTION_D
 from py_image_dedup.util import file, echo
 from py_image_dedup.util.file import get_files_count, file_has_extension
 
+LOGGER = logging.getLogger(__name__)
+LOGGER.setLevel(logging.DEBUG)
+
 
 class ImageMatchDeduplicator:
     EXECUTOR = ThreadPoolExecutor()

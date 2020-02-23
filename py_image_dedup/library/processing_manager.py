@@ -1,3 +1,4 @@
+import logging
 import os
 from collections import OrderedDict
 from datetime import datetime, timedelta
@@ -83,10 +84,17 @@ class ProcessingManager(RegularIntervalWorker):
         if not self._should_process():
             return
 
-        # TODO: only handling file events individually seems painfully slow
-        # TODO: maybe try to aggregate multiple events that happen in quick succession into badges
+        while True:
+            try:
+                path, value = self.queue.popitem()
+                self._process_queue_item(path, value)
+            except KeyError:
+                break
+            except Exception as e:
+                logging.exception(e)
+                break
 
-        path, value = self.queue.popitem()
+    def _process_queue_item(self, path, value):
         if path.is_dir():
             self.deduplicator.reset_result()
 
