@@ -11,5 +11,6 @@ COPY . .
 RUN pip install --upgrade pip
 RUN pip install pipenv
 RUN pipenv install --system --deploy
+RUN pip install .
 
 CMD [ "py-image-dedup", "daemon" ]
