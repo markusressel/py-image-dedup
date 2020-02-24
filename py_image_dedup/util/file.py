@@ -25,15 +25,17 @@ def get_containing_folder(file_path: str) -> str:
 
 def file_has_extension(file: Path, extensions: List[str] or None) -> bool:
     """
-    Checks if a file matches the filter set for this deduplicator
+    Checks if a file has one of the given extensions
     :param file: the file to check
     :param extensions: allowed extensions
-    :return: true if it matches, false otherwise
+    :return: true if it matches (case insensitive), false otherwise
     """
+    if not isinstance(extensions, List):
+        extensions = [extensions]
     if not extensions:
         return True
 
-    if file.suffix not in (ext.lower() for ext in extensions):
+    if file.suffix.lower() not in (ext.lower() for ext in extensions):
         # skip file with unwanted file extension
         return False
     else:
