@@ -219,6 +219,11 @@ set up a single-node elasticsearch cluster too:
 sudo docker-compose up
 ```
 
+### UID and GID
+
+To run **py-image-dedup** inside the container using a specific user id 
+and group id you can use the env variables `PUID=1000` and `PGID=1000`.
+
 # Contributing
 
 GitHub is for social coding: if you want to write code, I encourage contributions through pull requests from forks

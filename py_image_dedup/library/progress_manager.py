@@ -60,14 +60,6 @@ class ProgressManager:
         self._task = None
         self._unit = None
 
-    def _create_file_progressbar(self, total_file_count: int) -> tqdm:
-        self._create_progressbar(total_file_count, "Files")
-        return self._progress_bar
-
-    def _create_folder_progressbar(self, total_folder_count: int) -> tqdm:
-        self._create_progressbar(total_folder_count, "Folder")
-        return self._progress_bar
-
     def _create_progressbar(self, total_count: int, unit: str) -> tqdm:
         """
         Creates a new progress bar
