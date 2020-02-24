@@ -37,7 +37,7 @@ def get_option_names(parameter: str) -> list:
 
 @cli.command(name="analyse")
 def c_analyse():
-    deduplicator = ImageMatchDeduplicator()
+    deduplicator = ImageMatchDeduplicator(interactive=True)
     deduplicator.analyse_all()
 
 
@@ -52,7 +52,7 @@ def c_deduplicate(skip_analyse_phase: bool,
     config = DeduplicatorConfig()
     if dry_run is not None:
         config.DRY_RUN.value = dry_run
-    deduplicator = ImageMatchDeduplicator()
+    deduplicator = ImageMatchDeduplicator(interactive=True)
     result = deduplicator.deduplicate_all(
         skip_analyze_phase=skip_analyse_phase,
     )
@@ -77,7 +77,7 @@ def c_daemon(dry_run: bool):
         echo("Starting prometheus reporter...")
         start_http_server(config.STATS_PORT.value)
 
-    deduplicator = ImageMatchDeduplicator()
+    deduplicator = ImageMatchDeduplicator(interactive=False)
     processing_manager = ProcessingManager(deduplicator)
 
     deduplicator.deduplicate_all()

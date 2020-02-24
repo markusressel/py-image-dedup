@@ -18,7 +18,8 @@ def echo(text: str = "", color=None):
         text = str(text)
     if color:
         text = click.style(text, fg=color)
-    LOGGER.debug(text)
+    if len(text) > 0:
+        LOGGER.debug(text)
     click.echo(text)
 
 

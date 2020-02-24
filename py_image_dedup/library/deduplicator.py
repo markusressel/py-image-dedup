@@ -9,12 +9,12 @@ from typing import List
 
 import click
 from ordered_set import OrderedSet
-from tqdm import tqdm
 
 from py_image_dedup import util
 from py_image_dedup.config import DeduplicatorConfig
 from py_image_dedup.library import ActionEnum
 from py_image_dedup.library.deduplication_result import DeduplicationResult
+from py_image_dedup.library.progress_manager import ProgressManager
 from py_image_dedup.persistence import ImageSignatureStore
 from py_image_dedup.persistence.elasticsearchstorebackend import ElasticSearchStoreBackend
 from py_image_dedup.persistence.metadata_key import MetadataKey
@@ -31,11 +31,19 @@ class ImageMatchDeduplicator:
     EXECUTOR = ThreadPoolExecutor()
 
     _config: DeduplicatorConfig
-    _progress_bar: tqdm = None
+    _progress_manager: ProgressManager
+
     _processed_files: dict = {}
     _deduplication_result: DeduplicationResult = None
 
-    def __init__(self):
+    def __init__(self, interactive: bool):
+        """
+
+        :param interactive: whether cli output should be interactive or not
+        """
+        self.interactive = interactive
+
+        self._progress_manager = ProgressManager()
         self._config = DeduplicatorConfig()
         self._persistence: ImageSignatureStore = ElasticSearchStoreBackend(
             host=self._config.ELASTICSEARCH_HOST.value,
@@ -114,12 +122,12 @@ class ImageMatchDeduplicator:
         # ImageFile.LOAD_TRUNCATED_IMAGES = True
 
         for directory, file_count in directory_map.items():
-            echo(f"Analyzing files in '{directory}' ...")
-            with self._create_file_progressbar(file_count):
-                self.__walk_directory_files(
-                    root_directory=directory,
-                    threads=threads,
-                    command=lambda root_dir, file_dir, file_path: self.analyze_file(file_path))
+            self._progress_manager.start(f"Analyzing files in '{directory}'", file_count, "Files", self.interactive)
+            self.__walk_directory_files(
+                root_directory=directory,
+                threads=threads,
+                command=lambda root_dir, file_dir, file_path: self.analyze_file(file_path))
+            self._progress_manager.clear()
 
     def find_duplicates_in_directories(self, directory_map: dict):
         """
@@ -129,15 +137,16 @@ class ImageMatchDeduplicator:
         self.reset_result()
 
         for directory, file_count in directory_map.items():
-            echo(f"Finding duplicates in '{directory}' ...")
-            with self._create_file_progressbar(file_count):
-                self.__walk_directory_files(
-                    root_directory=directory,
-                    threads=1,  # there seems to be no performance advantage in using multiple threads here
-                    command=lambda root_dir, _, file_path: self.find_duplicates_of_file(
-                        self._config.SOURCE_DIRECTORIES.value,
-                        root_dir,
-                        file_path))
+            self._progress_manager.start(f"Finding duplicates in '{directory}' ...", file_count, "Files",
+                                         self.interactive)
+            self.__walk_directory_files(
+                root_directory=directory,
+                threads=1,  # there seems to be no performance advantage in using multiple threads here
+                command=lambda root_dir, _, file_path: self.find_duplicates_of_file(
+                    self._config.SOURCE_DIRECTORIES.value,
+                    root_dir,
+                    file_path))
+            self._progress_manager.clear()
 
     def cleanup_database(self, directories: List[Path]):
         """
@@ -154,39 +163,39 @@ class ImageMatchDeduplicator:
         if count <= 0:
             return
 
-        with self._create_progressbar(count, unit="entries"):
-            for entry in entries:
-                try:
-                    image_entry = entry['_source']
-                    metadata = image_entry[MetadataKey.METADATA.value]
+        self._progress_manager.start(f"Cleanup database", count, "entries", self.interactive)
+        for entry in entries:
+            try:
+                image_entry = entry['_source']
+                metadata = image_entry[MetadataKey.METADATA.value]
 
-                    file_path = Path(image_entry[MetadataKey.PATH.value])
+                file_path = Path(image_entry[MetadataKey.PATH.value])
+                self._progress_manager.set_postfix(self._truncate_middle(str(file_path)))
 
-                    self._progress_bar.set_postfix_str(self._truncate_middle(str(file_path)))
+                if MetadataKey.DATAMODEL_VERSION.value not in metadata:
+                    echo(f"Removing db entry with missing db model version number: {file_path}")
+                    self._persistence.remove(str(file_path))
+                    continue
 
-                    if MetadataKey.DATAMODEL_VERSION.value not in metadata:
-                        echo(f"Removing db entry with missing db model version number: {file_path}")
-                        self._persistence.remove(str(file_path))
-                        continue
+                data_version = metadata[MetadataKey.DATAMODEL_VERSION.value]
+                if data_version != self._persistence.DATAMODEL_VERSION:
+                    echo(f"Removing db entry with old db model version: {file_path}")
+                    self._persistence.remove(str(file_path))
+                    continue
 
-                    data_version = metadata[MetadataKey.DATAMODEL_VERSION.value]
-                    if data_version != self._persistence.DATAMODEL_VERSION:
-                        echo(f"Removing db entry with old db model version: {file_path}")
-                        self._persistence.remove(str(file_path))
-                        continue
+                # filter by files in at least one of the specified root directories
+                # this is necessary because the database might hold items for other paths already
+                # and those are not interesting to us
+                if not any(root_dir in file_path.parents for root_dir in directories):
+                    continue
 
-                    # filter by files in at least one of the specified root directories
-                    # this is necessary because the database might hold items for other paths already
-                    # and those are not interesting to us
-                    if not any(root_dir in file_path.parents for root_dir in directories):
-                        continue
+                if not file_path.exists():
+                    echo(f"Removing db entry for missing file: {file_path}")
+                    self._persistence.remove(str(file_path))
 
-                    if not file_path.exists():
-                        echo(f"Removing db entry for missing file: {file_path}")
-                        self._persistence.remove(str(file_path))
-
-                finally:
-                    self._increment_progress()
+            finally:
+                self._progress_manager.inc()
+        self._progress_manager.clear()
 
     def _remove_empty_folders(self, directories: List[Path], recursive: bool):
         """
@@ -207,18 +216,19 @@ class ImageMatchDeduplicator:
         """
         directory_map = {}
 
-        with self._create_folder_progressbar(len(directories)):
-            for directory in directories:
-                self._progress_bar.set_postfix_str(self._truncate_middle(directory))
+        self._progress_manager.start(f"Counting files", len(directories), "Dirs", self.interactive)
+        for directory in directories:
+            self._progress_manager.set_postfix(self._truncate_middle(directory))
 
-                file_count = get_files_count(
-                    directory,
-                    self._config.RECURSIVE.value,
-                    self._config.FILE_EXTENSION_FILTER.value
-                )
-                directory_map[directory] = file_count
+            file_count = get_files_count(
+                directory,
+                self._config.RECURSIVE.value,
+                self._config.FILE_EXTENSION_FILTER.value
+            )
+            directory_map[directory] = file_count
 
-                self._increment_progress()
+            self._progress_manager.inc()
+        self._progress_manager.clear()
 
         return directory_map
 
@@ -262,7 +272,7 @@ class ImageMatchDeduplicator:
         Analyzes a single file
         :param file_path: the file path
         """
-        self._progress_bar.set_postfix_str(self._truncate_middle(file_path))
+        self._progress_manager.set_postfix(self._truncate_middle(file_path))
 
         try:
             self._persistence.add(str(file_path))
@@ -270,7 +280,7 @@ class ImageMatchDeduplicator:
             logging.exception(e)
             echo(f"Error analyzing file '{file_path}': {e}")
         finally:
-            self._increment_progress()
+            self._progress_manager.inc()
 
     @FIND_DUPLICATES_TIME.time()
     def find_duplicates_of_file(self, root_directories: List[Path], root_directory: Path, reference_file_path: Path):
@@ -280,8 +290,8 @@ class ImageMatchDeduplicator:
         :param root_directory: root directory of reference_file_path
         :param reference_file_path: the file to check for duplicates
         """
-        self._increment_progress()
-        self._progress_bar.set_postfix_str(self._truncate_middle(reference_file_path))
+        self._progress_manager.inc()
+        self._progress_manager.set_postfix(self._truncate_middle(reference_file_path))
 
         # remember processed files to prevent processing files in multiple directions
         if reference_file_path in self._processed_files:
@@ -495,40 +505,16 @@ class ImageMatchDeduplicator:
         if len(folders) == 0:
             return
 
-        with self._create_folder_progressbar(len(folders)):
-            for folder in folders:
-                self._progress_bar.set_postfix_str(self._truncate_middle(folder))
+        self._progress_manager.start("Removing empty folders", len(folders), "Folder", self.interactive)
+        for folder in folders:
+            self._progress_manager.set_postfix(self._truncate_middle(folder))
 
-                if not dry_run:
-                    os.rmdir(folder)
+            if not dry_run:
+                os.rmdir(folder)
 
-                self._deduplication_result.add_removed_empty_folder(folder)
-                self._increment_progress()
-
-    def _increment_progress(self, increase_count_by: int = 1):
-        """
-        Increases the current progress bar
-        :param increase_count_by: amount to increase
-        """
-        self._progress_bar.update(n=increase_count_by)
-
-    def _create_file_progressbar(self, total_file_count: int) -> tqdm:
-        self._create_progressbar(total_file_count, "Files")
-        return self._progress_bar
-
-    def _create_folder_progressbar(self, total_folder_count: int) -> tqdm:
-        self._create_progressbar(total_folder_count, "Folder")
-        return self._progress_bar
-
-    def _create_progressbar(self, total_count: int, unit: str) -> tqdm:
-        """
-        Creates a new progress bar
-        :param total_count: target for 100%
-        :param unit: "Things" that are counted
-        :return: progress bar
-        """
-        self._progress_bar = tqdm(total=total_count, unit=unit, unit_scale=True, mininterval=1)
-        return self._progress_bar
+            self._deduplication_result.add_removed_empty_folder(folder)
+            self._progress_manager.inc()
+        self._progress_manager.clear()
 
     def _remove_files_marked_as_delete(self, dry_run: bool):
         """
@@ -540,8 +526,9 @@ class ImageMatchDeduplicator:
         if marked_files_count == 0:
             return
 
-        with self._create_file_progressbar(total_file_count=marked_files_count):
-            self._delete_files(items_to_remove, dry_run)
+        self._progress_manager.start("Removing files", marked_files_count, "File", self.interactive)
+        self._delete_files(items_to_remove, dry_run)
+        self._progress_manager.clear()
 
     def _move_files_marked_as_delete(self, target_dir: Path, dry_run: bool):
         """
@@ -554,8 +541,9 @@ class ImageMatchDeduplicator:
         if marked_files_count == 0:
             return
 
-        with self._create_file_progressbar(total_file_count=marked_files_count):
-            self._move_files(items_to_move, target_dir, dry_run)
+        self._progress_manager.start("Moving files", marked_files_count, "File", self.interactive)
+        self._move_files(items_to_move, target_dir, dry_run)
+        self._progress_manager.clear()
 
     def _delete_files(self, files_to_delete: [str], dry_run: bool):
         """
@@ -564,7 +552,7 @@ class ImageMatchDeduplicator:
         :param dry_run: set to true to simulate this action
         """
         for file_path in files_to_delete:
-            self._progress_bar.set_postfix_str(self._truncate_middle(file_path))
+            self._progress_manager.set_postfix(self._truncate_middle(file_path))
 
             if dry_run:
                 pass
@@ -578,7 +566,7 @@ class ImageMatchDeduplicator:
 
                 DUPLICATE_ACTION_DELETE_COUNT.inc()
 
-            self._increment_progress()
+            self._progress_manager.inc()
 
     def _move_files(self, files_to_move: List[Path], target_dir: Path, dry_run: bool):
         """
@@ -588,7 +576,7 @@ class ImageMatchDeduplicator:
         """
 
         for file_path in files_to_move:
-            self._progress_bar.set_postfix_str(self._truncate_middle(file_path))
+            self._progress_manager.set_postfix(self._truncate_middle(file_path))
 
             try:
                 if dry_run:
@@ -613,7 +601,7 @@ class ImageMatchDeduplicator:
                 logging.exception(ex)
                 # LOGGER.log(ex)
             finally:
-                self._increment_progress()
+                self._progress_manager.inc()
 
     @staticmethod
     def _truncate_middle(text: any, max_length: int = 50):
