@@ -1,4 +1,4 @@
-# py-image-dedup [![Build Status](https://travis-ci.org/markusressel/py-image-dedup.svg?branch=master)](https://travis-ci.org/markusressel/py-image-dedup) [![PyPI version](https://badge.fury.io/py/py-image-dedup.svg)](https://badge.fury.io/py/py-image-dedup)
+# py-image-dedup [![Build Status](https://travis-ci.com/markusressel/py-image-dedup.svg?branch=master)](https://travis-ci.com/markusressel/py-image-dedup) [![PyPI version](https://badge.fury.io/py/py-image-dedup.svg)](https://badge.fury.io/py/py-image-dedup)
 
 **py-image-dedup** is a tool to sort out or remove duplicates within a photo library. 
 Unlike most other solutions, **py-image-dedup** 
