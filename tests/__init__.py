@@ -8,7 +8,7 @@ class TestBase(unittest.TestCase):
     def setUp(self):
         self.config = DeduplicatorConfig()
         from py_image_dedup.library.deduplicator import ImageMatchDeduplicator
-        self.under_test = ImageMatchDeduplicator()
+        self.under_test = ImageMatchDeduplicator(interactive=False)
 
     def tearDown(self):
         pass
