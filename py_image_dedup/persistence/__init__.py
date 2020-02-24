@@ -13,18 +13,12 @@ class ImageSignatureStore:
     def __init__(self, use_exif_data: bool = True):
         self._use_exif_data = use_exif_data
 
-        pass
-
     def add(self, image_file_path: str):
         """
         Analyze an image file and add it to the store
 
         :param image_file_path: path to the image file
-        :param metadata: Sometimes you want to store information with your images independent of the reverse
-        image search functionality. You can do that with the metadata= field in the add_image function.
-        :return: true if the file was added, false otherwise
         """
-
         image_data = self._create_metadata_dict(image_file_path)
 
         # check if the file has already been analyzed (and didn't change in the meantime)
@@ -50,10 +44,9 @@ class ImageSignatureStore:
         """
         Creates a dictionary that should be stored in persistence
 
-        :param image_file_path:
+        :param image_file_path: path to the image file
         :return: dictionary containing all relevant information
         """
-
         from py_image_dedup.util import image
 
         image_data = {}
