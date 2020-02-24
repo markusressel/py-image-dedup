@@ -131,6 +131,10 @@ monitor your source directories and deduplicate them on the fly.
 When running the daemon (and enabled in configuration) a prometheus reporter
 is used to allow you to gather some statistical insights.
 
+```shell
+py-image-dedup daemon
+```
+
 ## Dry run
 
 To analyze images and get an overview of what images would be deleted 
@@ -192,13 +196,13 @@ sudo docker run -t \
     -v /where/the/original/photolibrary/is/located:/data/in \
     -v /where/duplicates/should/be/moved/to:/data/out \
     -e PY_IMAGE_DEDUP_DRY_RUN=False \
-    -e PY_IMAGE_DEDUP_ANALYSIS_SOURCE_DIRECTORIES=/mnt/source/ \
+    -e PY_IMAGE_DEDUP_ANALYSIS_SOURCE_DIRECTORIES=/data/in/ \
     -e PY_IMAGE_DEDUP_ANALYSIS_RECURSIVE=True \
     -e PY_IMAGE_DEDUP_ANALYSIS_ACROSS_DIRS=True \
     -e PY_IMAGE_DEDUP_ANALYSIS_FILE_EXTENSIONS=.png,.jpg,.jpeg \
     -e PY_IMAGE_DEDUP_ANALYSIS_THREADS=8 \
     -e PY_IMAGE_DEDUP_ANALYSIS_USE_EXIF_DATA=True \
-    -e PY_IMAGE_DEDUP_DEDUPLICATION_DUPLICATES_TARGET_DIRECTORY=/mnt/duplicates/ \
+    -e PY_IMAGE_DEDUP_DEDUPLICATION_DUPLICATES_TARGET_DIRECTORY=/data/out/ \
     -e PY_IMAGE_DEDUP_ELASTICSEARCH_AUTO_CREATE_INDEX=True \
     -e PY_IMAGE_DEDUP_ELASTICSEARCH_HOST=elasticsearch \
     -e PY_IMAGE_DEDUP_ELASTICSEARCH_PORT=9200 \

@@ -1,5 +1,3 @@
-import logging
-import os
 from collections import OrderedDict
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -12,12 +10,15 @@ from watchdog.observers.polling import PollingObserver
 from py_image_dedup.config import DeduplicatorConfig, FILE_OBSERVER_TYPE_INOTIFY, FILE_OBSERVER_TYPE_POLLING
 from py_image_dedup.library import ActionEnum, RegularIntervalWorker
 from py_image_dedup.library.file_watch import EventHandler
+from py_image_dedup.library.progress_manager import ProgressManager
 from py_image_dedup.util.file import get_files_count
 
 
 class ProcessingManager(RegularIntervalWorker):
     lock = Lock()
     queue = OrderedDict()
+
+    progress_manager: ProgressManager
 
     latest_event_time = None
 
@@ -26,6 +27,7 @@ class ProcessingManager(RegularIntervalWorker):
         timeout = self.config.DAEMON_PROCESSING_TIMEOUT.value
         interval = timeout.total_seconds()
         super().__init__(interval)
+        self.progress_manager = ProgressManager()
         self.deduplicator = deduplicator
         self.event_handler = EventHandler(self)
         self.observers = []
@@ -72,9 +74,10 @@ class ProcessingManager(RegularIntervalWorker):
         self.deduplicator._persistence.remove(str(path))
 
     def _should_process(self):
-        return not (len(self.queue) <= 0
-                    or self.latest_event_time is None
-                    or datetime.now() - timedelta(seconds=10) < self.latest_event_time)
+        return len(self.queue) > 0 and (
+                self.latest_event_time is None or
+                (datetime.now() - timedelta(seconds=self._interval) > self.latest_event_time)
+        )
 
     def _run(self):
         with self.lock:
@@ -84,20 +87,24 @@ class ProcessingManager(RegularIntervalWorker):
         if not self._should_process():
             return
 
+        self.progress_manager.start("Processing", len(self.queue), "Files", False)
         while True:
             try:
                 path, value = self.queue.popitem()
                 self._process_queue_item(path, value)
+                self.progress_manager.inc()
             except KeyError:
                 break
-            except Exception as e:
-                logging.exception(e)
-                break
+        self.progress_manager.clear()
 
     def _process_queue_item(self, path, value):
-        if path.is_dir():
-            self.deduplicator.reset_result()
+        self.deduplicator.reset_result()
 
+        # TODO: only a workaround until files can be processed too
+        if path.is_file():
+            path = path.parent
+
+        if path.is_dir():
             files_count = get_files_count(
                 path,
                 self.config.RECURSIVE.value,
@@ -109,18 +116,20 @@ class ProcessingManager(RegularIntervalWorker):
 
             self.deduplicator.analyze_directories(directory_map)
             self.deduplicator.find_duplicates_in_directories(directory_map)
-            self.deduplicator.process_duplicates()
 
-        if path.is_file():
-            self.deduplicator._create_file_progressbar(1)
-            self.deduplicator.reset_result()
-            self.deduplicator.analyze_file(path)
-            root_dir = Path(os.path.commonpath([path] + self.config.SOURCE_DIRECTORIES.value))
-            self.deduplicator.find_duplicates_of_file(self.config.SOURCE_DIRECTORIES.value, root_dir, path)
-            self.deduplicator.process_duplicates()
-            # remove items that have been (re-)moved already from the event queue
-            removed_items = self.deduplicator._deduplication_result.get_file_with_action(ActionEnum.DELETE)
-            moved_items = self.deduplicator._deduplication_result.get_file_with_action(ActionEnum.MOVE)
-            for item in removed_items + moved_items:
-                if item in self.queue:
-                    self.queue.pop(item)
+        # TODO: allow processing individual files
+        # if path.is_file():
+        #     self.deduplicator.analyze_file(path)
+        #     root_dir = Path(os.path.commonpath([path] + self.config.SOURCE_DIRECTORIES.value))
+        #     self.deduplicator.find_duplicates_of_file(self.config.SOURCE_DIRECTORIES.value, root_dir, path)
+
+        self.deduplicator.process_duplicates()
+
+        # TODO: this needs rethinking
+        # remove items that have been (re-)moved already from the event queue
+        removed_items = self.deduplicator._deduplication_result.get_file_with_action(ActionEnum.DELETE)
+        moved_items = self.deduplicator._deduplication_result.get_file_with_action(ActionEnum.MOVE)
+        for item in set(removed_items + moved_items):
+            if item in self.queue:
+                self.queue.pop(item)
+                self.progress_manager.inc()
