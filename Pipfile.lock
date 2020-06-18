@@ -165,10 +165,10 @@
         },
         "ordered-set": {
             "hashes": [
-                "sha256:a31008c57f9c9776b12eb8841b1f61d1e4d70dfbbe8875ccfa2403c54af3d51b"
+                "sha256:ba93b2df055bca202116ec44b9bead3df33ea63a7d5827ff8e16738b97f33a95"
             ],
             "index": "pypi",
-            "version": "==4.0.1"
+            "version": "==4.0.2"
         },
         "pathtools": {
             "hashes": [
