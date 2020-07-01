@@ -40,11 +40,11 @@
         },
         "container-app-conf": {
             "hashes": [
-                "sha256:a400890fc66682cb16bde4a524cd4e9799c6ec7487f62cfa262f443ae4e2cf0d",
-                "sha256:d93605db13154b1db05f632932b98aac676bab5f9febc5f5507ff17394bf7256"
+                "sha256:1d1fa745595fb1d39b106def98b2fdab6a6a698f97deec2b8dcc57d0054c595f",
+                "sha256:c1350a5992a3312f1015e93fde4d7e3fb73b568b829fed40813f1dad309bb3c2"
             ],
             "index": "pypi",
-            "version": "==5.0.0"
+            "version": "==5.1.0"
         },
         "cycler": {
             "hashes": [
@@ -379,10 +379,10 @@
         },
         "toml": {
             "hashes": [
-                "sha256:926b612be1e5ce0634a2ca03470f95169cf16f939018233a670519cb4ac58b0f",
-                "sha256:bda89d5935c2eac546d648028b9901107a595863cb36bae0c73ac804a9b4ce88"
+                "sha256:229f81c57791a41d65e399fc06bf0848bab550a9dfd5ed66df18ce5f05e73d5c",
+                "sha256:235682dd292d5899d361a811df37e04a8828a5b1da3115886b73cf81ebc9100e"
             ],
-            "version": "==0.10.1"
+            "version": "==0.10.0"
         },
         "tqdm": {
             "hashes": [
