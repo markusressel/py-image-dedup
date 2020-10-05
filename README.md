@@ -156,7 +156,7 @@ you have to install them as a port:
 
 ```shell
 pkg install pkgconf
-pkg install py36-numpy
+pkg install py38-numpy
 pkg install py27-scipy
 ```
 

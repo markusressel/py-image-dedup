@@ -9,7 +9,6 @@ before_install:
   - docker ps -a
 
 python:
-  - "3.6"
   - "3.7"
   - "3.8"
 
