@@ -598,7 +598,7 @@ class ImageMatchDeduplicator:
 
                 target_file = Path(str(target_dir), *file_path.parts[1:])
                 if target_file.exists():
-                    if filecmp.cmp(file_path, target_file):
+                    if filecmp.cmp(file_path, target_file, shallow=False):
                         os.remove(file_path)
                     else:
                         raise ValueError(f"Cant move duplicate file because the target already exists: {target_file}")
