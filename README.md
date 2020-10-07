@@ -15,14 +15,14 @@ a pHash for an image and store the result in an ElasticSearch backend for very h
 ### Phase 1 - Database cleanup
 
 In the first phase the elasticsearch backend is checked against the 
-current filesystem state. Files that no longer exist are removed from
-the database to speed up queries made in a later phase.
+current filesystem state, cleaning up database entries of files that 
+no longer exist. This will speed up queries made lateron.
 
 ### Phase 2 - Counting files
 
 Although not necessary for the deduplication process it is very convenient
 to have some kind of progress indication while the deduplication process
-is at work. To do this available files must be counted beforehand.
+is at work. To be able to provide that, available files must be counted beforehand.
 
 ### Phase 3 - Analysing files
 
@@ -62,15 +62,19 @@ criteria (in this exact order):
 The first candidate in the resulting list is considered to be the best
 available version of all candidates.
  
-### Phase 5 - Removing duplicates
+### Phase 5 - Moving/Deleting duplicates
 
 All but the best version of duplicate candidates identified in the previous
-phase are now deleted from the file system (if you didn't specify `--dry-run` of course).  
+phase are now deleted from the file system (if you didn't specify `--dry-run` of course).
+
+If `duplicates_target_directory` is set, the specified folder will be used as
+a root directory to move duplicates to, instead of deleting them, replicating their original 
+folder structure.
  
 ### Phase 6 - Removing empty folders (Optional)
 
 In the last phase, folders that are empty due to the deduplication 
-process are deleted (if turned on in configuration).
+process are deleted, cleaning up the directory structure (if turned on in configuration).
 
 # How to use
 
@@ -103,7 +107,8 @@ querying of image signatures.
 This library requires elasticsearch version 5 or later. Sadly the
 [Image-Match](https://github.com/ascribe/image-match) library still 
 specifies version 2, so [a fork of the original project](https://github.com/markusressel/image-match)
- is used instead.
+ is used instead. This fork is maintained by me, and any contributions
+ are very much appreciated.
 
 ### Set up the index
 
