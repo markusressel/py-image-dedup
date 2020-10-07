@@ -8,6 +8,8 @@ py_image_dedup:
     recursive: true
     source_directories:
       - /home/myuser/pictures/
+    exclusions:
+      - ".*/excluded/.*"
     threads: 1
     use_exif_data: true
   deduplication:

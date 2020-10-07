@@ -32,7 +32,7 @@ def file_has_extension(file: Path, extensions: List[str] or None) -> bool:
         return True
 
 
-def get_files_count(directory: Path, recursive: bool, file_extensions: List[str] or None) -> int:
+def get_files_count(directory: Path, recursive: bool, file_extensions: List[str] or None, exclusions: List) -> int:
     """
     :param directory: the directory to analyze
     :param recursive: whether to search the directory recursively
@@ -43,8 +43,11 @@ def get_files_count(directory: Path, recursive: bool, file_extensions: List[str]
     for r, d, files in os.walk(str(directory)):
         for file in files:
             file = Path(file)
-            if file_has_extension(file, file_extensions):
-                files_count += 1
+            if any(list(map(lambda x: x.search(str(file.absolute())), exclusions))):
+                continue
+            if not file_has_extension(file, file_extensions):
+                continue
+            files_count += 1
         if not recursive:
             break
 

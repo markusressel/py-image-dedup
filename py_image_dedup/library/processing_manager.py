@@ -108,7 +108,8 @@ class ProcessingManager(RegularIntervalWorker):
             files_count = get_files_count(
                 path,
                 self.config.RECURSIVE.value,
-                self.config.FILE_EXTENSION_FILTER.value
+                self.config.FILE_EXTENSION_FILTER.value,
+                self.config.EXCLUSIONS.value
             )
             directory_map = {
                 path: files_count

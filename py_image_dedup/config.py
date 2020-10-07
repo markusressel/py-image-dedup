@@ -6,6 +6,7 @@ from container_app_conf.entry.file import DirectoryConfigEntry
 from container_app_conf.entry.float import FloatConfigEntry
 from container_app_conf.entry.int import IntConfigEntry
 from container_app_conf.entry.list import ListConfigEntry
+from container_app_conf.entry.regex import RegexConfigEntry
 from container_app_conf.entry.string import StringConfigEntry
 from container_app_conf.entry.timedelta import TimeDeltaConfigEntry
 from container_app_conf.source.env_source import EnvSource
@@ -32,6 +33,7 @@ NODE_INDEX = "index"
 
 NODE_ANALYSIS = "analysis"
 
+NODE_EXCLUSIONS = "exclusions"
 NODE_SOURCE_DIRECTORIES = "source_directories"
 NODE_RECURSIVE = "recursive"
 NODE_SEARCH_ACROSS_ROOT_DIRS = "across_dirs"
@@ -181,6 +183,17 @@ class DeduplicatorConfig(ConfigBase):
             ".jpg",
             ".jpeg"
         ]
+    )
+
+    EXCLUSIONS = ListConfigEntry(
+        description="Comma separated list of regular expression filters.",
+        item_type=RegexConfigEntry,
+        key_path=[
+            NODE_MAIN,
+            NODE_ANALYSIS,
+            NODE_EXCLUSIONS
+        ],
+        default=[]
     )
 
     ANALYSIS_THREADS = IntConfigEntry(

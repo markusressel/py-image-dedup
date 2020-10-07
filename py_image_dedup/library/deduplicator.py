@@ -223,7 +223,8 @@ class ImageMatchDeduplicator:
             file_count = get_files_count(
                 directory,
                 self._config.RECURSIVE.value,
-                self._config.FILE_EXTENSION_FILTER.value
+                self._config.FILE_EXTENSION_FILTER.value,
+                self._config.EXCLUSIONS.value
             )
             directory_map[directory] = file_count
 
@@ -249,12 +250,17 @@ class ImageMatchDeduplicator:
                 for file in files:
                     file_path = Path(root, file)
 
+                    # skip file in exclusion
+                    if any(list(map(lambda x: x.search(str(file_path.absolute())), self._config.EXCLUSIONS.value))):
+                        continue
+
                     # skip file with unwanted file extension
                     if not file_has_extension(file_path, self._config.FILE_EXTENSION_FILTER.value):
                         continue
 
                     # skip if not existent (probably already deleted)
                     if not file_path.exists():
+                        self._progress_manager.inc()
                         continue
 
                     try:
