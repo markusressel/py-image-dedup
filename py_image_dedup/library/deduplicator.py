@@ -206,7 +206,7 @@ class ImageMatchDeduplicator:
 
         # remove empty folders
         for directory in directories:
-            empty_folders = self._find_empty_folders(directory, recursive)
+            empty_folders = self._find_empty_folders(directory, recursive, dry_run)
             self._remove_folders(directory, empty_folders, dry_run)
 
     def _count_files(self, directories: List[Path]) -> dict:
@@ -462,7 +462,7 @@ class ImageMatchDeduplicator:
             echo("Phase 5/6: Removing duplicates ...", color='cyan')
             self._remove_files_marked_as_delete(dry_run)
 
-    def _find_empty_folders(self, root_path: Path, recursive: bool) -> [str]:
+    def _find_empty_folders(self, root_path: Path, recursive: bool, dry_run: bool) -> [str]:
         """
         Finds empty folders within the given root_path
         :param root_path: folder to search in
@@ -477,17 +477,21 @@ class ImageMatchDeduplicator:
 
             # find out which of those files were deleted by the deduplication process
             files_deleted = list(
-                filter(lambda x: x in self._deduplication_result.get_removed_or_moved_files(), abs_file_paths))
-            # find out which of them were not
-            filtered_files = list(filter(lambda x: x not in files_deleted, abs_file_paths))
+                map(lambda x: Path(x), filter(
+                    lambda x: Path(x) in self._deduplication_result.get_removed_or_moved_files(),
+                    abs_file_paths)))
+            files_deleted = list(set(files_deleted + list(
+                filter(lambda x: x.parent == Path(root), self._deduplication_result.get_removed_or_moved_files()))))
 
             folders_deleted = list(filter(lambda x: x in result, abs_folder_paths))
             filtered_directories = list(filter(lambda x: x not in folders_deleted, abs_folder_paths))
-            if (len(filtered_files) == 0 and (len(filtered_directories) == 0) and (
-                    len(folders_deleted) > 0 or len(files_deleted) > 0)):
-                # check if a parent directory is already added
-                # TODO: when running this bottom-up this check should not be necessary
-                if len([directory for directory in filtered_directories if directory.startswith(root)]) == 0:
+
+            if dry_run:
+                if len(files_deleted) > 0 and len(files_deleted) == len(files) and len(folders_deleted) == len(
+                        directories):
+                    result.append(root)
+            else:
+                if len(files_deleted) > 0 and len(files) <= 0 and len(directories) <= 0:
                     result.append(root)
 
             if not recursive:
