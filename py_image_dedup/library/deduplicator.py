@@ -1,4 +1,5 @@
 import datetime
+import filecmp
 import logging
 import os
 import shutil
@@ -584,7 +585,6 @@ class ImageMatchDeduplicator:
         :param files_to_move: list of absolute file paths
         :param target_dir: directory to move files to
         """
-
         for file_path in files_to_move:
             self._progress_manager.set_postfix(self._truncate_middle(file_path))
 
@@ -598,10 +598,13 @@ class ImageMatchDeduplicator:
 
                 target_file = Path(str(target_dir), *file_path.parts[1:])
                 if target_file.exists():
-                    raise ValueError(f"Cant move duplicate file because the target already exists: {target_file}")
-
-                target_file.parent.mkdir(parents=True, exist_ok=True)
-                shutil.move(file_path, target_file)
+                    if filecmp.cmp(file_path, target_file, shallow=False):
+                        os.remove(file_path)
+                    else:
+                        raise ValueError(f"Cant move duplicate file because the target already exists: {target_file}")
+                else:
+                    target_file.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.move(file_path, target_file)
 
                 # remove from persistence
                 self._persistence.remove(str(file_path))
