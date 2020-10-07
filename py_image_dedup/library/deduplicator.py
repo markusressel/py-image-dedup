@@ -602,9 +602,9 @@ class ImageMatchDeduplicator:
                         os.remove(file_path)
                     else:
                         raise ValueError(f"Cant move duplicate file because the target already exists: {target_file}")
-
-                target_file.parent.mkdir(parents=True, exist_ok=True)
-                shutil.move(file_path, target_file)
+                else:
+                    target_file.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.move(file_path, target_file)
 
                 # remove from persistence
                 self._persistence.remove(str(file_path))
