@@ -16,7 +16,7 @@ a pHash for an image and store the result in an ElasticSearch backend for very h
 
 In the first phase the elasticsearch backend is checked against the 
 current filesystem state, cleaning up database entries of files that 
-no longer exist. This will speed up queries made lateron.
+no longer exist. This will speed up queries made later on.
 
 ### Phase 2 - Counting files
 
