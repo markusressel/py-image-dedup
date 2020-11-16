@@ -250,11 +250,11 @@
         },
         "prometheus-client": {
             "hashes": [
-                "sha256:983c7ac4b47478720db338f1491ef67a100b474e3bc7dafcbaefb7d0b8f9b01c",
-                "sha256:c6e6b706833a6bd1fd51711299edee907857be10ece535126a158f911ee80915"
+                "sha256:9da7b32f02439d8c04f7777021c304ed51d9ec180604700c1ba72a4d44dceb03",
+                "sha256:b08c34c328e1bf5961f0b4352668e6c8f145b4a087e09b7296ef62cbe4693d35"
             ],
             "index": "pypi",
-            "version": "==0.8.0"
+            "version": "==0.9.0"
         },
         "py-range-parse": {
             "hashes": [
@@ -452,10 +452,10 @@
         },
         "urllib3": {
             "hashes": [
-                "sha256:097116a6f16f13482d2a2e56792088b9b2920f4eb6b4f84a2c90555fb673db74",
-                "sha256:61ad24434555a42c0439770462df38b47d05d9e8e353d93ec3742900975e3e65"
+                "sha256:19188f96923873c92ccb987120ec4acaa12f0461fa9ce5d3d0772bc965a39e08",
+                "sha256:d8ff90d979214d7b4f8ce956e80f4028fc6860e4431f731ea4a8c08f23f99473"
             ],
-            "version": "==1.26.1"
+            "version": "==1.26.2"
         },
         "voluptuous": {
             "hashes": [
