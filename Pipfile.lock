@@ -62,11 +62,11 @@
         },
         "elasticsearch": {
             "hashes": [
-                "sha256:9053ca99bc9db84f5d80e124a79a32dfa0f7079b2112b546a03241c0dbeda36d",
-                "sha256:9a21bfa7dc6a0b0dc142088bd653d8ce5ab284b4f7a3ded716185adf5276a7fe"
+                "sha256:4ebd34fd223b31c99d9f3b6b6236d3ac18b3046191a37231e8235b06ae7db955",
+                "sha256:a725dd923d349ca0652cf95d6ce23d952e2153740cf4ab6daf4a2d804feeed48"
             ],
             "index": "pypi",
-            "version": "==7.10.0"
+            "version": "==7.10.1"
         },
         "idna": {
             "hashes": [
@@ -437,10 +437,10 @@
         },
         "tifffile": {
             "hashes": [
-                "sha256:5a388f8f3ca3f69a62f7c1cda72837fa5e9070e89992e7702408a786d526b3ff",
-                "sha256:c6c043ad28742c638ea20cee279b0f1a4da6b7fc57a37f7bf78861d4da11e2fe"
+                "sha256:6c65c3997a21cad40349921e557a383fd5f0ebd728f5e91fa6c8f8f9e45c4bbd",
+                "sha256:78e7fe7d27fdd3fbd67cc95aaa8265c43b942170bd2473b1d587dcc849822892"
             ],
-            "version": "==2020.12.4"
+            "version": "==2020.12.8"
         },
         "toml": {
             "hashes": [
