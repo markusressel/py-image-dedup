@@ -208,12 +208,6 @@
             "index": "pypi",
             "version": "==4.0.2"
         },
-        "pathtools": {
-            "hashes": [
-                "sha256:7c35c5421a39bb82e58018febd90e3b6e5db34c5443aaaf742b3f33d4655f1c0"
-            ],
-            "version": "==0.1.2"
-        },
         "pillow": {
             "hashes": [
                 "sha256:006de60d7580d81f4a1a7e9f0173dc90a932e3905cc4d47ea909bc946302311a",
@@ -437,10 +431,10 @@
         },
         "tifffile": {
             "hashes": [
-                "sha256:5a388f8f3ca3f69a62f7c1cda72837fa5e9070e89992e7702408a786d526b3ff",
-                "sha256:c6c043ad28742c638ea20cee279b0f1a4da6b7fc57a37f7bf78861d4da11e2fe"
+                "sha256:6c65c3997a21cad40349921e557a383fd5f0ebd728f5e91fa6c8f8f9e45c4bbd",
+                "sha256:78e7fe7d27fdd3fbd67cc95aaa8265c43b942170bd2473b1d587dcc849822892"
             ],
-            "version": "==2020.12.4"
+            "version": "==2020.12.8"
         },
         "toml": {
             "hashes": [
@@ -473,10 +467,10 @@
         },
         "watchdog": {
             "hashes": [
-                "sha256:e38bffc89b15bafe2a131f0e1c74924cf07dcec020c2e0a26cccd208831fcd43"
+                "sha256:78ea5d78f2cf8e4d6343ab2cbed93bb47b7a85b1c2f90a1dea365226bbab68ac"
             ],
             "index": "pypi",
-            "version": "==0.10.4"
+            "version": "==1.0.1"
         }
     },
     "develop": {
