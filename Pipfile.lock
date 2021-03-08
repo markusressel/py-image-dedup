@@ -317,10 +317,10 @@
         },
         "ruamel.yaml": {
             "hashes": [
-                "sha256:012b9470a0ea06e4e44e99e7920277edf6b46eee0232a04487ea73a7386340a5",
-                "sha256:076cc0bc34f1966d920a49f18b52b6ad559fbe656a0748e3535cf7b3f29ebf9e"
+                "sha256:64b06e7873eb8e1125525ecef7345447d786368cadca92a7cd9b59eae62e95a3",
+                "sha256:bb48c514222702878759a05af96f4b7ecdba9b33cd4efcf25c86b882cef3a942"
             ],
-            "version": "==0.16.12"
+            "version": "==0.16.13"
         },
         "ruamel.yaml.clib": {
             "hashes": [
@@ -356,7 +356,7 @@
                 "sha256:e9f7d1d8c26a6a12c23421061f9022bb62704e38211fe375c645485f38df34a2",
                 "sha256:f6061a31880c1ed6b6ce341215336e2f3d0c1deccd84957b6fa8ca474b41e89f"
             ],
-            "markers": "platform_python_implementation == 'CPython' and python_version < '3.9'",
+            "markers": "platform_python_implementation == 'CPython' and python_version < '3.10'",
             "version": "==0.2.2"
         },
         "scikit-image": {
@@ -422,10 +422,10 @@
         },
         "tifffile": {
             "hashes": [
-                "sha256:32eefbcfd097cc30cd89e940a796c38b931465e1c3dcea53481bbf2abb1b62f0",
-                "sha256:6793787742e18cf2116bc65e17c51cd9c14cd27a4a6033a8ddd5bf801a637615"
+                "sha256:8ae99b2d7a80512628dc7f7de5a178525b28cb50cc69e82578a67106c28beee6",
+                "sha256:f55a4c8bcbfdd28157529c2e2a7c066da1636a202144f1696092b9290f52685d"
             ],
-            "version": "==2021.2.1"
+            "version": "==2021.3.5"
         },
         "toml": {
             "hashes": [
@@ -436,11 +436,11 @@
         },
         "tqdm": {
             "hashes": [
-                "sha256:65185676e9fdf20d154cffd1c5de8e39ef9696ff7e59fe0156b1b08e468736af",
-                "sha256:70657337ec104eb4f3fb229285358f23f045433f6aea26846cdd55f0fd68945c"
+                "sha256:9fdf349068d047d4cfbe24862c425883af1db29bcddf4b0eeb2524f6fbdb23c7",
+                "sha256:d666ae29164da3e517fcf125e41d4fe96e5bb375cd87ff9763f6b38b5592fe33"
             ],
             "index": "pypi",
-            "version": "==4.57.0"
+            "version": "==4.59.0"
         },
         "urllib3": {
             "hashes": [
