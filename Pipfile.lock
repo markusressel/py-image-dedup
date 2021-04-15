@@ -40,11 +40,11 @@
         },
         "container-app-conf": {
             "hashes": [
-                "sha256:cb7853e3a25d77c87122c991ac5176fa4de52246ed1f8a6a59c4acb694119613",
-                "sha256:f7061bc7d092cf8c539fc61bd0ac4c3aae69b41883b2454b8807b22610248c5c"
+                "sha256:50e20bd0f8f124391769831272748a00f135dbb68592813fbb0c11ba6c437dd6",
+                "sha256:7b31a0f0501bf489dcab9a08df119ac63f387c49be65ed5a0914b6492d6f5bfd"
             ],
             "index": "pypi",
-            "version": "==5.2.1"
+            "version": "==5.2.2"
         },
         "cycler": {
             "hashes": [
