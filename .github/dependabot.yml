@@ -1,0 +1,32 @@
+version: 2
+registries:
+  python-index-pypi-python-org-simple:
+    type: python-index
+    url: https://pypi.python.org/simple/
+    username: "${{secrets.PYTHON_INDEX_PYPI_PYTHON_ORG_SIMPLE_USERNAME}}"
+    password: "${{secrets.PYTHON_INDEX_PYPI_PYTHON_ORG_SIMPLE_PASSWORD}}"
+
+updates:
+- package-ecosystem: pip
+  directory: "/"
+  schedule:
+    interval: daily
+    time: "16:00"
+    timezone: Europe/Berlin
+  open-pull-requests-limit: 10
+  ignore:
+  - dependency-name: prometheus-client
+    versions:
+    - 0.10.0
+  - dependency-name: pillow
+    versions:
+    - 8.1.1
+  - dependency-name: tqdm
+    versions:
+    - 4.58.0
+  - dependency-name: numpy
+    versions:
+    - 1.19.5
+    - 1.20.0
+  registries:
+  - python-index-pypi-python-org-simple
