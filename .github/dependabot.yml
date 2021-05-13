@@ -3,8 +3,8 @@ registries:
   python-index-pypi-python-org-simple:
     type: python-index
     url: https://pypi.python.org/simple/
-    #username: "${{secrets.PYTHON_INDEX_PYPI_PYTHON_ORG_SIMPLE_USERNAME}}"
-    #password: "${{secrets.PYTHON_INDEX_PYPI_PYTHON_ORG_SIMPLE_PASSWORD}}"
+    username: "${{secrets.PYTHON_INDEX_PYPI_PYTHON_ORG_SIMPLE_USERNAME}}"
+    password: "${{secrets.PYTHON_INDEX_PYPI_PYTHON_ORG_SIMPLE_PASSWORD}}"
 
 updates:
 - package-ecosystem: pip
