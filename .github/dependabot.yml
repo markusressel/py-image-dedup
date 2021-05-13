@@ -8,6 +8,7 @@ registries:
 
 updates:
 - package-ecosystem: pip
+  insecure-external-code-execution: allow
   directory: "/"
   schedule:
     interval: daily
