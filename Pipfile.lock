@@ -63,11 +63,11 @@
         },
         "elasticsearch": {
             "hashes": [
-                "sha256:583459eaa864d0e4c11b4e0314569999fa780748856bfaeb8d714fc9243c26a2",
-                "sha256:fd8b3a267da279ae78f7923c549d488403cdbf83a98299bb130feb832d014b8f"
+                "sha256:76cc7670449676138acbab8872eb34867db033701310d9b01fb2ecfba5fb7234",
+                "sha256:d539d82552804b3d41033377b9adf11c39c749ee1764af3d74b56f42177e3281"
             ],
             "index": "pypi",
-            "version": "==7.13.2"
+            "version": "==7.13.3"
         },
         "idna": {
             "hashes": [
