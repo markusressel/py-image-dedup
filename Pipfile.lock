@@ -25,11 +25,11 @@
         },
         "charset-normalizer": {
             "hashes": [
-                "sha256:5d209c0a931f215cee683b6445e2d77677e7e75e159f78def0db09d68fafcaa6",
-                "sha256:5ec46d183433dcbd0ab716f2d7f29d8dee50505b3fdb40c6b985c7c4f5a3591f"
+                "sha256:e019de665e2bcf9c2b64e2e5aa025fa991da8720daa3c1138cadd2fd1856aed0",
+                "sha256:f7af805c321bfa1ce6714c51f254e0d5bb5e5834039bc17db7ebe3a4cec9492b"
             ],
             "markers": "python_version >= '3'",
-            "version": "==2.0.6"
+            "version": "==2.0.7"
         },
         "click": {
             "hashes": [
@@ -56,19 +56,19 @@
         },
         "elasticsearch": {
             "hashes": [
-                "sha256:6c47eb68f643f3d7d6a6d971e571448b900b9470dc481421c9af9d28a1303911",
-                "sha256:bf1d210d82c78fbd3ae5cbedd756716d732433cc97184966688dcd1c75df4619"
+                "sha256:1e9a6302945d98046899a7c9b3d345c881ac7b05ba176d3a49c9d2702b1e8bc8",
+                "sha256:b728a3cdde3a4d3a93b9e92f0e7f0fe636226d236219913db32311ccaf8a9d16"
             ],
             "index": "pypi",
-            "version": "==7.15.0"
+            "version": "==7.15.1"
         },
         "idna": {
             "hashes": [
-                "sha256:14475042e284991034cb48e06f6851428fb14c4dc953acd9be9a5e95c7b6dd7a",
-                "sha256:467fbad99067910785144ce333826c71fb0e63a425657295239737f7ecd125f3"
+                "sha256:84d9dd047ffa80596e0f246e2eab0b391788b0503584e8945f2368256d2735ff",
+                "sha256:9d643ff0a55b762d5cdb124b8eaa99c66322e2157b69160bc32796e824360e6d"
             ],
             "markers": "python_version >= '3'",
-            "version": "==3.2"
+            "version": "==3.3"
         },
         "image-match": {
             "editable": true,
@@ -454,11 +454,11 @@
         },
         "tifffile": {
             "hashes": [
-                "sha256:86c11d33d8101fcb9bec04d2c342982742d11e2a5a8cc770fbbcd4733bdba76a",
-                "sha256:ec0eb6c54a1c097b8bb92467b36819642f34646b4cb37a73a3f85d92d4181684"
+                "sha256:0a78268a2d844af94929512d28b39bd1ea6fe46de4124103840b5fe4e1c555cd",
+                "sha256:98de4a48fbce8f2d4ab225df73d8c9dd6df5540291498adf5f1068d268836da9"
             ],
             "markers": "python_version >= '3.7'",
-            "version": "==2021.10.10"
+            "version": "==2021.10.12"
         },
         "toml": {
             "hashes": [
