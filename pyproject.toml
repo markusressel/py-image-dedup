@@ -26,7 +26,8 @@ classifiers = [
 ]
 
 [build-system]
-requires = ["poetry>=1.1.4"]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.dependencies]
 python = "^3.8"  # Compatible python versions must be declared here
@@ -37,8 +38,6 @@ watchdog = "^0.10.2"
 elasticsearch = "^6"
 scipy = "*"
 numpy = "*"
-setuptools = "*"
-pip = "^20.0.2"
 container-app-conf = "^5.0.0"
 requests = "^2.20.0"
 click = "*"
