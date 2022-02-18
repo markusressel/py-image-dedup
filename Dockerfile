@@ -16,7 +16,7 @@ COPY poetry.lock pyproject.toml ./
 
 RUN apt-get update && \
     apt-get install -y libatlas-base-dev gfortran && \
-    apt-get clean && rm -rf /var/lib/apt/lists/* \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 
 RUN pip install "poetry==$POETRY_VERSION" \
  && POETRY_VIRTUALENVS_CREATE=false poetry install --no-dev \
