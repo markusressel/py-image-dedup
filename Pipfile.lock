@@ -359,11 +359,11 @@
         },
         "setuptools": {
             "hashes": [
-                "sha256:6221e37dc86fcdc9dad9d9eb2002e9f9798fe4aca1bf18f280e66e50c0eb7fca",
-                "sha256:ad88b13f3dc60420259c9877486908ddad12c7befaff0d624c7190f742abd64f"
+                "sha256:8f4813dd6a4d6cc17bde85fb2e635fe19763f96efbb0ddf5575562e5ee0bc47a",
+                "sha256:c3d4e2ab578fbf83775755cd76dae73627915a22832cf4ea5de895978767833b"
             ],
             "index": "pypi",
-            "version": "==61.0.0"
+            "version": "==61.2.0"
         },
         "six": {
             "hashes": [
@@ -383,11 +383,11 @@
         },
         "tifffile": {
             "hashes": [
-                "sha256:68f4f3aece7daafbe3dd58751622be0412510ee5921625ca611e47b618f906e6",
-                "sha256:fe2c79190a1d625076e68a2f0e49ca72a907315fe8ebf488f5eecf70b257fe3c"
+                "sha256:6d943f2c01b1a34a476c963d119565fba108f559e061426c63a5157846959ed9",
+                "sha256:c458ef981220bf501ca7f04ce489a9a0395c918914a4a47527a51bbb4c43425a"
             ],
             "markers": "python_version >= '3.8'",
-            "version": "==2022.3.16"
+            "version": "==2022.3.25"
         },
         "toml": {
             "hashes": [
