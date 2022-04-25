@@ -70,11 +70,11 @@
         },
         "imageio": {
             "hashes": [
-                "sha256:4757b5bc41158feb89529721bc14b738c3a0e17284dbdfc3f09ac4ad9dc00a08",
-                "sha256:8fea761d51a53c150cabd82ed36011252c17580c752216b8222f078630dfb9ba"
+                "sha256:090898c48532631ab11c74ae743e64c24dabda45c16db46f7e3bec9e2d8f422f",
+                "sha256:a922cb37011d69702edbb4f68b0475d8f7242337e7995a42b7c32ec9931ddd46"
             ],
             "markers": "python_version >= '3.7'",
-            "version": "==2.16.2"
+            "version": "==2.18.0"
         },
         "networkx": {
             "hashes": [
@@ -386,11 +386,11 @@
         },
         "tifffile": {
             "hashes": [
-                "sha256:00795738af6ebaf98da456eca2c637febde4fd467477c4ef2e09482883d44aed",
-                "sha256:d4a4057e5cb7afe6e24cf7bde42a163970b593afe44c17249894ede755cf3faa"
+                "sha256:2a18ba74173074121e118ad9cd06fb030ac8354abd1d94adddf0b3ce614b0438",
+                "sha256:2b8003c834883103131bd3e97388091b59a3a2344e9d8e1ed48aebeb64f86763"
             ],
             "markers": "python_version >= '3.8'",
-            "version": "==2022.4.8"
+            "version": "==2022.4.22"
         },
         "toml": {
             "hashes": [
@@ -504,11 +504,11 @@
         },
         "pytest": {
             "hashes": [
-                "sha256:841132caef6b1ad17a9afde46dc4f6cfa59a05f9555aae5151f73bdf2820ca63",
-                "sha256:92f723789a8fdd7180b6b06483874feca4c48a5c76968e03bb3e7f806a1869ea"
+                "sha256:13d0e3ccfc2b6e26be000cb6568c832ba67ba32e719443bfe725814d3c42433c",
+                "sha256:a06a0425453864a270bc45e71f783330a7428defb4230fb5e6a731fde06ecd45"
             ],
             "index": "pypi",
-            "version": "==7.1.1"
+            "version": "==7.1.2"
         },
         "tomli": {
             "hashes": [
