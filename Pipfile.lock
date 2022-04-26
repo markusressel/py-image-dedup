@@ -49,11 +49,11 @@
         },
         "elasticsearch": {
             "hashes": [
-                "sha256:1b1fa86cbfab39bf43dce1f76f737fc59d5a8e792e2a721e0b4437db44da5647",
-                "sha256:f49ebaf9e9652a468db4dce5eb8a6a7ea33594ab988f6dadebf36f99772ac809"
+                "sha256:ccf5aaaaec7e7907abffe15a1b705ffacb8248a456c6ababd116bb58ebae2e2d",
+                "sha256:e7a03ef9b37a569f4d228a583b8aad3cf99aaae72a53cfc7f1fee70c7fa05255"
             ],
             "index": "pypi",
-            "version": "==7.17.2"
+            "version": "==7.17.3"
         },
         "idna": {
             "hashes": [
@@ -386,11 +386,11 @@
         },
         "tifffile": {
             "hashes": [
-                "sha256:2a18ba74173074121e118ad9cd06fb030ac8354abd1d94adddf0b3ce614b0438",
-                "sha256:2b8003c834883103131bd3e97388091b59a3a2344e9d8e1ed48aebeb64f86763"
+                "sha256:018054f54b3c2fc06842b224077d059340309addfcd94263988c05d7f19724e9",
+                "sha256:e36b4e4a04e62f374893ddc91927bb1a8524a6aea0534fc23fe4d318b24a6573"
             ],
             "markers": "python_version >= '3.8'",
-            "version": "==2022.4.22"
+            "version": "==2022.4.26"
         },
         "toml": {
             "hashes": [
