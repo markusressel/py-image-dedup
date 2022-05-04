@@ -3,9 +3,6 @@ name: Docker Image latest
 on:
   push:
     branches: [ master ]
-  pull_request:
-    # The branches below must be a subset of the branches above
-    branches: [ master ]
 
 jobs:
   build:
@@ -19,6 +16,7 @@ jobs:
       - name: Push the Docker image
         if: github.ref_name == 'master'
         run: docker push markusressel/py-image-dedup:latest
+
   dockerHubDescription:
     runs-on: ubuntu-latest
     steps:
