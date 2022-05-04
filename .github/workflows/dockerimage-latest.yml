@@ -14,7 +14,9 @@ jobs:
       - name: Login to DockerHub Registry
         run: echo ${{ secrets.DOCKERHUB_PASSWORD }} | docker login -u ${{ secrets.DOCKERHUB_USERNAME }} --password-stdin
       - name: Push the Docker image
+        if: github.ref_name == 'master'
         run: docker push markusressel/py-image-dedup:latest
+
   dockerHubDescription:
     runs-on: ubuntu-latest
     steps:

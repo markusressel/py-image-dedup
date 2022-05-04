@@ -1,0 +1,53 @@
+[tool.poetry]
+name = "py-image-dedup"
+version = "2.0.0"
+description = "A library to find duplicate images and delete unwanted ones"
+
+license = "AGPLv3+"
+
+authors = [
+    "Markus Ressel <mail@markusressel.de>",
+]
+
+readme = 'README.md'
+
+repository = "https://github.com/markusressel/py-image-dedup"
+homepage = "https://github.com/markusressel/py-image-dedup"
+
+keywords = ['deduplication', 'py-image-dedup']
+
+classifiers = [
+    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Development Status :: 5 - Production/Stable"
+]
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.dependencies]
+python = "^3.8"  # Compatible python versions must be declared here
+
+Pillow = "*"
+ordered-set = "*"
+watchdog = "^0.10.2"
+elasticsearch = "^6"
+scipy = "*"
+numpy = "*"
+container-app-conf = "^5.0.0"
+requests = "^2.20.0"
+click = "*"
+tabulate = "^0.8.3"
+tqdm = "*"
+prometheus-client = "*"
+image-match = { git = "https://github.com/markusressel/image-match.git", tag = "2.0.1" }
+
+[tool.poetry.dev-dependencies]
+pytest = "*"
+
+[tool.poetry.scripts]
+py-image-dedup = 'py_image_dedup.cli:cli'
