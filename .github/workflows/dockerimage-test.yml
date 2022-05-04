@@ -1,4 +1,4 @@
-name: Docker Image latest
+name: Test Docker Image
 
 on:
   pull_request:
