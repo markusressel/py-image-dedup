@@ -1,5 +1,5 @@
 import PIL.ExifTags
-from PIL import Image
+from PIL import Image, TiffImagePlugin
 
 
 def get_exif_data(image_file_path: str) -> {}:
@@ -20,6 +20,11 @@ def get_exif_data(image_file_path: str) -> {}:
         for k, v in exif_data.items():
             if k in PIL.ExifTags.TAGS:
                 tag_name = PIL.ExifTags.TAGS[k]
+                if isinstance(v, TiffImagePlugin.IFDRational):
+                    if v._denominator != 0:
+                        v = v._numerator / v._denominator
+                    else:
+                        v = float(v._numerator)
                 result[tag_name] = v
     except Exception as e:
         pass
