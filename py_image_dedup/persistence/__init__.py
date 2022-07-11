@@ -1,5 +1,7 @@
 import os
 
+from PIL import TiffImagePlugin
+
 from py_image_dedup.persistence.metadata_key import MetadataKey
 
 
@@ -83,6 +85,11 @@ class ImageSignatureStore:
             normalized_value = v
             if isinstance(v, bytes) or isinstance(v, tuple):
                 normalized_value = str(v)
+            elif isinstance(v, TiffImagePlugin.IFDRational):
+                if v._denominator != 0:
+                    normalized_value = v._numerator / v._denominator
+                else:
+                    normalized_value = float(v._numerator)
 
             result[k] = normalized_value
 
