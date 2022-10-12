@@ -36,18 +36,21 @@ is advised to get the best performance.
 
 Since we might already have a previous version of this file in the database 
 before analysing a given file the file modification time is compared to the
-given one. If the database content seems to be still correct the signature 
+given one. If the database content seems to be still correct the signature
 for this file will **not** be recalculated. Because of this, subsequent
 runs will be much faster. There still has to happen some file access though,
 so it is probably limited by that.
- 
+
 ### Phase 4 - Finding duplicates
 
-Every file is now processed again - but only by means of querying the 
+Every file is now processed again - but only by means of querying the
 database backend for similar images (within the given `max_dist`).
 If there are images found that match the similarity criteria they are considered
-duplicate candidates. All candidates are then ordered by the following
-criteria (in this exact order):
+duplicate candidates. All candidates are then ordered according to the `prioritization_rules`,
+which you can specify yourself in the configuration, see [Configuration](#Configuration).
+
+If you do not specify `prioritization_rules` yourself, the following order will
+be used:
 
 1. pixel count (more is better)
 1. EXIF data (more exif data is better)
@@ -90,10 +93,10 @@ pip3 install py-image-dedup
 
 **py-image-dedup** uses [container-app-conf](https://github.com/markusressel/container-app-conf)
 to provide configuration via a YAML file as well as ENV variables which
-generates a reference config on startup. Have a look at the 
-[documentation about it](https://github.com/markusressel/container-app-conf#generate-reference-config)
+generates a reference config on startup. Have a look at the
+[documentation about it](https://github.com/markusressel/container-app-conf#generate-reference-config).
 
-See [py_image_dedup_reference.yaml](/py_image_dedup_reference.yaml) 
+See [py_image_dedup_reference.yaml](/py_image_dedup_reference.yaml)
 for an example in this repo.
 
 ## Setup elasticsearch backend
