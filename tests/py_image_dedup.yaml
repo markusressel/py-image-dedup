@@ -14,8 +14,28 @@ py_image_dedup:
   deduplication:
     # duplicates_target_directory:
     max_file_modification_time_diff: 0:01:40
+    prioritization_rules:
+      - name: "more-exif-data"
+      - name: "less-exif-data"
+      - name: "bigger-file-size"
+      - name: "smaller-file-size"
+      - name: "newer-file-modification-date"
+      - name: "older-file-modification-date"
+      - name: "smaller-distance"
+      - name: "bigger-distance"
+      - name: "longer-path"
+      - name: "shorter-path"
+      - name: "contains-copy-in-file-name"
+      - name: "longer-file-name"
+      - name: "shorter-file-name"
+      - name: "longer-folder-path"
+      - name: "shorter-folder-path"
+      - name: "higher-score"
+      - name: "lower-score"
+
   elasticsearch:
     auto_create_index: true
     host: 127.0.0.1
     max_distance: 0.1
   remove_empty_folders: false
+

@@ -1,31 +1,90 @@
+# This is a reference configuration file explaining all the options
+# of py-image-dedup.
+
 py_image_dedup:
+  # Configuration for the analysis phase, see README.md
   analysis:
+    # Whether to search for duplicates across directories when
+    # specifying more than one image source directory
     across_dirs: false
+    # A filter for the file extensions to analyse
     file_extensions:
       - .png
       - .jpg
       - .jpeg
+    # Whether to search recursively in each of the source directories
     recursive: true
+    # A list of source directories to analyse
     source_directories:
       - /home/myuser/pictures/
+    # A list of regex patterns to ignore when traversing any of the
+    # source directories
     exclusions:
       - ".*/excluded/.*"
+    # The number of threads to use for image analysis.
+    # If unset, this will default to `os.cpu_count()`.
     threads: 1
+    # Whether to include EXIF data of images in the analysis
     use_exif_data: true
+
+  # Deduplication phase specific configuration options, see README.md
   deduplication:
+    # The target directory to move duplicate images to
     duplicates_target_directory: /home/myuser/pictures/duplicates/
+    # Upper limit on the modification date difference between
+    # two duplicate images to be considered the same image.
     max_file_modification_time_diff: 0:05:00
+    # Specifies the criteria and their order for ordering the list of duplicates
+    # to select the best copy.
+    prioritization_rules:
+      - name: "more-exif-data"
+      - name: "less-exif-data"
+      - name: "bigger-file-size"
+      - name: "smaller-file-size"
+      - name: "newer-file-modification-date"
+      - name: "older-file-modification-date"
+      - name: "smaller-distance"
+      - name: "bigger-distance"
+      - name: "longer-path"
+      - name: "shorter-path"
+      - name: "contains-copy-in-file-name"
+      - name: "longer-file-name"
+      - name: "shorter-file-name"
+      - name: "longer-folder-path"
+      - name: "shorter-folder-path"
+      - name: "higher-score"
+      - name: "lower-score"
+
+  # Daemon specific configuration options, see README.md
   daemon:
+    # Time for waiting on filesystems changes to settle before analysing.
     timeout: 30s
+    # The type of file observer to use.
+    # One of: polling, inotify
     file_observer: polling
+  # A dry run can be used to validate the log output of a specific configuration
+  # before actually deleting or removing any images in any of the source
+  # directories.
   dry_run: true
+
+  # Elasticsearch specific configuration options, see README.md
   elasticsearch:
+    # Whether to automatically create an index in the target database.
     auto_create_index: true
+    # Hostname of the elasticsearch backend instance to use
     host: 127.0.0.1
+    # Port of the elasticsearch backend instance to use.
     port: 9200
+    # The index name to use for storing and querying image analysis data.
     index: images
+    # Maximum signature distance [0..1] to query from elasticsearch backend.
     max_distance: 0.1
+  # Whether to remove empty folders or not.
   remove_empty_folders: false
+
+  # Prometheus exporter specific configuration options, see README.md
   stats:
+    # Whether to enable prometheus statistics or not.
     enabled: true
+    # The port to expose statistics on.
     port: 8000
