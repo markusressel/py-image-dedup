@@ -1,3 +1,4 @@
+import os
 from datetime import timedelta
 
 from container_app_conf import ConfigBase
@@ -43,6 +44,7 @@ NODE_THREADS = "threads"
 
 NODE_DEDUPLICATION = "deduplication"
 
+NODE_PRIORITIZATION_RULES = "prioritization_rules"
 NODE_MAX_FILE_MODIFICATION_TIME_DIFF = "max_file_modification_time_diff"
 NODE_REMOVE_EMPTY_FOLDERS = "remove_empty_folders"
 NODE_DUPLICATES_TARGET_DIRECTORY = "duplicates_target_directory"
@@ -72,7 +74,7 @@ class DeduplicatorConfig(ConfigBase):
     )
 
     ELASTICSEARCH_HOST = StringConfigEntry(
-        description="Hostname of the elasticsearch backend instance to use",
+        description="Hostname of the elasticsearch backend instance to use.",
         key_path=[
             NODE_MAIN,
             NODE_ELASTICSEARCH,
@@ -82,7 +84,7 @@ class DeduplicatorConfig(ConfigBase):
     )
 
     ELASTICSEARCH_PORT = IntConfigEntry(
-        description="Hostname of the elasticsearch backend instance to use",
+        description="Port of the elasticsearch backend instance to use.",
         key_path=[
             NODE_MAIN,
             NODE_ELASTICSEARCH,
@@ -203,7 +205,7 @@ class DeduplicatorConfig(ConfigBase):
             NODE_ANALYSIS,
             NODE_THREADS
         ],
-        default=1
+        default=os.cpu_count()
     )
 
     MAX_FILE_MODIFICATION_TIME_DELTA = TimeDeltaConfigEntry(
@@ -216,6 +218,29 @@ class DeduplicatorConfig(ConfigBase):
         ],
         default=None,
         example=timedelta(minutes=5)
+    )
+
+    PRIORITIZATION_RULES = ListConfigEntry(
+        description="Comma separated list of prioritization rules to use for ordering duplicate "
+                    "images before proceeding with the deduplication process.",
+        item_type=StringConfigEntry,
+        key_path=[
+            NODE_MAIN,
+            NODE_DEDUPLICATION,
+            NODE_PRIORITIZATION_RULES
+        ],
+        required=False,
+        default=[
+            "higher-pixel-count",
+            "more-exif-data",
+            "bigger-file-size",
+            "newer-file-modification-date",
+            "smaller-distance",
+            "doesnt-contain-copy-in-file-name",
+            "longer-file-name",
+            "shorter-folder-path",
+            "higher-score",
+        ]
     )
 
     REMOVE_EMPTY_FOLDERS = BoolConfigEntry(
