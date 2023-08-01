@@ -35,7 +35,7 @@ python = "^3.8"  # Compatible python versions must be declared here
 Pillow = "*"
 ordered-set = "*"
 watchdog = ">=0.10.2,<2.3.0"
-elasticsearch = "^6"
+elasticsearch = ">=6,<8"
 scipy = "*"
 numpy = "*"
 container-app-conf = "^5.0.0"
