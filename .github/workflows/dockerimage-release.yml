@@ -9,7 +9,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       # this writes the tag name into GIT_TAG_NAME
       - name: Get tag name
         uses: little-core-labs/get-git-tag@v3.0.2
