@@ -122,13 +122,13 @@ files = [
 
 [[package]]
 name = "container-app-conf"
-version = "5.2.2"
+version = "5.3.0"
 description = "Convenient configuration of containerized applications"
 optional = false
 python-versions = "*"
 files = [
-    {file = "container_app_conf-5.2.2-py3-none-any.whl", hash = "sha256:50e20bd0f8f124391769831272748a00f135dbb68592813fbb0c11ba6c437dd6"},
-    {file = "container_app_conf-5.2.2.tar.gz", hash = "sha256:7b31a0f0501bf489dcab9a08df119ac63f387c49be65ed5a0914b6492d6f5bfd"},
+    {file = "container_app_conf-5.3.0-py3-none-any.whl", hash = "sha256:fa7d9530da2f62d4fed720a0b29ea854aadf0626104a2c17aace467608711160"},
+    {file = "container_app_conf-5.3.0.tar.gz", hash = "sha256:81fa5e7da03834ab6a7b9ad09a93dd767ecb57085751dfb7b4cf6570d51768db"},
 ]
 
 [package.dependencies]
