@@ -79,8 +79,8 @@ class ImageMatchDeduplicator:
         """
         # see: https://stackoverflow.com/questions/14861891/runtimewarning-invalid-value-encountered-in-divide
         # and: https://stackoverflow.com/questions/29347987/why-cant-i-suppress-numpy-warnings
-        import numpy
-        numpy.warnings.filterwarnings('ignore')
+        import warnings
+        warnings.filterwarnings('ignore')
 
         directories = self._config.SOURCE_DIRECTORIES.value
         if len(directories) <= 0:
