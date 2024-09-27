@@ -1,5 +1,5 @@
 # dont use alpine for python builds: https://pythonspeed.com/articles/alpine-docker-python/
-FROM python:3.10-slim-buster
+FROM python:3.11-slim-buster
 
 ENV PYTHONUNBUFFERED=1
 ENV POETRY_VERSION="1.8.3"

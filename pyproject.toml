@@ -30,7 +30,7 @@ requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.dependencies]
-python = "^3.8"  # Compatible python versions must be declared here
+python = "^3.11"  # Compatible python versions must be declared here
 
 Pillow = "*"
 ordered-set = "*"
