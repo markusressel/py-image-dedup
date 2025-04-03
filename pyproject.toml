@@ -46,7 +46,7 @@ tqdm = "*"
 prometheus-client = "*"
 image-match = { git = "https://github.com/markusressel/image-match.git", tag = "2.0.1" }
 
-[tool.poetry.dev-dependencies]
+[tool.poetry.group.dev.dependencies]
 pytest = "*"
 
 [tool.poetry.scripts]
