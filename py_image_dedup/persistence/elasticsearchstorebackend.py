@@ -77,13 +77,13 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
             es=Elasticsearch(
                 hosts=[
                     {'host': self.host, 'port': self.port}
-                ]
+                ],
+                maxsize=self._connections_per_node,
             ),
             # el_version=self._el_version,
             index=self._el_index,
             doc_type=self._el_doctype,
             distance_cutoff=max_dist,
-            maxsize=self._connections_per_node,
         )
 
     def _detect_db_version(self) -> int or None:
