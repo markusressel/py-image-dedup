@@ -169,7 +169,7 @@ class ImageMatchDeduplicator:
         for entry in entries:
             try:
                 image_entry = entry['_source']
-                metadata = image_entry[MetadataKey.METADATA.value]
+                metadata = image_entry.get(MetadataKey.METADATA.value, default={})
 
                 file_path = Path(image_entry[MetadataKey.PATH.value])
                 self._progress_manager.set_postfix(self._truncate_middle(str(file_path)))
@@ -194,7 +194,16 @@ class ImageMatchDeduplicator:
                 if not file_path.exists():
                     echo(f"Removing db entry for missing file: {file_path}")
                     self._persistence.remove(str(file_path))
-
+            except Exception as e:
+                logging.exception(e)
+                echo(f"Error while cleaning up database entry {entry}: {e}")
+                try:
+                    image_entry = entry['_source']
+                    file_path = Path(image_entry[MetadataKey.PATH.value])
+                    self._persistence.remove(str(file_path))
+                except Exception as e:
+                    logging.exception(e)
+                    echo(f"Error removing db entry: {e}")
             finally:
                 self._progress_manager.inc()
         self._progress_manager.clear()
