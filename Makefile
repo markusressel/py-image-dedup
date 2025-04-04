@@ -1,7 +1,7 @@
 .PHONY: all docker clean test
 
 docker:
-	docker build -t markusressel/py-image-dedup .
+	sudo docker build . --file Dockerfile --tag markusressel/py-image-dedup:latest
 
 test:
 	cd tests; pytest
