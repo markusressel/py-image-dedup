@@ -19,7 +19,7 @@ RUN apt-get update && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 RUN pip install "poetry==$POETRY_VERSION" \
- && POETRY_VIRTUALENVS_CREATE=false poetry install --no-dev \
+ && POETRY_VIRTUALENVS_CREATE=false poetry install \
  && pip uninstall -y poetry
 
 ENV PUID=1000 PGID=1000
