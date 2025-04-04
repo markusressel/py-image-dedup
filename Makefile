@@ -4,4 +4,4 @@ docker:
 	docker build -t markusressel/py-image-dedup .
 
 test:
-	pytest
+	cd tests; pytest
