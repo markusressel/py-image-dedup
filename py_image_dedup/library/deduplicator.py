@@ -169,7 +169,7 @@ class ImageMatchDeduplicator:
         for entry in entries:
             try:
                 image_entry = entry['_source']
-                metadata = image_entry.get(MetadataKey.METADATA.value, default={})
+                metadata = image_entry.get(MetadataKey.METADATA.value, {})
 
                 file_path = Path(image_entry[MetadataKey.PATH.value])
                 self._progress_manager.set_postfix(self._truncate_middle(str(file_path)))
@@ -179,7 +179,7 @@ class ImageMatchDeduplicator:
                     self._persistence.remove(str(file_path))
                     continue
 
-                data_version = metadata.get(MetadataKey.DATAMODEL_VERSION.value, default=-1)
+                data_version = metadata.get(MetadataKey.DATAMODEL_VERSION.value, -1)
                 if data_version != self._persistence.DATAMODEL_VERSION:
                     echo(f"Removing db entry with old db model version: {file_path}")
                     self._persistence.remove(str(file_path))
