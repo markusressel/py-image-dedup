@@ -202,31 +202,24 @@ files = [
 all = ["flake8 (>=7.1.1)", "mypy (>=1.11.2)", "pytest (>=8.3.2)", "ruff (>=0.6.2)"]
 
 [[package]]
-name = "image_match"
-version = "2.0.1"
+name = "image-match"
+version = "3.0.0"
 description = "image_match is a simple package for finding approximate image matches from a corpus."
 optional = false
-python-versions = "*"
+python-versions = "^3.10"
 groups = ["main"]
 files = []
 develop = false
 
 [package.dependencies]
-elasticsearch = ">=5.0.0,<8.0.0"
+elasticsearch = ">=7.0.0,<8.0.0"
 scikit-image = ">=0.16.2"
-six = ">=1.14.0"
-
-[package.extras]
-dev = ["Sphinx (>=1.3.5)", "coverage", "ipdb", "ipython", "pep8", "pyflakes", "pylint", "pytest", "pytest-cov", "pytest-xdist", "recommonmark (>=0.4.0)", "sphinx-rtd-theme (>=0.1.9)", "sphinxcontrib-napoleon (>=0.4.4)"]
-docs = ["Sphinx (>=1.3.5)", "recommonmark (>=0.4.0)", "sphinx-rtd-theme (>=0.1.9)", "sphinxcontrib-napoleon (>=0.4.4)"]
-extra = ["cairosvg (>1,<2)"]
-test = ["coverage", "pep8", "pyflakes", "pylint", "pytest", "pytest-cov", "pytest-xdist"]
 
 [package.source]
 type = "git"
 url = "https://github.com/markusressel/image-match.git"
-reference = "2.0.1"
-resolved_reference = "881e5690859798f3d99e9aa933a055a3ec5f82bc"
+reference = "3.0.0"
+resolved_reference = "e036ca140b1189ac3416bf7f1a342d4f2c9cf7e2"
 
 [[package]]
 name = "imageio"
@@ -956,4 +949,4 @@ watchmedo = ["PyYAML (>=3.10)"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.11"
-content-hash = "800a2bdd3327183d9d28546676453607da13da352a1e5cc80880a8a36797a812"
+content-hash = "9fe78f95233b61bc7a7f20e2d65c4e0501437dc57b54f6d4c801c4f522a7f07c"

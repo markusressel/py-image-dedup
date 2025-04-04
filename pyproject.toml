@@ -37,14 +37,14 @@ ordered-set = "*"
 watchdog = ">=0.10.2,<5.1.0"
 elasticsearch = "^7"
 scipy = "*"
-numpy = "2.2.4"
+numpy = "*"
 container-app-conf = "^5.0.0"
 requests = "^2.20.0"
 click = "*"
 tabulate = ">=0.8.3,<0.10.0"
 tqdm = "*"
 prometheus-client = "*"
-image-match = { git = "https://github.com/markusressel/image-match.git", tag = "2.0.1" }
+image-match = { git = "https://github.com/markusressel/image-match.git", tag = "3.0.0" }
 
 [tool.poetry.group.dev.dependencies]
 pytest = "*"
