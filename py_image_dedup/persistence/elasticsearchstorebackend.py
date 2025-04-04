@@ -76,7 +76,7 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
                     {'host': self.host, 'port': self.port}
                 ]
             ),
-            el_version=self._el_version,
+            # el_version=self._el_version,
             index=self._el_index,
             doc_type=self._el_doctype,
             distance_cutoff=max_dist

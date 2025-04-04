@@ -62,7 +62,7 @@ class DeduplicatorConfig(ConfigBase):
             EnvSource(),
             yaml_source
         ]
-        return super(DeduplicatorConfig, cls).__new__(cls, data_sources=data_sources)
+        return super(DeduplicatorConfig, cls).__new__(cls, *args, data_sources=data_sources, **kwargs)
 
     DRY_RUN = BoolConfigEntry(
         description="If enabled no source file will be touched",
