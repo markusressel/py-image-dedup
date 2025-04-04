@@ -49,6 +49,7 @@ class ImageMatchDeduplicator:
         self._persistence: ImageSignatureStore = ElasticSearchStoreBackend(
             host=self._config.ELASTICSEARCH_HOST.value,
             port=self._config.ELASTICSEARCH_PORT.value,
+            connections_per_node=self._config.ANALYSIS_THREADS.value,
             el_index=self._config.ELASTICSEARCH_INDEX.value,
             use_exif_data=self._config.ANALYSIS_USE_EXIF_DATA.value,
             max_dist=self._config.ELASTICSEARCH_MAX_DISTANCE.value,
