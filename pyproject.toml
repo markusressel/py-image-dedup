@@ -34,7 +34,7 @@ python = "^3.11"  # Compatible python versions must be declared here
 
 Pillow = "*"
 ordered-set = "*"
-watchdog = ">=0.10.2,<5.1.0"
+watchdog = ">=0.10.2,<6.1.0"
 elasticsearch = "^7"
 scipy = "*"
 numpy = "*"
