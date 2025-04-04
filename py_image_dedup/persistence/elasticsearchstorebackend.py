@@ -38,6 +38,7 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
 
         self.host = host
         self.port = port
+        self._connections_per_node = connections_per_node
 
         detected_version = None
         while detected_version is None:
