@@ -417,66 +417,67 @@ class ImageMatchDeduplicator:
             criteria = []
 
             for rule in DeduplicatorConfig.PRIORITIZATION_RULES.value:
-                if rule == "more-exif-data":
+                rule_name = rule.get("name")
+                if rule_name == "more-exif-data":
                     if MetadataKey.EXIF_DATA.value in candidate[MetadataKey.METADATA.value]:
                         # more exif data is better
                         criteria.append(len(candidate[MetadataKey.METADATA.value][MetadataKey.EXIF_DATA.value]) * -1)
-                elif rule == "less-exif-data":
+                elif rule_name == "less-exif-data":
                     if MetadataKey.EXIF_DATA.value in candidate[MetadataKey.METADATA.value]:
                         # more exif data is better
                         criteria.append(len(candidate[MetadataKey.METADATA.value][MetadataKey.EXIF_DATA.value]) * 1)
-                elif rule == "bigger-file-size":
+                elif rule_name == "bigger-file-size":
                     # reverse, bigger is better
                     criteria.append(candidate[MetadataKey.METADATA.value][MetadataKey.FILE_SIZE.value] * -1)
-                elif rule == "smaller-file-size":
+                elif rule_name == "smaller-file-size":
                     # smaller is better
                     criteria.append(candidate[MetadataKey.METADATA.value][MetadataKey.FILE_SIZE.value] * 1)
-                elif rule == "newer-file-modification-date":
+                elif rule_name == "newer-file-modification-date":
                     # reverse, bigger (later time) is better
                     criteria.append(
                         candidate[MetadataKey.METADATA.value][MetadataKey.FILE_MODIFICATION_DATE.value] * -1)
-                elif rule == "older-file-modification-date":
+                elif rule_name == "older-file-modification-date":
                     # smaller (earlier time) is better
                     criteria.append(
                         candidate[MetadataKey.METADATA.value][MetadataKey.FILE_MODIFICATION_DATE.value] * 1)
-                elif rule == "smaller-distance":
+                elif rule_name == "smaller-distance":
                     # smaller distance is better
                     criteria.append(candidate[MetadataKey.DISTANCE.value])
-                elif rule == "bigger-distance":
+                elif rule_name == "bigger-distance":
                     # bigger distance is better
                     criteria.append(candidate[MetadataKey.DISTANCE.value] * -1)
-                # elif rule == "longer-path":
-                # elif rule == "shorter-path":
-                elif rule == "contains-copy-in-file-name":
+                # elif rule_name == "longer-path":
+                # elif rule_name == "shorter-path":
+                elif rule_name == "contains-copy-in-file-name":
                     # if the filename contains "copy" it is less good
                     criteria.append("copy" in file.get_file_name(candidate[MetadataKey.PATH.value]).lower())
-                elif rule == "doesnt-contain-copy-in-file-name":
+                elif rule_name == "doesnt-contain-copy-in-file-name":
                     # if the filename contains "copy" it is better
                     criteria.append("copy" not in file.get_file_name(candidate[MetadataKey.PATH.value]).lower())
-                elif rule == "longer-file-name":
+                elif rule_name == "longer-file-name":
                     # longer filename is better (for "edited" versions)
                     criteria.append(len(file.get_file_name(candidate[MetadataKey.PATH.value])) * -1)
 
-                elif rule == "shorter-file-name":
+                elif rule_name == "shorter-file-name":
                     # shorter filename is better (for "edited" versions)
                     criteria.append(len(file.get_file_name(candidate[MetadataKey.PATH.value])) * 1)
 
-                elif rule == "longer-folder-path":
+                elif rule_name == "longer-folder-path":
                     # shorter folder path is better
                     criteria.append(len(file.get_containing_folder(candidate[MetadataKey.PATH.value])) * -1)
-                elif rule == "shorter-folder-path":
+                elif rule_name == "shorter-folder-path":
                     # shorter folder path is better
                     criteria.append(len(file.get_containing_folder(candidate[MetadataKey.PATH.value])))
-                elif rule == "higher-score":
+                elif rule_name == "higher-score":
                     # reverse, bigger is better
                     criteria.append(candidate[MetadataKey.SCORE.value] * -1)
-                elif rule == "lower-score":
+                elif rule_name == "lower-score":
                     # lower is better
                     criteria.append(candidate[MetadataKey.SCORE.value] * 1)
-                elif rule == "higher-pixel-count":
+                elif rule_name == "higher-pixel-count":
                     # higher pixel count is better
                     criteria.append(candidate[MetadataKey.METADATA.value][MetadataKey.PIXELCOUNT.value] * -1)
-                elif rule == "lower-pixel-count":
+                elif rule_name == "lower-pixel-count":
                     # lower pixel count is better
                     criteria.append(candidate[MetadataKey.METADATA.value][MetadataKey.PIXELCOUNT.value] * 1)
 

@@ -3,6 +3,7 @@ from datetime import timedelta
 
 from container_app_conf import ConfigBase
 from container_app_conf.entry.bool import BoolConfigEntry
+from container_app_conf.entry.dict import DictConfigEntry
 from container_app_conf.entry.file import DirectoryConfigEntry
 from container_app_conf.entry.float import FloatConfigEntry
 from container_app_conf.entry.int import IntConfigEntry
@@ -223,7 +224,7 @@ class DeduplicatorConfig(ConfigBase):
     PRIORITIZATION_RULES = ListConfigEntry(
         description="Comma separated list of prioritization rules to use for ordering duplicate "
                     "images before proceeding with the deduplication process.",
-        item_type=StringConfigEntry,
+        item_type=DictConfigEntry,
         key_path=[
             NODE_MAIN,
             NODE_DEDUPLICATION,
@@ -231,15 +232,15 @@ class DeduplicatorConfig(ConfigBase):
         ],
         required=False,
         default=[
-            "higher-pixel-count",
-            "more-exif-data",
-            "bigger-file-size",
-            "newer-file-modification-date",
-            "smaller-distance",
-            "doesnt-contain-copy-in-file-name",
-            "longer-file-name",
-            "shorter-folder-path",
-            "higher-score",
+            {"name": "higher-pixel-count"},
+            {"name": "more-exif-data"},
+            {"name": "bigger-file-size"},
+            {"name": "newer-file-modification-date"},
+            {"name": "smaller-distance"},
+            {"name": "doesnt-contain-copy-in-file-name"},
+            {"name": "longer-file-name"},
+            {"name": "shorter-folder-path"},
+            {"name": "higher-score"},
         ]
     )
 
