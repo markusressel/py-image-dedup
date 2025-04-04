@@ -179,7 +179,7 @@ class ImageMatchDeduplicator:
                     self._persistence.remove(str(file_path))
                     continue
 
-                data_version = metadata[MetadataKey.DATAMODEL_VERSION.value]
+                data_version = metadata.get(MetadataKey.DATAMODEL_VERSION.value, default=-1)
                 if data_version != self._persistence.DATAMODEL_VERSION:
                     echo(f"Removing db entry with old db model version: {file_path}")
                     self._persistence.remove(str(file_path))
