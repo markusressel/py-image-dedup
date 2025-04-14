@@ -145,9 +145,11 @@ class ImageMatchDeduplicator:
                 root_directory=directory,
                 threads=1,  # there seems to be no performance advantage in using multiple threads here
                 command=lambda root_dir, _, file_path: self.find_duplicates_of_file(
-                    self._config.SOURCE_DIRECTORIES.value,
-                    root_dir,
-                    file_path))
+                    root_directories=self._config.SOURCE_DIRECTORIES.value,
+                    root_directory=root_dir,
+                    reference_file_path=file_path
+                )
+            )
             self._progress_manager.clear()
 
     def cleanup_database(self, directories: List[Path]):
@@ -542,7 +544,7 @@ class ImageMatchDeduplicator:
 
             if dry_run:
                 if len(files_deleted) > 0 and len(files_deleted) == len(files) and len(folders_deleted) == len(
-                        directories):
+                    directories):
                     result.append(root)
             else:
                 if len(files_deleted) > 0 and len(files) <= 0 and len(directories) <= 0:
