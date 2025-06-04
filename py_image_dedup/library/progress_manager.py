@@ -34,7 +34,7 @@ class ProgressManager:
     def inc(self, n: int = 1):
         if self._task is None:
             raise AssertionError(
-                "Cant increase before start. "
+                "Can't increase before start. "
                 "Please start a new task progress using start() before incrementing it.")
 
         if self._n is None:

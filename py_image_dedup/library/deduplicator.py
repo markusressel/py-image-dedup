@@ -384,7 +384,7 @@ class ImageMatchDeduplicator:
 
     def _select_images_to_delete(self, duplicate_candidates: [{}]) -> tuple:
         """
-        Selects which image to keep and wich to remove
+        Selects which image to keep and which to remove
         :return: tuple (image to keep, list of images to remove)
         """
         duplicate_candidates = self._sort_by_quality_descending(duplicate_candidates)
@@ -650,7 +650,7 @@ class ImageMatchDeduplicator:
                     if filecmp.cmp(file_path, target_file, shallow=False):
                         os.remove(file_path)
                     else:
-                        raise ValueError(f"Cant move duplicate file because the target already exists: {target_file}")
+                        raise ValueError(f"Can't move duplicate file because the target already exists: {target_file}")
                 else:
                     target_file.parent.mkdir(parents=True, exist_ok=True)
                     shutil.move(file_path, target_file)
