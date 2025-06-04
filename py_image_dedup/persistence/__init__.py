@@ -1,3 +1,4 @@
+import logging
 import os
 
 from PIL import TiffImagePlugin
@@ -27,18 +28,26 @@ class ImageSignatureStore:
         existing_entity = self.get(image_file_path)
         if existing_entity is not None:
             is_data_version_ok = False
-            if MetadataKey.DATAMODEL_VERSION.value in existing_entity[MetadataKey.METADATA.value]:
-                is_data_version_ok = existing_entity[MetadataKey.METADATA.value][
-                                         MetadataKey.DATAMODEL_VERSION.value] == self.DATAMODEL_VERSION
+            try:
+                if MetadataKey.DATAMODEL_VERSION.value in existing_entity[MetadataKey.METADATA.value]:
+                    is_data_version_ok = existing_entity[MetadataKey.METADATA.value][
+                                             MetadataKey.DATAMODEL_VERSION.value] == self.DATAMODEL_VERSION
 
-            if is_data_version_ok and \
+                if is_data_version_ok and \
                     existing_entity[MetadataKey.METADATA.value][MetadataKey.FILE_SIZE.value] == image_data[
-                MetadataKey.FILE_SIZE.value] and \
+                    MetadataKey.FILE_SIZE.value] and \
                     existing_entity[MetadataKey.METADATA.value][
                         MetadataKey.FILE_MODIFICATION_DATE.value] == image_data[
-                MetadataKey.FILE_MODIFICATION_DATE.value]:
-                # print("File is the same, not adding again")
-                return
+                    MetadataKey.FILE_MODIFICATION_DATE.value]:
+                    # print("File is the same, not adding again")
+                    return
+            except Exception as ex:
+                logging.exception(ex)
+                try:
+                    self.remove(image_file_path)
+                except Exception as ex:
+                    logging.exception(ex)
+                    return
 
         self._add(image_file_path, image_data)
 

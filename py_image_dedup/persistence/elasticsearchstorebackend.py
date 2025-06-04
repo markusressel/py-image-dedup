@@ -16,12 +16,14 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
     def __init__(self,
                  host: str,
                  port: int,
+                 connections_per_node: int,
                  el_index: str,
                  el_version: int = None,
                  el_doctype: str = None,
                  max_dist: float = 0.03,
                  use_exif_data: bool = True,
-                 setup_database: bool = True):
+                 setup_database: bool = True,
+                 ):
         """
         Image signature persistence backed by image_match and elasticsearch
 
@@ -36,6 +38,7 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
 
         self.host = host
         self.port = port
+        self._connections_per_node = connections_per_node
 
         detected_version = None
         while detected_version is None:
@@ -74,12 +77,13 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
             es=Elasticsearch(
                 hosts=[
                     {'host': self.host, 'port': self.port}
-                ]
+                ],
+                maxsize=self._connections_per_node,
             ),
-            el_version=self._el_version,
+            # el_version=self._el_version,
             index=self._el_index,
             doc_type=self._el_doctype,
-            distance_cutoff=max_dist
+            distance_cutoff=max_dist,
         )
 
     def _detect_db_version(self) -> int or None:

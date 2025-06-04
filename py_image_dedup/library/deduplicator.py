@@ -49,6 +49,7 @@ class ImageMatchDeduplicator:
         self._persistence: ImageSignatureStore = ElasticSearchStoreBackend(
             host=self._config.ELASTICSEARCH_HOST.value,
             port=self._config.ELASTICSEARCH_PORT.value,
+            connections_per_node=self._config.ANALYSIS_THREADS.value,
             el_index=self._config.ELASTICSEARCH_INDEX.value,
             use_exif_data=self._config.ANALYSIS_USE_EXIF_DATA.value,
             max_dist=self._config.ELASTICSEARCH_MAX_DISTANCE.value,
@@ -144,9 +145,11 @@ class ImageMatchDeduplicator:
                 root_directory=directory,
                 threads=1,  # there seems to be no performance advantage in using multiple threads here
                 command=lambda root_dir, _, file_path: self.find_duplicates_of_file(
-                    self._config.SOURCE_DIRECTORIES.value,
-                    root_dir,
-                    file_path))
+                    root_directories=self._config.SOURCE_DIRECTORIES.value,
+                    root_directory=root_dir,
+                    reference_file_path=file_path
+                )
+            )
             self._progress_manager.clear()
 
     def cleanup_database(self, directories: List[Path]):
@@ -168,7 +171,7 @@ class ImageMatchDeduplicator:
         for entry in entries:
             try:
                 image_entry = entry['_source']
-                metadata = image_entry[MetadataKey.METADATA.value]
+                metadata = image_entry.get(MetadataKey.METADATA.value, {})
 
                 file_path = Path(image_entry[MetadataKey.PATH.value])
                 self._progress_manager.set_postfix(self._truncate_middle(str(file_path)))
@@ -178,7 +181,7 @@ class ImageMatchDeduplicator:
                     self._persistence.remove(str(file_path))
                     continue
 
-                data_version = metadata[MetadataKey.DATAMODEL_VERSION.value]
+                data_version = metadata.get(MetadataKey.DATAMODEL_VERSION.value, -1)
                 if data_version != self._persistence.DATAMODEL_VERSION:
                     echo(f"Removing db entry with old db model version: {file_path}")
                     self._persistence.remove(str(file_path))
@@ -193,7 +196,16 @@ class ImageMatchDeduplicator:
                 if not file_path.exists():
                     echo(f"Removing db entry for missing file: {file_path}")
                     self._persistence.remove(str(file_path))
-
+            except Exception as e:
+                logging.exception(e)
+                echo(f"Error while cleaning up database entry {entry}: {e}")
+                try:
+                    image_entry = entry['_source']
+                    file_path = Path(image_entry[MetadataKey.PATH.value])
+                    self._persistence.remove(str(file_path))
+                except Exception as e:
+                    logging.exception(e)
+                    echo(f"Error removing db entry: {e}")
             finally:
                 self._progress_manager.inc()
         self._progress_manager.clear()
@@ -417,66 +429,67 @@ class ImageMatchDeduplicator:
             criteria = []
 
             for rule in DeduplicatorConfig.PRIORITIZATION_RULES.value:
-                if rule == "more-exif-data":
+                rule_name = rule.get("name")
+                if rule_name == "more-exif-data":
                     if MetadataKey.EXIF_DATA.value in candidate[MetadataKey.METADATA.value]:
                         # more exif data is better
                         criteria.append(len(candidate[MetadataKey.METADATA.value][MetadataKey.EXIF_DATA.value]) * -1)
-                elif rule == "less-exif-data":
+                elif rule_name == "less-exif-data":
                     if MetadataKey.EXIF_DATA.value in candidate[MetadataKey.METADATA.value]:
                         # more exif data is better
                         criteria.append(len(candidate[MetadataKey.METADATA.value][MetadataKey.EXIF_DATA.value]) * 1)
-                elif rule == "bigger-file-size":
+                elif rule_name == "bigger-file-size":
                     # reverse, bigger is better
                     criteria.append(candidate[MetadataKey.METADATA.value][MetadataKey.FILE_SIZE.value] * -1)
-                elif rule == "smaller-file-size":
+                elif rule_name == "smaller-file-size":
                     # smaller is better
                     criteria.append(candidate[MetadataKey.METADATA.value][MetadataKey.FILE_SIZE.value] * 1)
-                elif rule == "newer-file-modification-date":
+                elif rule_name == "newer-file-modification-date":
                     # reverse, bigger (later time) is better
                     criteria.append(
                         candidate[MetadataKey.METADATA.value][MetadataKey.FILE_MODIFICATION_DATE.value] * -1)
-                elif rule == "older-file-modification-date":
+                elif rule_name == "older-file-modification-date":
                     # smaller (earlier time) is better
                     criteria.append(
                         candidate[MetadataKey.METADATA.value][MetadataKey.FILE_MODIFICATION_DATE.value] * 1)
-                elif rule == "smaller-distance":
+                elif rule_name == "smaller-distance":
                     # smaller distance is better
                     criteria.append(candidate[MetadataKey.DISTANCE.value])
-                elif rule == "bigger-distance":
+                elif rule_name == "bigger-distance":
                     # bigger distance is better
                     criteria.append(candidate[MetadataKey.DISTANCE.value] * -1)
-                # elif rule == "longer-path":
-                # elif rule == "shorter-path":
-                elif rule == "contains-copy-in-file-name":
+                # elif rule_name == "longer-path":
+                # elif rule_name == "shorter-path":
+                elif rule_name == "contains-copy-in-file-name":
                     # if the filename contains "copy" it is less good
                     criteria.append("copy" in file.get_file_name(candidate[MetadataKey.PATH.value]).lower())
-                elif rule == "doesnt-contain-copy-in-file-name":
+                elif rule_name == "doesnt-contain-copy-in-file-name":
                     # if the filename contains "copy" it is better
                     criteria.append("copy" not in file.get_file_name(candidate[MetadataKey.PATH.value]).lower())
-                elif rule == "longer-file-name":
+                elif rule_name == "longer-file-name":
                     # longer filename is better (for "edited" versions)
                     criteria.append(len(file.get_file_name(candidate[MetadataKey.PATH.value])) * -1)
 
-                elif rule == "shorter-file-name":
+                elif rule_name == "shorter-file-name":
                     # shorter filename is better (for "edited" versions)
                     criteria.append(len(file.get_file_name(candidate[MetadataKey.PATH.value])) * 1)
 
-                elif rule == "longer-folder-path":
+                elif rule_name == "longer-folder-path":
                     # shorter folder path is better
                     criteria.append(len(file.get_containing_folder(candidate[MetadataKey.PATH.value])) * -1)
-                elif rule == "shorter-folder-path":
+                elif rule_name == "shorter-folder-path":
                     # shorter folder path is better
                     criteria.append(len(file.get_containing_folder(candidate[MetadataKey.PATH.value])))
-                elif rule == "higher-score":
+                elif rule_name == "higher-score":
                     # reverse, bigger is better
                     criteria.append(candidate[MetadataKey.SCORE.value] * -1)
-                elif rule == "lower-score":
+                elif rule_name == "lower-score":
                     # lower is better
                     criteria.append(candidate[MetadataKey.SCORE.value] * 1)
-                elif rule == "higher-pixel-count":
+                elif rule_name == "higher-pixel-count":
                     # higher pixel count is better
                     criteria.append(candidate[MetadataKey.METADATA.value][MetadataKey.PIXELCOUNT.value] * -1)
-                elif rule == "lower-pixel-count":
+                elif rule_name == "lower-pixel-count":
                     # lower pixel count is better
                     criteria.append(candidate[MetadataKey.METADATA.value][MetadataKey.PIXELCOUNT.value] * 1)
 
@@ -531,7 +544,7 @@ class ImageMatchDeduplicator:
 
             if dry_run:
                 if len(files_deleted) > 0 and len(files_deleted) == len(files) and len(folders_deleted) == len(
-                        directories):
+                    directories):
                     result.append(root)
             else:
                 if len(files_deleted) > 0 and len(files) <= 0 and len(directories) <= 0:

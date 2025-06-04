@@ -121,8 +121,10 @@ class SelectImagesToDeleteTest(TestBase):
 
         self._run_test(keep, dont_keep)
 
-    def _run_test(self, keep: [{}], dont_keep: [{}], test_reversed_order: bool = True,
-                  test_random_input_order: bool = True):
+    def _run_test(
+        self, keep: [{}], dont_keep: [{}], test_reversed_order: bool = True,
+        test_random_input_order: bool = True
+    ):
         candidates = keep + dont_keep
 
         kept, not_kept = self.under_test._select_images_to_delete(candidates)
@@ -145,9 +147,12 @@ class SelectImagesToDeleteTest(TestBase):
         for c in dont_keep:
             self.assertIn(c, not_kept)
 
-    def _create_default_candidate(self, path: str = "C:/test", dist: float = 0.05, filesize: int = 100,
-                                  modification_date: int = 1, pixel_count: int = 10000, exif_tags: {} = {},
-                                  score: int = 64) -> {}:
+    @staticmethod
+    def _create_default_candidate(
+        path: str = "C:/test", dist: float = 0.05, filesize: int = 100,
+        modification_date: int = 1, pixel_count: int = 10000, exif_tags: {} = {},
+        score: int = 64
+    ) -> {}:
         return {
             MetadataKey.PATH.value: path,
             MetadataKey.DISTANCE.value: dist,
