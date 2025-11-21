@@ -144,14 +144,14 @@ markers = {main = "platform_system == \"Windows\"", dev = "sys_platform == \"win
 
 [[package]]
 name = "container-app-conf"
-version = "5.3.0"
+version = "5.4.0"
 description = "Convenient configuration of containerized applications"
 optional = false
 python-versions = "*"
 groups = ["main"]
 files = [
-    {file = "container_app_conf-5.3.0-py3-none-any.whl", hash = "sha256:fa7d9530da2f62d4fed720a0b29ea854aadf0626104a2c17aace467608711160"},
-    {file = "container_app_conf-5.3.0.tar.gz", hash = "sha256:81fa5e7da03834ab6a7b9ad09a93dd767ecb57085751dfb7b4cf6570d51768db"},
+    {file = "container_app_conf-5.4.0-py3-none-any.whl", hash = "sha256:7d594331367cc1199186ddd16d552fd5366290c6a57fa65216f84958e44a3d39"},
+    {file = "container_app_conf-5.4.0.tar.gz", hash = "sha256:20da56dac4ec2649c080ea69a1aaf36ac831ae06d813828c1f46cc859b7c4283"},
 ]
 
 [package.dependencies]
