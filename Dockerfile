@@ -1,12 +1,12 @@
 # dont use alpine for python builds: https://pythonspeed.com/articles/alpine-docker-python/
-FROM python:3.11-slim-buster
+FROM python:3.14-slim-bookworm
 
 ENV PYTHONUNBUFFERED=1
-ENV POETRY_VERSION="2.1.2"
+ENV POETRY_VERSION="2.3.2"
 ENV PIP_DISABLE_PIP_VERSION_CHECK=on
 
 RUN apt-get update \
-&& apt-get -y install sudo git python-skimage
+&& apt-get -y install sudo git python3-skimage
 
 WORKDIR /app
 
