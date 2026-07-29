@@ -1,6 +1,5 @@
 import os
 from pathlib import Path
-from typing import List
 
 
 def get_file_name(file_path: str) -> str:
@@ -13,14 +12,14 @@ def get_containing_folder(file_path: str) -> str:
     return folder
 
 
-def file_has_extension(file: Path, extensions: List[str] or None) -> bool:
+def file_has_extension(file: Path, extensions: list[str] or None) -> bool:
     """
     Checks if a file has one of the given extensions
     :param file: the file to check
     :param extensions: allowed extensions
     :return: true if it matches (case insensitive), false otherwise
     """
-    if not isinstance(extensions, List):
+    if not isinstance(extensions, list):
         extensions = [extensions]
     if not extensions:
         return True
@@ -28,11 +27,10 @@ def file_has_extension(file: Path, extensions: List[str] or None) -> bool:
     if file.suffix.lower() not in (ext.lower() for ext in extensions):
         # skip file with unwanted file extension
         return False
-    else:
-        return True
+    return True
 
 
-def get_files_count(directory: Path, recursive: bool, file_extensions: List[str] or None, exclusions: List) -> int:
+def get_files_count(directory: Path, recursive: bool, file_extensions: list[str] or None, exclusions: list) -> int:
     """
     :param directory: the directory to analyze
     :param recursive: whether to search the directory recursively

@@ -21,7 +21,7 @@ def get_exif_data(image_file_path: str) -> {}:
             if k in PIL.ExifTags.TAGS:
                 tag_name = PIL.ExifTags.TAGS[k]
                 result[tag_name] = v
-    except Exception as e:
+    except Exception:
         pass
     return result
 
@@ -31,6 +31,6 @@ def get_pixel_count(image_file_path: str) -> int:
         img = Image.open(image_file_path)
         width, height = img.size
         return width * height
-    except Exception as e:
+    except Exception:
         pass
     return 0

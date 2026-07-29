@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from py_image_dedup.util.file import file_has_extension
+
 from tests import TestBase
 
 

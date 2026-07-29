@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import List
 
 import click
 from tabulate import tabulate
@@ -21,9 +20,7 @@ class DeduplicationResult:
     def add_file_action(self, file_path: Path, action: ActionEnum):
         if file_path in self.item_actions and self.item_actions[file_path] != action:
             raise ValueError("File path already in result "
-                             "but with different action: {}, {}, {}".format(file_path,
-                                                                            self.item_actions[file_path],
-                                                                            action))
+                             f"but with different action: {file_path}, {self.item_actions[file_path]}, {action}")
         self.item_actions[file_path] = action
 
     def get_file_with_action(self, action: ActionEnum) -> []:
@@ -56,7 +53,7 @@ class DeduplicationResult:
         """
         self._removed_folders.add(folder)
 
-    def set_file_duplicates(self, reference_files: List[dict], duplicate_files: []):
+    def set_file_duplicates(self, reference_files: list[dict], duplicate_files: []):
         """
         Set a list of files that are duplicates of the reference file
         :param reference_files: the file that is used as a baseline

@@ -35,7 +35,7 @@ def reraise_with_stack(func):
     def wrapped(*args, **kwargs):
         try:
             return func(*args, **kwargs)
-        except Exception as e:
+        except Exception:
             traceback_str = traceback.format_exc()
             raise ValueError("Error occurred. Original traceback is\n%s\n" % traceback_str)
 

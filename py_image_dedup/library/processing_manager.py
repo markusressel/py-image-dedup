@@ -2,12 +2,15 @@ from collections import OrderedDict
 from datetime import datetime, timedelta
 from pathlib import Path
 from threading import Lock
-from typing import List
 
 from watchdog.observers.inotify import InotifyObserver
 from watchdog.observers.polling import PollingObserver
 
-from py_image_dedup.config import DeduplicatorConfig, FILE_OBSERVER_TYPE_INOTIFY, FILE_OBSERVER_TYPE_POLLING
+from py_image_dedup.config import (
+    FILE_OBSERVER_TYPE_INOTIFY,
+    FILE_OBSERVER_TYPE_POLLING,
+    DeduplicatorConfig,
+)
 from py_image_dedup.library import ActionEnum, RegularIntervalWorker
 from py_image_dedup.library.file_watch import EventHandler
 from py_image_dedup.library.progress_manager import ProgressManager
@@ -45,7 +48,7 @@ class ProcessingManager(RegularIntervalWorker):
 
         self.observers.clear()
 
-    def _setup_file_observers(self, observer_type: str, source_directories: List[Path]):
+    def _setup_file_observers(self, observer_type: str, source_directories: list[Path]):
         observers = []
 
         for directory in source_directories:

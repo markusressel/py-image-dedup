@@ -48,8 +48,7 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
         self._el_version = el_version
         if self._el_version is not None and detected_version is not None and self._el_version != detected_version:
             raise AssertionError(
-                "Detected database version ({}) does not match expected version ({})".format(detected_version,
-                                                                                             self._el_version))
+                f"Detected database version ({detected_version}) does not match expected version ({self._el_version})")
 
         if detected_version is not None:
             self._el_version = detected_version
@@ -88,7 +87,7 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
 
     def _detect_db_version(self) -> int or None:
         try:
-            response = requests.get('http://{}:{}'.format(self.host, self.port))
+            response = requests.get(f'http://{self.host}:{self.port}')
             response.raise_for_status()
             return int(str(response.json()["version"]['number']).split(".")[0])
         except Exception as ex:
@@ -99,10 +98,10 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
         """
         Creates the expected index, if it does not exist
         """
-        response = requests.get('http://{}:{}/{}'.format(self.host, self.port, self._el_index))
+        response = requests.get(f'http://{self.host}:{self.port}/{self._el_index}')
         if response.status_code == 200:
             return
-        elif response.status_code == 404:
+        if response.status_code == 404:
 
             properties = {
                 "properties": {
@@ -125,7 +124,7 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
                 }
 
             response = requests.put(
-                url='http://{}:{}/{}'.format(self.host, self.port, self._el_index),
+                url=f'http://{self.host}:{self.port}/{self._el_index}',
                 json=json_data
             )
 
@@ -137,7 +136,7 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
         """
         Removes the index and all data it contains
         """
-        requests.delete('http://{}:{}/{}'.format(self.host, self.port, self._el_index))
+        requests.delete(f'http://{self.host}:{self.port}/{self._el_index}')
 
     def _add(self, image_file_path: str, image_data: dict) -> None:
         # remove existing entries
@@ -180,8 +179,7 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
 
         if len(hits) == 0:
             return None
-        else:
-            return hits[0]['_source']
+        return hits[0]['_source']
 
     def get_all(self) -> (int, object):
         es_query = {
@@ -215,8 +213,7 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
                 result.extend(rec)
 
                 return result
-            else:
-                return self._store.search_image(reference_image_file_path, all_orientations=True)
+            return self._store.search_image(reference_image_file_path, all_orientations=True)
         except Exception as e:
             echo(f"Error querying database for similar images of '{reference_image_file_path}': {e}", color="red")
             return []

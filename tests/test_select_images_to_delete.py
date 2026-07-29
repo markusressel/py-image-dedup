@@ -1,9 +1,9 @@
 import random
 import unittest
-from random import shuffle
-from random import uniform
+from random import shuffle, uniform
 
 from py_image_dedup.persistence.metadata_key import MetadataKey
+
 from tests import TestBase
 
 
@@ -18,7 +18,7 @@ class SelectImagesToDeleteTest(TestBase):
 
         max_delta_seconds = int(self.config.MAX_FILE_MODIFICATION_TIME_DELTA.value.total_seconds())
         for i in range(50):
-            c = self._create_default_candidate(modification_date=random.choice(range(0, 1500 - max_delta_seconds)))
+            c = self._create_default_candidate(modification_date=random.choice(range(1500 - max_delta_seconds)))
             keep.append(c)
 
         dont_keep = [

@@ -1,5 +1,6 @@
 import logging
 import os
+import pathlib
 
 from PIL import TiffImagePlugin
 
@@ -65,7 +66,7 @@ class ImageSignatureStore:
 
         # get some metadata
         file_size = os.stat(image_file_path).st_size
-        file_modification_date = os.path.getmtime(image_file_path)
+        file_modification_date = pathlib.Path(image_file_path).stat().st_mtime
 
         image_data[MetadataKey.DATAMODEL_VERSION.value] = self.DATAMODEL_VERSION
         image_data[MetadataKey.FILE_SIZE.value] = file_size
@@ -151,7 +152,7 @@ class ImageSignatureStore:
         entries = self.get_all()
         for entry in entries:
             file_path = entry['path']
-            if not os.path.exists(file_path):
+            if not pathlib.Path(file_path).exists():
                 self.remove(file_path)
 
     def remove_all(self) -> None:

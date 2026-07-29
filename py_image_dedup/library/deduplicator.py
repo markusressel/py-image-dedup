@@ -6,7 +6,6 @@ import shutil
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import List
 
 import click
 from ordered_set import OrderedSet
@@ -19,10 +18,14 @@ from py_image_dedup.library.progress_manager import ProgressManager
 from py_image_dedup.persistence import ImageSignatureStore
 from py_image_dedup.persistence.elasticsearchstorebackend import ElasticSearchStoreBackend
 from py_image_dedup.persistence.metadata_key import MetadataKey
-from py_image_dedup.stats import DUPLICATE_ACTION_MOVE_COUNT, DUPLICATE_ACTION_DELETE_COUNT, ANALYSIS_TIME, \
-    FIND_DUPLICATES_TIME
-from py_image_dedup.util import file, echo
-from py_image_dedup.util.file import get_files_count, file_has_extension
+from py_image_dedup.stats import (
+    ANALYSIS_TIME,
+    DUPLICATE_ACTION_DELETE_COUNT,
+    DUPLICATE_ACTION_MOVE_COUNT,
+    FIND_DUPLICATES_TIME,
+)
+from py_image_dedup.util import echo, file
+from py_image_dedup.util.file import file_has_extension, get_files_count
 
 LOGGER = logging.getLogger(__name__)
 LOGGER.setLevel(logging.DEBUG)
@@ -152,7 +155,7 @@ class ImageMatchDeduplicator:
             )
             self._progress_manager.clear()
 
-    def cleanup_database(self, directories: List[Path]):
+    def cleanup_database(self, directories: list[Path]):
         """
         Removes database entries of files that don't exist on disk.
         Note that this cleanup will only consider files within one
@@ -167,7 +170,7 @@ class ImageMatchDeduplicator:
         if count <= 0:
             return
 
-        self._progress_manager.start(f"Cleanup database", count, "entries", self.interactive)
+        self._progress_manager.start("Cleanup database", count, "entries", self.interactive)
         for entry in entries:
             try:
                 image_entry = entry['_source']
@@ -210,7 +213,7 @@ class ImageMatchDeduplicator:
                 self._progress_manager.inc()
         self._progress_manager.clear()
 
-    def _remove_empty_folders(self, directories: List[Path], recursive: bool):
+    def _remove_empty_folders(self, directories: list[Path], recursive: bool):
         """
         Searches for empty folders and removes them
         :param directories: directories to scan
@@ -222,14 +225,14 @@ class ImageMatchDeduplicator:
             empty_folders = self._find_empty_folders(directory, recursive, dry_run)
             self._remove_folders(directory, empty_folders, dry_run)
 
-    def _count_files(self, directories: List[Path]) -> dict:
+    def _count_files(self, directories: list[Path]) -> dict:
         """
         Counts the amount of files to analyze (used in progress) and stores them in a map
         :return map "directory path" -> "directory file count"
         """
         directory_map = {}
 
-        self._progress_manager.start(f"Counting files", len(directories), "Dirs", self.interactive)
+        self._progress_manager.start("Counting files", len(directories), "Dirs", self.interactive)
         for directory in directories:
             self._progress_manager.set_postfix(self._truncate_middle(directory))
 
@@ -302,7 +305,7 @@ class ImageMatchDeduplicator:
             self._progress_manager.inc()
 
     @FIND_DUPLICATES_TIME.time()
-    def find_duplicates_of_file(self, root_directories: List[Path], root_directory: Path, reference_file_path: Path):
+    def find_duplicates_of_file(self, root_directories: list[Path], root_directory: Path, reference_file_path: Path):
         """
         Finds duplicates and marks all but the best copy as "to-be-deleted".
         :param root_directories: valid root directories
@@ -361,7 +364,7 @@ class ImageMatchDeduplicator:
         candidates_to_keep, candidates_to_delete = self._select_images_to_delete(duplicate_candidates)
         self._save_duplicates_for_result(candidates_to_keep, candidates_to_delete)
 
-    def _save_duplicates_for_result(self, files_to_keep: List[dict], duplicates: List[dict]) -> None:
+    def _save_duplicates_for_result(self, files_to_keep: list[dict], duplicates: list[dict]) -> None:
         """
         Saves the comparison result for the final summary
 
@@ -570,7 +573,7 @@ class ImageMatchDeduplicator:
             self._progress_manager.set_postfix(self._truncate_middle(folder))
 
             if not dry_run:
-                os.rmdir(folder)
+                Path(folder).rmdir()
 
             self._deduplication_result.add_removed_empty_folder(folder)
             self._progress_manager.inc()
@@ -618,8 +621,8 @@ class ImageMatchDeduplicator:
                 pass
             else:
                 # remove from file system
-                if os.path.exists(file_path):
-                    os.remove(file_path)
+                if Path(file_path).exists():
+                    Path(file_path).unlink()
 
                 # remove from persistence
                 self._persistence.remove(file_path)
@@ -628,7 +631,7 @@ class ImageMatchDeduplicator:
 
             self._progress_manager.inc()
 
-    def _move_files(self, files_to_move: List[Path], target_dir: Path, dry_run: bool):
+    def _move_files(self, files_to_move: list[Path], target_dir: Path, dry_run: bool):
         """
         Moves files on disk
         :param files_to_move: list of absolute file paths
@@ -648,7 +651,7 @@ class ImageMatchDeduplicator:
                 target_file = Path(str(target_dir), *file_path.parts[1:])
                 if target_file.exists():
                     if filecmp.cmp(file_path, target_file, shallow=False):
-                        os.remove(file_path)
+                        Path(file_path).unlink()
                     else:
                         raise ValueError(f"Can't move duplicate file because the target already exists: {target_file}")
                 else:
@@ -675,7 +678,7 @@ class ImageMatchDeduplicator:
         n_2 = int(max_length / 2) - 3
         # whatever's left
         n_1 = max_length - n_2 - 3
-        return '{0}...{1}'.format(text[:n_1], text[-n_2:])
+        return f'{text[:n_1]}...{text[-n_2:]}'
 
     def remove_empty_folders(self):
         phase_6_text = "Phase 6/6: Removing empty folders"

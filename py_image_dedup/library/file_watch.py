@@ -1,8 +1,13 @@
 import re
 from pathlib import Path
 
-from watchdog.events import FileSystemEventHandler, EVENT_TYPE_MODIFIED, EVENT_TYPE_MOVED, EVENT_TYPE_CREATED, \
-    EVENT_TYPE_DELETED
+from watchdog.events import (
+    EVENT_TYPE_CREATED,
+    EVENT_TYPE_DELETED,
+    EVENT_TYPE_MODIFIED,
+    EVENT_TYPE_MOVED,
+    FileSystemEventHandler,
+)
 
 from py_image_dedup.config import DeduplicatorConfig
 from py_image_dedup.stats import FILE_EVENT_COUNT
@@ -60,7 +65,6 @@ class EventHandler(FileSystemEventHandler):
     def _event_matches_filter(self, event) -> bool:
         if event.is_directory:
             return False
-        else:
-            result = bool(self.directory_regex.match(event.src_path))
-            result &= bool(self.file_regex.match(event.src_path))
+        result = bool(self.directory_regex.match(event.src_path))
+        result &= bool(self.file_regex.match(event.src_path))
         return result
