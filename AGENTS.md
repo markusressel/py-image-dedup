@@ -26,12 +26,21 @@ poetry run pytest                  # run unit tests (no Elasticsearch needed, < 
 poetry run py-image-dedup --help   # CLI entrypoint (py_image_dedup.cli:cli)
 docker build . -t py-image-dedup:test   # same build CI runs on every PR
 docker compose up                  # Elasticsearch + daemon, for manual end-to-end testing
+
+# web UI (Node 24, see web/package.json)
+npm --prefix web ci                # install exact versions from web/package-lock.json
+npm --prefix web run dev           # Vite dev server, proxies /api to the daemon on http://127.0.0.1:8080
+                                   # (override: PY_IMAGE_DEDUP_API_URL=http://host:port)
+npm --prefix web run lint          # eslint
+npm --prefix web run build         # vue-tsc type-check + production build into web/dist (served by the daemon)
 ```
 
 - Always run `poetry run pytest` after code changes.
 - After changing dependencies or the `Dockerfile`, also run the Docker build: CI only builds the image,
   and the build is the first place where missing wheels for the current Python version show up.
 - Update dependencies with `poetry update --lock` (or `poetry add <pkg>@<constraint>`), never by editing `poetry.lock` by hand.
+- Web UI dependencies are pinned to exact versions in `web/package.json`, `web/package-lock.json` is committed.
+  After changing anything in `web/`, run `npm --prefix web run lint` and `npm --prefix web run build`.
 
 ## Repository layout
 
@@ -59,6 +68,10 @@ py_image_dedup/
     elasticsearchstorebackend.py  # Elasticsearch + image-match implementation
     metadata_key.py            # keys of stored documents
   util/                        # file + image helpers, echo()
+web/                           # Vue 3 + Vite + TypeScript single page app (no component library)
+  src/api.ts, src/types.ts     # typed client for the JSON API (keep in sync with py_image_dedup/web/app.py)
+  src/views/                   # Dashboard, Groups, GroupDetail, Run, Actions, Config
+  src/polling.ts               # polling composable (status: 1s while busy, 3s idle; paused in hidden tabs)
 tests/                         # pytest/unittest tests, test config + sample images
 docker/entrypoint.sh           # drops privileges to PUID/PGID
 py_image_dedup_reference.yaml  # documented reference configuration
@@ -90,6 +103,10 @@ py_image_dedup_reference.yaml  # documented reference configuration
   keeper) survive re-runs. The model is backend independent (`matcher` column) and meant to be reused by the
   planned matching & ranking pipeline. Store errors never break deduplication: a group that cannot be recorded is
   not touched.
+- **Web UI**: FastAPI serves the JSON API (`/api/...`, OpenAPI docs at `/api/docs`) and the built SPA
+  (`web/dist`, path from `web.static_directory`, default `web/dist` next to the package) from the same port.
+  Unknown non-API paths return `index.html` (client-side routing). Live updates are done by polling.
+  The Docker image builds the SPA in a `node` stage and copies only `dist` into the Python image.
 - **Web UI decisions** are executed by the daemon main loop (`execute_user_decisions`, every second, holding
   `work_lock` so they never run concurrently with a deduplication run). They only ever move duplicates to
   `duplicates_target_directory` (never delete), respect `dry_run` and abort if the file to keep is missing.
@@ -126,7 +143,8 @@ GitHub Actions (`.github/workflows/`):
 
 - `dockerimage-test.yml`: builds the Docker image on PRs (this is the main "does it still install" check).
 - `dockerimage-latest.yml` / `dockerimage-release.yml`: build and push `markusressel/py-image-dedup` on master / tags.
-- `tests.yml`: unit tests and integration tests (Elasticsearch service container) on PRs and pushes to master.
+- `tests.yml`: unit tests, web UI lint + type-check + build, and integration tests (Elasticsearch service container)
+  on PRs and pushes to master.
 - `codespell.yml`: spelling (config in `pyproject.toml`, ignores in `.codespellignore`).
 - `codeql-analysis.yml`: CodeQL.
 - Dependabot opens PRs for pip and GitHub Actions updates.

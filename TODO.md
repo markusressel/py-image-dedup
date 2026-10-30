@@ -51,6 +51,9 @@ configurable prioritization rules pick the best one.
 - [x] Bounded Elasticsearch startup wait (`elasticsearch.connection_timeout`) instead of retrying forever (#512)
 - [ ] `ProcessingManager.remove()` modifies the queue without holding the lock
 - [ ] `_detect_db_version` logs a full traceback on every retry while ES boots
+- [ ] ES backend: on ES 7 documents are nested under `_doc` in `_source`, so after a daemon restart
+      `cleanup_database` fails with `KeyError: 'path'` for every entry and files get indexed again
+      (the same file is then returned several times as a duplicate candidate)
 - [ ] Split `deduplicator.py` (686 lines): analysis, candidate search, selection/prioritization, file actions
 - [ ] Introduce typed models instead of raw dicts keyed by `MetadataKey`
 - [ ] Daemon: process individual files instead of whole parent directories (TODO in `processing_manager.py`)
@@ -72,10 +75,13 @@ configurable prioritization rules pick the best one.
 
 - [x] Choose stack: FastAPI (JSON API + static files, in the daemon process) + Vue 3/Vite/TypeScript SPA in `web/`
 - [x] Backend: SQLite state store, recording in the deduplicator, JSON API under `/api`, thumbnails
-- [ ] Status page: current phase, progress, queue size, last run
-- [ ] History: past runs and actions taken
-- [ ] Review queue: duplicate groups with thumbnails, keep/move/ignore decisions
-- [ ] Insights: files failing analysis, rules that decided ties, config tuning hints
+- [x] Status page: current phase, progress, queue size, last run
+- [x] History: past runs and actions taken
+- [x] Review queue: duplicate groups with thumbnails, keep/move/ignore decisions
+- [x] Insights: files failing analysis, rules that decided ties, config tuning hints
+- [x] Docker: node build stage, one image serving API + SPA on port 8080; CI lints, type-checks and builds the SPA
+- [ ] Live updates via SSE instead of polling (only if polling turns out to be too slow/heavy)
+- [ ] Bulk actions in the group list (e.g. ignore all / accept rule decision for all filtered groups)
 - [x] Keep Prometheus metrics endpoint (stats port 8000 unchanged, also `/metrics` on the web port)
 - [ ] Process individual files from the web UI (re-analyse, re-check a group) and an "undo" button
 
