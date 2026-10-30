@@ -53,7 +53,8 @@ class ImageMatchDeduplicator:
             el_index=self._config.ELASTICSEARCH_INDEX.value,
             use_exif_data=self._config.ANALYSIS_USE_EXIF_DATA.value,
             max_dist=self._config.ELASTICSEARCH_MAX_DISTANCE.value,
-            setup_database=self._config.ELASTICSEARCH_AUTO_CREATE_INDEX.value
+            setup_database=self._config.ELASTICSEARCH_AUTO_CREATE_INDEX.value,
+            connection_timeout=self._config.ELASTICSEARCH_CONNECTION_TIMEOUT.value,
         )
 
     def reset_result(self):
