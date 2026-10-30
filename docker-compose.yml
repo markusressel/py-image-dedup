@@ -34,6 +34,7 @@ services:
       - PY_IMAGE_DEDUP_REMOVE_EMPTY_FOLDERS=False
       - PY_IMAGE_DEDUP_STATS_ENABLED=True
       - PY_IMAGE_DEDUP_STATS_PORT=8000
+      - PY_IMAGE_DEDUP_WEB_PORT=8080
     volumes:
       # optionally mount a YAML configuration file
       # into /app/py_image_dedup.yaml instead of using environment:
@@ -42,12 +43,15 @@ services:
       - /mnt/data3/py-image-dedup_testdata:/mnt/source
       # change this to your local duplicates directory:
       - /mnt/data3/py-image-dedup_duplicates:/mnt/duplicates
+      # web UI state (runs, duplicate groups, decisions, action log):
+      - /mnt/data3/py-image-dedup_state:/data/state
     links:
       - elasticsearch
     networks:
       - docker-elk
     ports:
       - "8000:8000"
+      - "8080:8080"
     depends_on:
       - elasticsearch
     restart: on-failure

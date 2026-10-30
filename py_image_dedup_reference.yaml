@@ -31,6 +31,10 @@ py_image_dedup:
   deduplication:
     # The target directory to move duplicate images to
     duplicates_target_directory: /home/myuser/pictures/duplicates/
+    # If enabled, duplicate groups whose best copy was only chosen by a weak
+    # tie-breaker rule (e.g. file name or folder path length) are not
+    # moved/deleted automatically, but wait for a decision in the web UI.
+    hold_ambiguous_groups: false
     # Upper limit on the modification date difference between
     # two duplicate images to be considered the same image.
     max_file_modification_time_diff: 0:05:00
@@ -90,3 +94,22 @@ py_image_dedup:
     enabled: true
     # The port to expose statistics on.
     port: 8000
+
+  # State of the daemon shown in the web UI, see README.md
+  state:
+    # Path of the SQLite database holding runs, duplicate groups, decisions and
+    # the action log. Thumbnails are cached next to it.
+    database_path: ~/.local/share/py-image-dedup/state.db
+
+  # Web UI of the daemon, see README.md
+  web:
+    # Whether to start the web UI (and its JSON API) when running the daemon.
+    enabled: true
+    # The address the web UI listens on. The web UI has no authentication,
+    # only expose it to trusted networks.
+    host: 127.0.0.1
+    # The port the web UI listens on.
+    port: 8080
+    # Directory containing the built web UI (web/dist). If unset, web/dist
+    # next to the py_image_dedup package is used, if it exists.
+    # static_directory: /app/web/dist
