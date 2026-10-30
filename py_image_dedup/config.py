@@ -51,9 +51,19 @@ NODE_MAX_FILE_MODIFICATION_TIME_DIFF = "max_file_modification_time_diff"
 NODE_REMOVE_EMPTY_FOLDERS = "remove_empty_folders"
 NODE_DUPLICATES_TARGET_DIRECTORY = "duplicates_target_directory"
 
+NODE_HOLD_AMBIGUOUS_GROUPS = "hold_ambiguous_groups"
+
 NODE_STATS = "stats"
 NODE_ENABLED = "enabled"
 NODE_PORT = "port"
+
+NODE_STATE = "state"
+NODE_DATABASE_PATH = "database_path"
+
+NODE_WEB = "web"
+NODE_STATIC_DIRECTORY = "static_directory"
+
+DEFAULT_STATE_DATABASE_PATH = "~/.local/share/py-image-dedup/state.db"
 
 
 class DeduplicatorConfig(ConfigBase):
@@ -276,6 +286,18 @@ class DeduplicatorConfig(ConfigBase):
         example="/home/myuser/pictures/duplicates/"
     )
 
+    DEDUPLICATION_HOLD_AMBIGUOUS_GROUPS = BoolConfigEntry(
+        description="If enabled, duplicate groups whose best copy was only chosen by a weak tie-breaker rule "
+                    "(e.g. file name or folder path length) are not moved/deleted automatically, "
+                    "but wait for a decision in the web UI.",
+        key_path=[
+            NODE_MAIN,
+            NODE_DEDUPLICATION,
+            NODE_HOLD_AMBIGUOUS_GROUPS
+        ],
+        default=False
+    )
+
     DAEMON_PROCESSING_TIMEOUT = TimeDeltaConfigEntry(
         description="Time to wait for filesystems changes to settle before analysing.",
         key_path=[
@@ -316,4 +338,61 @@ class DeduplicatorConfig(ConfigBase):
             NODE_PORT
         ],
         default=8000
+    )
+
+    STATE_DATABASE_PATH = StringConfigEntry(
+        description="Path of the SQLite database holding the daemon state shown in the web UI "
+                    "(runs, duplicate groups, decisions, action log). Thumbnails are cached next to it.",
+        key_path=[
+            NODE_MAIN,
+            NODE_STATE,
+            NODE_DATABASE_PATH
+        ],
+        default=DEFAULT_STATE_DATABASE_PATH,
+        example="/data/py-image-dedup/state.db"
+    )
+
+    WEB_ENABLED = BoolConfigEntry(
+        description="Whether to start the web UI (and its JSON API) when running the daemon.",
+        key_path=[
+            NODE_MAIN,
+            NODE_WEB,
+            NODE_ENABLED
+        ],
+        default=True
+    )
+
+    WEB_HOST = StringConfigEntry(
+        description="The address the web UI listens on. The web UI has no authentication, "
+                    "only expose it to trusted networks.",
+        key_path=[
+            NODE_MAIN,
+            NODE_WEB,
+            NODE_HOST
+        ],
+        default="127.0.0.1"
+    )
+
+    WEB_PORT = IntConfigEntry(
+        description="The port the web UI listens on.",
+        key_path=[
+            NODE_MAIN,
+            NODE_WEB,
+            NODE_PORT
+        ],
+        range=Range(1, 65535),
+        default=8080
+    )
+
+    WEB_STATIC_DIRECTORY = DirectoryConfigEntry(
+        description="Directory containing the built web UI (web/dist). "
+                    "If unset, web/dist next to the py_image_dedup package is used, if it exists.",
+        key_path=[
+            NODE_MAIN,
+            NODE_WEB,
+            NODE_STATIC_DIRECTORY
+        ],
+        check_existence=False,
+        default=None,
+        example="/app/web/dist"
     )
