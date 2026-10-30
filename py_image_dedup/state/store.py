@@ -476,6 +476,44 @@ class StateStore:
                 self._update_roles(group_id, group["rule_keep_path"])
         return self.get_group(group_id)
 
+    def import_discarded_paths(self, discarded_paths: Iterable[str], apply: bool = False) -> dict:
+        """
+        Applies decisions made in another tool (f.ex. the duplicate review of Immich) to the open groups:
+        if all but one member of a group were discarded there, the remaining one becomes the user chosen keeper.
+        Groups with an existing user decision, without discarded members, with all members discarded or with
+        more than one remaining member are left alone.
+
+        :param discarded_paths: paths of the files that were discarded (as seen by this application)
+        :param apply: False only reports what would be decided
+        :return: number of groups per outcome and the decided groups ({"group_id", "keep_path"})
+        """
+        discarded = set(str(p) for p in discarded_paths)
+        outcomes = {"decided": 0, "no_discarded_member": 0, "all_discarded": 0, "several_remaining": 0,
+                    "already_decided_by_user": 0}
+        decided = []
+        rows = self._query("SELECT id, decision_source FROM groups WHERE status IN (?, ?) ORDER BY id",
+                           (GroupStatus.OPEN, GroupStatus.REVIEW))
+        for row in rows:
+            paths = [c["path"] for c in self.get_candidates(row["id"])]
+            remaining = [p for p in paths if p not in discarded]
+            if len(remaining) == len(paths):
+                outcome = "no_discarded_member"
+            elif row["decision_source"] == DecisionSource.USER:
+                outcome = "already_decided_by_user"
+            elif not remaining:
+                outcome = "all_discarded"
+            elif len(remaining) > 1:
+                outcome = "several_remaining"
+            else:
+                outcome = "decided"
+                decided.append({"group_id": row["id"], "keep_path": remaining[0]})
+            outcomes[outcome] += 1
+
+        if apply:
+            for decision in decided:
+                self.set_user_keeper(decision["group_id"], decision["keep_path"])
+        return {"applied": apply, "outcomes": outcomes, "decided": decided}
+
     def pending_executions(self) -> List[dict]:
         """
         :return: groups with a user decision the daemon still has to execute

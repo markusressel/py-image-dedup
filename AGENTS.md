@@ -109,7 +109,9 @@ py_image_dedup_reference.yaml  # documented reference configuration
   The Docker image builds the SPA in a `node` stage and copies only `dist` into the Python image.
 - **Web UI decisions** are executed by the daemon main loop (`execute_user_decisions`, every second, holding
   `work_lock` so they never run concurrently with a deduplication run). They only ever move duplicates to
-  `duplicates_target_directory` (never delete), respect `dry_run` and abort if the file to keep is missing.
+  `duplicates_target_directory` (never delete), respect `dry_run` (overridable with `dry_run_user_decisions`)
+  and abort if the file to keep is missing. `POST /api/decisions/import-discarded` turns decisions made in
+  another tool (f.ex. files trashed by Immich's duplicate review) into such user decisions.
 
 ## Testing
 

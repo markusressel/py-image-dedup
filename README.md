@@ -159,6 +159,12 @@ never touches it. The daemon executes these decisions within a few seconds (afte
 finished). Decisions from the web UI only ever **move** duplicates to `duplicates_target_directory`, they
 never delete files, so they require `duplicates_target_directory` to be set. `dry_run` applies to them too:
 while it is enabled, nothing on disk is touched and the action log shows what would have happened.
+Set `dry_run_user_decisions: false` to execute your decisions while the prioritization rules stay in dry run.
+
+Decisions made in another tool can be imported with `POST /api/decisions/import-discarded`
+(`{"discarded_paths": [...], "apply": false}`, see `/api/docs`). F.ex. the files trashed by Immich's
+duplicate review: every open group where all but one member are in `discarded_paths` keeps the remaining
+one, other groups are left alone. Without `"apply": true` it only reports what would be decided.
 With `deduplication.hold_ambiguous_groups` enabled, groups that need a review are not acted on automatically.
 
 The state shown in the web UI (runs, groups, decisions, action log) is stored in a small SQLite database

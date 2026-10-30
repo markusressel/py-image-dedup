@@ -68,6 +68,7 @@ export interface Status {
   version: string
   server_time: number
   dry_run: boolean
+  user_decisions_dry_run: boolean
   duplicates_target_directory: string | null
   hold_ambiguous_groups: boolean
   live: LiveStatus

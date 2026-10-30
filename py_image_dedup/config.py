@@ -25,6 +25,7 @@ FILE_OBSERVER_TYPE_POLLING = "polling"
 FILE_OBSERVER_TYPE_INOTIFY = "inotify"
 
 NODE_DRY_RUN = "dry_run"
+NODE_DRY_RUN_USER_DECISIONS = "dry_run_user_decisions"
 
 NODE_ELASTICSEARCH = "elasticsearch"
 
@@ -83,6 +84,18 @@ class DeduplicatorConfig(ConfigBase):
             NODE_DRY_RUN
         ],
         default=True
+    )
+
+    DRY_RUN_USER_DECISIONS = BoolConfigEntry(
+        description="Overrides dry_run for decisions made by the user (web UI, imported decisions). "
+                    "F.ex. set dry_run to true and this to false to only move the duplicates you decided on. "
+                    "If not set, dry_run applies.",
+        key_path=[
+            NODE_MAIN,
+            NODE_DRY_RUN_USER_DECISIONS
+        ],
+        required=False,
+        default=None
     )
 
     ELASTICSEARCH_HOST = StringConfigEntry(
@@ -396,3 +409,11 @@ class DeduplicatorConfig(ConfigBase):
         default=None,
         example="/app/web/dist"
     )
+
+    @property
+    def user_decisions_dry_run(self) -> bool:
+        """
+        :return: whether decisions made by the user are only simulated
+        """
+        value = self.DRY_RUN_USER_DECISIONS.value
+        return self.DRY_RUN.value if value is None else value

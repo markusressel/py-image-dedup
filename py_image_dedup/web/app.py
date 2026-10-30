@@ -15,7 +15,7 @@ from prometheus_client import CONTENT_TYPE_LATEST, REGISTRY, generate_latest
 from pydantic import BaseModel
 
 from py_image_dedup.config import DeduplicatorConfig
-from py_image_dedup.state.store import StateStore, GroupStatus
+from py_image_dedup.state.store import StateStore, GroupStatus, DecisionSource
 from py_image_dedup.web.thumbnails import ThumbnailCache
 
 LOGGER = logging.getLogger(__name__)
@@ -36,6 +36,11 @@ KNOWN_PRIORITIZATION_RULES = {
 
 class KeepRequest(BaseModel):
     candidate_id: int
+
+
+class ImportDiscardedRequest(BaseModel):
+    discarded_paths: List[str]
+    apply: bool = False
 
 
 def _version() -> str:
@@ -137,7 +142,8 @@ def create_app(store: StateStore, config: DeduplicatorConfig, static_directory: 
         """
         Adds file existence and the actions that will/would be executed to a group.
         """
-        dry_run = config.DRY_RUN.value
+        dry_run = config.user_decisions_dry_run if group["decision_source"] == DecisionSource.USER \
+            else config.DRY_RUN.value
         target_dir = config.DEDUPLICATOR_DUPLICATES_TARGET_DIRECTORY.value
         for candidate in group["candidates"]:
             candidate["exists"] = Path(candidate["path"]).is_file()
@@ -169,6 +175,7 @@ def create_app(store: StateStore, config: DeduplicatorConfig, static_directory: 
             "version": _version(),
             "server_time": time.time(),
             "dry_run": config.DRY_RUN.value,
+            "user_decisions_dry_run": config.user_decisions_dry_run,
             "duplicates_target_directory": _jsonable(config.DEDUPLICATOR_DUPLICATES_TARGET_DIRECTORY.value),
             "hold_ambiguous_groups": config.DEDUPLICATION_HOLD_AMBIGUOUS_GROUPS.value,
             "live": store.live.snapshot(),
@@ -218,6 +225,18 @@ def create_app(store: StateStore, config: DeduplicatorConfig, static_directory: 
                                        "only move duplicates, they never delete files.")
         store.set_user_keeper(group_id, candidate["path"])
         return with_details(store.get_group(group_id))
+
+    @app.post("/api/decisions/import-discarded")
+    def import_discarded(request: ImportDiscardedRequest):
+        """
+        Applies decisions made in another tool (f.ex. Immich): groups where all but one member
+        are in discarded_paths keep the remaining one. Without apply, only reports what would happen.
+        """
+        if request.apply and config.DEDUPLICATOR_DUPLICATES_TARGET_DIRECTORY.value is None:
+            raise HTTPException(status_code=409,
+                                detail="duplicates_target_directory is not configured. User decisions "
+                                       "only move duplicates, they never delete files.")
+        return store.import_discarded_paths(request.discarded_paths, apply=request.apply)
 
     @app.post("/api/groups/{group_id}/ignore")
     def ignore(group_id: int):
@@ -286,9 +305,14 @@ def create_app(store: StateStore, config: DeduplicatorConfig, static_directory: 
         statistics = store.statistics()
 
         if config.DRY_RUN.value:
-            hints.append({"level": "info", "key": "dry_run",
-                          "message": "Dry run is enabled: nothing on disk is moved or deleted, also not by "
-                                     "decisions made in the web UI. The action log shows what WOULD happen."})
+            if config.user_decisions_dry_run:
+                hints.append({"level": "info", "key": "dry_run",
+                              "message": "Dry run is enabled: nothing on disk is moved or deleted, also not by "
+                                         "decisions made in the web UI. The action log shows what WOULD happen."})
+            else:
+                hints.append({"level": "info", "key": "dry_run",
+                              "message": "Dry run is enabled for the prioritization rules, but decisions made in "
+                                         "the web UI are executed (dry_run_user_decisions: false)."})
         if config.DEDUPLICATOR_DUPLICATES_TARGET_DIRECTORY.value is None:
             hints.append({"level": "warning", "key": "deduplication.duplicates_target_directory",
                           "message": "No duplicates_target_directory is set, so duplicates are DELETED when "

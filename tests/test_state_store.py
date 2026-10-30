@@ -165,6 +165,29 @@ class StateStoreTest(unittest.TestCase):
         self.assertEqual(GroupStatus.IGNORED, self.store.get_group(ignored["id"])["status"])
         self.assertEqual(GroupStatus.OPEN, self.store.get_group(seen["id"])["status"])
 
+    def test_import_discarded_paths(self):
+        decided = self._record(paths=("/a/1.jpg", "/a/2.jpg", "/a/3.jpg"))
+        several = self._record(paths=("/b/1.jpg", "/b/2.jpg", "/b/3.jpg"))
+        all_discarded = self._record(paths=("/c/1.jpg", "/c/2.jpg"))
+        untouched = self._record(paths=("/d/1.jpg", "/d/2.jpg"))
+        by_user = self._record(paths=("/e/1.jpg", "/e/2.jpg"))
+        self.store.set_user_keeper(by_user["id"], "/e/1.jpg")
+        discarded = ["/a/1.jpg", "/a/3.jpg", "/b/1.jpg", "/c/1.jpg", "/c/2.jpg", "/e/1.jpg"]
+
+        preview = self.store.import_discarded_paths(discarded)
+        self.assertEqual({"decided": 1, "no_discarded_member": 1, "all_discarded": 1, "several_remaining": 1,
+                          "already_decided_by_user": 1}, preview["outcomes"])
+        self.assertEqual([{"group_id": decided["id"], "keep_path": "/a/2.jpg"}], preview["decided"])
+        self.assertEqual(DecisionSource.RULES, self.store.get_group(decided["id"])["decision_source"])
+
+        self.store.import_discarded_paths(discarded, apply=True)
+        group = self.store.get_group(decided["id"])
+        self.assertEqual((DecisionSource.USER, "/a/2.jpg"), (group["decision_source"], group["keep_path"]))
+        self.assertTrue(group["execute_requested"])
+        for other in (several, all_discarded, untouched):
+            self.assertEqual(DecisionSource.RULES, self.store.get_group(other["id"])["decision_source"])
+        self.assertEqual("/e/1.jpg", self.store.get_group(by_user["id"])["keep_path"])
+
     def test_list_groups_review_first_and_filters(self):
         open_group = self._record(paths=("/a/1.jpg", "/a/2.jpg"))
         review_group = self._record(paths=("/b/1.jpg", "/b/2.jpg"), needs_review=True, decided_by="longer-file-name")
