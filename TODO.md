@@ -2,34 +2,52 @@
 
 ## CI & dependencies
 
-- [ ] Merge `update-dependencies` (refreshed `poetry.lock`, fixes Docker build on Python 3.14 via `scikit-image` 0.26.0)
-- [ ] Close superseded dependabot PRs (#507 tqdm, #508 urllib3, #509 numpy, #510 pillow)
+- [x] Refresh `poetry.lock`, fix Docker build on Python 3.14 via `scikit-image` 0.26.0 (#511)
+- [x] Close superseded dependabot PRs (#507 tqdm, #508 urllib3, #509 numpy, #510 pillow)
 - [ ] Sanity check major bumps in a real run: Pillow 13, python-dateutil 3.0, ruamel.yaml 0.19
-- [ ] Run unit tests (`poetry run pytest`) in CI on every PR
-- [ ] Add an integration test job: spin up Elasticsearch as a service container and run the deduplicator
-      against `tests/images/` (`image-match` only works with specific Elasticsearch versions, this pins down which)
-- [ ] Mark integration tests (e.g. `@pytest.mark.integration`) so they run against a real ES instead of the
-      mocked backend in `tests.TestBase`
+- [x] Run unit tests (`poetry run pytest`) in CI on every PR (#513)
+- [x] Integration test job with Elasticsearch service container, tested with ES 7.9.2 and 7.17.28 (#513)
+- [x] `integration` pytest marker, excluded from the default run (#513)
+- [ ] Test ES 7.8.0 (currently deployed in the cluster) or upgrade the cluster to 7.17.x
 - [ ] Finish `tests/test_deduplicator.py::test_custom_prioritization` (expected order looks inverted:
       `smaller-distance` ranks `dist=0.1` first)
-- [ ] Remove `python3-skimage` apt package from `Dockerfile` (system Python package, unused by the 3.14 interpreter)
-- [ ] Fix outdated classifiers in `pyproject.toml` (lists Python 3.8/3.9, requires `^3.14`)
-- [ ] Fix `make test` / `make docker` (`sudo`, `cd tests`) or replace with documented poetry commands
+- [x] Slim down `Dockerfile` (2.95GB to 433MB), layer caching, fix entrypoint for unknown `PUID` (#514)
+- [x] Fix outdated classifiers in `pyproject.toml` (#514)
+- [x] Fix `make test` / `make docker` (#514)
+- [ ] Migrate `[tool.poetry]` metadata to `[project]` (PEP 621, `poetry check` deprecation warnings)
 
-## Image signature & storage backend
+## Matching & ranking pipeline
 
-- [ ] Decide: update the `image-match` fork vs. replace it
-  - [ ] Option A: keep `image-match` + Elasticsearch, update fork, document supported ES versions
-  - [ ] Option B: replace with `imagehash` (pHash/dHash) + SQLite/PostgreSQL, Hamming distance search
-        (numpy / BK-tree), drop Elasticsearch entirely
-- [ ] Benchmark both on `tests/images/` and a real library sample (accuracy, `max_distance` tuning, speed)
-- [ ] Plan migration: full re-analysis, `DATAMODEL_VERSION` bump, config changes
-- [ ] Make `ElasticSearchStoreBackend.__init__` fail with a timeout instead of retrying forever
+Replaces `image-match` + Elasticsearch. Goal: group all copies of a photo with high precision, then let the
+configurable prioritization rules pick the best one.
+
+- [ ] Introduce a `SignatureBackend` / store interface so backends can be swapped and compared
+- [ ] SQLite store for hashes, metadata, groups, decisions and the action log (single file on a PVC)
+- [ ] Decode & normalise: apply EXIF orientation before hashing, support HEIC (`pillow-heif`) and RAW previews (`rawpy`)
+- [ ] Extract matching metadata: `DateTimeOriginal` (+ sub-seconds), camera model, `ImageUniqueID` /
+      Apple content identifier, `Software` (edited)
+- [ ] Staged grouping, each match tagged with confidence + reason:
+  - [ ] Exact: file hash (SHA-256)
+  - [ ] Pixel-identical: hash of decoded pixels
+  - [ ] Near-duplicate: pHash + dHash (`imagehash`), Hamming distance search via numpy / BK-tree
+  - [ ] Optional, opt-in: embeddings (SSCD via onnxruntime) + `sqlite-vec` / FAISS for edited/cropped variants
+- [ ] Metadata veto/boost: burst shots (same camera, capture time seconds apart) are never duplicates;
+      same capture time / unique ID boosts confidence
+- [ ] Cluster groups (connected components) instead of per-reference-file candidate lists
+      (current matching is not transitive and depends on processing order)
+- [ ] Additional quality signals for prioritization rules: format tier (RAW > lossless > HEIC > JPEG),
+      estimated JPEG quality, sharpness (Laplacian variance), edited flag
+- [ ] Confidence-based action: auto-act only on high confidence with a clear winner, otherwise queue for review
+- [ ] Benchmark against the current `image-match` backend on `tests/images/` and a real library sample
+- [ ] Migration: full re-analysis, new config options for thresholds, remove Elasticsearch from docs/compose/k3s
 
 ## Architecture & code quality
 
 - [ ] Replace `DeduplicatorConfig` singleton with explicit config passing (testability)
-- [ ] Remove mutable class attributes (`_processed_files`, `queue`, `EXECUTOR`) shared across instances
+- [x] Remove mutable class attributes (`_processed_files`, `queue`, `EXECUTOR`) shared across instances (#512)
+- [x] Bounded Elasticsearch startup wait (`elasticsearch.connection_timeout`) instead of retrying forever (#512)
+- [ ] `ProcessingManager.remove()` modifies the queue without holding the lock
+- [ ] `_detect_db_version` logs a full traceback on every retry while ES boots
 - [ ] Split `deduplicator.py` (686 lines): analysis, candidate search, selection/prioritization, file actions
 - [ ] Introduce typed models instead of raw dicts keyed by `MetadataKey`
 - [ ] Daemon: process individual files instead of whole parent directories (TODO in `processing_manager.py`)
