@@ -828,7 +828,7 @@ class ImageMatchDeduplicator:
         """
         Executes the decisions users made in the web UI (chosen keeper of a duplicate group).
         Duplicates are only ever moved to the duplicates_target_directory, never deleted,
-        and nothing is touched when dry_run is enabled.
+        and nothing is touched when dry_run (or dry_run_user_decisions, if set) is enabled.
 
         :return: number of executed group decisions
         """
@@ -842,14 +842,14 @@ class ImageMatchDeduplicator:
                 except Exception as ex:
                     LOGGER.exception(ex)
                     self._state.record_action(path=group["keep_path"] or "", action="move",
-                                              source=DecisionSource.USER, dry_run=self._config.DRY_RUN.value,
+                                              source=DecisionSource.USER, dry_run=self._config.user_decisions_dry_run,
                                               status=ActionStatus.FAILED, message=f"{type(ex).__name__}: {ex}",
                                               group_id=group["id"])
                     self._state.mark_executed(group["id"], resolved=False)
             return len(groups)
 
     def _execute_user_decision(self, group: dict):
-        dry_run = self._config.DRY_RUN.value
+        dry_run = self._config.user_decisions_dry_run
         target_dir = self._config.DEDUPLICATOR_DUPLICATES_TARGET_DIRECTORY.value
         group_id = group["id"]
         keep_path = Path(group["keep_path"])

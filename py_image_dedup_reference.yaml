@@ -70,6 +70,10 @@ py_image_dedup:
   # before actually deleting or removing any images in any of the source
   # directories.
   dry_run: true
+  # Overrides dry_run for decisions made by the user (web UI, imported decisions).
+  # F.ex. keep dry_run enabled and set this to false to only move the duplicates
+  # you decided on. If not set, dry_run applies.
+  # dry_run_user_decisions: false
 
   # Elasticsearch specific configuration options, see README.md
   elasticsearch:

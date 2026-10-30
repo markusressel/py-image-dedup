@@ -267,6 +267,20 @@ class ExecuteUserDecisionTest(TestBase):
         self.assertEqual({ActionStatus.DONE}, {a["status"] for a in self.store.list_actions()["items"]})
         self.assertEqual(GroupStatus.RESOLVED, self.store.get_group(self.group_id)["status"])
 
+    def test_user_decisions_can_override_dry_run(self):
+        self.config.DRY_RUN.value = True
+        original = self.config.DRY_RUN_USER_DECISIONS.value
+        self.addCleanup(setattr, self.config.DRY_RUN_USER_DECISIONS, "value", original)
+        self.config.DRY_RUN_USER_DECISIONS.value = False
+        self.store.set_user_keeper(self.group_id, str(self.files[1]))
+
+        self.dedup.execute_user_decisions()
+
+        self.assertFalse(self.files[0].exists())
+        self.assertTrue(self._target_of(self.files[0]).exists())
+        self.assertEqual({ActionStatus.DONE}, {a["status"] for a in self.store.list_actions()["items"]})
+        self.assertEqual(GroupStatus.RESOLVED, self.store.get_group(self.group_id)["status"])
+
     def test_missing_keeper_aborts(self):
         self.config.DRY_RUN.value = False
         self.store.set_user_keeper(self.group_id, str(self.files[1]))

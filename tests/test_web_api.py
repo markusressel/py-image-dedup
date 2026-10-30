@@ -98,6 +98,19 @@ class WebApiTest(TestBase):
         self.assertEqual(409, response.status_code)
         self.assertFalse(self.store.get_group(self.group_id)["execute_requested"])
 
+    def test_import_discarded(self):
+        body = {"discarded_paths": [str(IMAGE), "/etc/hostname"], "apply": True}
+        self.assertEqual(409, self.client.post("/api/decisions/import-discarded", json=body).status_code)
+
+        self.config.DEDUPLICATOR_DUPLICATES_TARGET_DIRECTORY.value = self.tmp
+        preview = self.client.post("/api/decisions/import-discarded", json={**body, "apply": False}).json()
+        self.assertEqual([{"group_id": self.group_id, "keep_path": str(IMAGE_2)}], preview["decided"])
+        self.assertEqual(str(IMAGE), self.store.get_group(self.group_id)["keep_path"])
+
+        applied = self.client.post("/api/decisions/import-discarded", json=body).json()
+        self.assertTrue(applied["applied"])
+        self.assertEqual(str(IMAGE_2), self.store.get_group(self.group_id)["keep_path"])
+
     def test_keep_ignore_reset(self):
         self.config.DEDUPLICATOR_DUPLICATES_TARGET_DIRECTORY.value = self.tmp
         response = self.client.post(f"/api/groups/{self.group_id}/keep",
