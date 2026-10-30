@@ -71,6 +71,8 @@ py_image_dedup:
   elasticsearch:
     # Whether to automatically create an index in the target database.
     auto_create_index: true
+    # Maximum time to wait for the elasticsearch backend to become reachable on startup.
+    connection_timeout: 2m
     # Hostname of the elasticsearch backend instance to use
     host: 127.0.0.1
     # Port of the elasticsearch backend instance to use.

@@ -32,6 +32,7 @@ NODE_HOST = "host"
 NODE_MAX_DISTANCE = "max_distance"
 NODE_AUTO_CREATE_INDEX = "auto_create_index"
 NODE_INDEX = "index"
+NODE_CONNECTION_TIMEOUT = "connection_timeout"
 
 NODE_ANALYSIS = "analysis"
 
@@ -123,6 +124,16 @@ class DeduplicatorConfig(ConfigBase):
             NODE_INDEX
         ],
         default="images"
+    )
+
+    ELASTICSEARCH_CONNECTION_TIMEOUT = TimeDeltaConfigEntry(
+        description="Maximum time to wait for the elasticsearch backend to become reachable on startup.",
+        key_path=[
+            NODE_MAIN,
+            NODE_ELASTICSEARCH,
+            NODE_CONNECTION_TIMEOUT
+        ],
+        default="2m"
     )
 
     ANALYSIS_USE_EXIF_DATA = BoolConfigEntry(
