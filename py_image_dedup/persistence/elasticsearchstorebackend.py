@@ -133,14 +133,24 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
         """
         response = requests.get('http://{}:{}/{}'.format(self.host, self.port, self._el_index))
         if response.status_code == 200:
-            return
-        elif response.status_code == 404:
+            if self._has_path_keyword_mapping():
+                return
+            # the index only holds derived data, so it can safely be rebuilt
+            echo(f"Index '{self._el_index}' has no keyword mapping for '{self._path_field}', "
+                 f"recreating it. All files will be analysed again.", color='yellow')
+            self._clear_database()
+            response = requests.get('http://{}:{}/{}'.format(self.host, self.port, self._el_index))
 
+        if response.status_code == 404:
+            # image-match stores all fields nested in an object named like the doc type
             properties = {
                 "properties": {
-                    "path": {
-                        "type": "keyword",
-                        "ignore_above": 256
+                    self._el_doctype: {
+                        "properties": {
+                            "path": {
+                                "type": "keyword"
+                            }
+                        }
                     }
                 }
             }
@@ -164,6 +174,36 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
             response.raise_for_status()
         else:
             response.raise_for_status()
+
+    @property
+    def _path_field(self) -> str:
+        """
+        :return: name of the field holding the file path of an entry
+        """
+        return f"{self._el_doctype}.path"
+
+    def _has_path_keyword_mapping(self) -> bool:
+        """
+        :return: true if the path field of the index is mapped as keyword, which is required for exact path queries
+        """
+        response = requests.get(
+            'http://{}:{}/{}/_mapping/field/{}'.format(self.host, self.port, self._el_index, self._path_field))
+        response.raise_for_status()
+        for index_mapping in response.json().values():
+            for type_or_field_mapping in index_mapping.get("mappings", {}).values():
+                # elasticsearch 6 has an additional doc type level
+                field_mapping = type_or_field_mapping.get(self._path_field, type_or_field_mapping)
+                if field_mapping.get("mapping", {}).get("path", {}).get("type") == "keyword":
+                    return True
+        return False
+
+    def _unwrap(self, hit: dict) -> dict:
+        """
+        :param hit: elasticsearch search hit
+        :return: the stored entry, without the doc type object image-match nests it in
+        """
+        source = hit['_source']
+        return source.get(self._el_doctype, source)
 
     def _clear_database(self):
         """
@@ -195,7 +235,7 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
             'query': {
                 "constant_score": {
                     "filter": {
-                        "term": {'path': image_file_path}
+                        "term": {self._path_field: image_file_path}
                     }
                 }
             }
@@ -213,7 +253,7 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
         if len(hits) == 0:
             return None
         else:
-            return hits[0]['_source']
+            return self._unwrap(hits[0])
 
     def get_all(self) -> (int, object):
         es_query = {
@@ -230,13 +270,14 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
         el6_params = {
             "doc_type": self._el_doctype
         }
-        return item_count, scan(
+        hits = scan(
             self._store.es,
             index=self._el_index,
             preserve_order=True,
             query=es_query,
             **(el6_params if self._el_version < 7 else {})
         )
+        return item_count, (self._unwrap(hit) for hit in hits)
 
     def find_similar(self, reference_image_file_path: str) -> []:
         try:
@@ -263,7 +304,7 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
         """
         search_dict = {}
         for key, value in metadata.items():
-            search_dict[f"metadata.{key}"] = value
+            search_dict[f"{self._el_doctype}.metadata.{key}"] = value
 
         es_query = {
             'query': {'match': search_dict}
@@ -272,34 +313,12 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
         return self._store.es.search(index=self._el_index, body=es_query)
 
     def remove(self, image_file_path: str) -> None:
-        # NOTE: this query will only work if the index has been created
-        # with a custom mapping for the path property:
-
-        # # remove existing index
-        # curl -X DELETE "192.168.2.24:9200/images"
-        #
-        # # create index with custom mapping for "path"
-        # curl -X PUT "192.168.2.24:9200/images?pretty" -H "Content-Type: application/json" -d
-        # "
-        # {
-        #   "mappings": {
-        #     "image": {
-        #       "properties": {
-        #         "path": {
-        #           "type": "keyword",
-        #           "ignore_above": 256
-        #         }
-        #       }
-        #     }
-        #   }
-        # }
-        # "
-
+        # NOTE: this query only works with the keyword mapping for the path field, see _setup_database()
         es_query = {
             'query': {
                 "constant_score": {
                     "filter": {
-                        "term": {'path': image_file_path}
+                        "term": {self._path_field: image_file_path}
                     }
                 }
             }

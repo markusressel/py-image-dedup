@@ -272,7 +272,7 @@ class ImageMatchDeduplicator:
         self._progress_manager.start(f"Cleanup database", count, "entries", self.interactive)
         for entry in entries:
             try:
-                image_entry = entry['_source']
+                image_entry = entry
                 metadata = image_entry.get(MetadataKey.METADATA.value, {})
 
                 file_path = Path(image_entry[MetadataKey.PATH.value])
@@ -302,7 +302,7 @@ class ImageMatchDeduplicator:
                 logging.exception(e)
                 echo(f"Error while cleaning up database entry {entry}: {e}")
                 try:
-                    image_entry = entry['_source']
+                    image_entry = entry
                     file_path = Path(image_entry[MetadataKey.PATH.value])
                     self._persistence.remove(str(file_path))
                 except Exception as e:
