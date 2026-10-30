@@ -36,11 +36,22 @@ def _es_url(config: DeduplicatorConfig) -> str:
     return f"http://{config.ELASTICSEARCH_HOST.value}:{config.ELASTICSEARCH_PORT.value}"
 
 
-@pytest.fixture(scope="module")
-def deduplicator():
+def _config() -> DeduplicatorConfig:
+    """
+    Note: DeduplicatorConfig() reloads all values from its sources on every call,
+    so the overrides have to be applied again every time.
+    """
     config = DeduplicatorConfig()
     assert config.DRY_RUN.value is True, "integration tests must never touch files"
     config.ELASTICSEARCH_INDEX.value = TEST_INDEX
+    # file modification times depend on how the repository was checked out
+    config.MAX_FILE_MODIFICATION_TIME_DELTA.value = None
+    return config
+
+
+@pytest.fixture(scope="module")
+def deduplicator():
+    config = _config()
 
     es_url = _es_url(config)
     # ElasticSearchStoreBackend retries forever, so fail fast if Elasticsearch is not reachable
@@ -66,7 +77,7 @@ def _refresh_index(config: DeduplicatorConfig):
 
 
 def test_analyse_and_find_duplicates(deduplicator):
-    config = DeduplicatorConfig()
+    config = _config()
     image_files = sorted(Path("images").rglob("*.jpg"))
     assert len(image_files) == 12
 
@@ -98,3 +109,58 @@ def test_analyse_and_find_duplicates(deduplicator):
 
     # duplicates are never found across different photos
     assert result.get_duplicate_count() == len(IMAGE_GROUPS)
+
+
+def test_analysing_again_does_not_add_duplicate_entries(deduplicator):
+    config = _config()
+    image_files = sorted(Path("images").rglob("*.jpg"))
+
+    deduplicator.analyse_all()
+    _refresh_index(config)
+    deduplicator.analyse_all()
+    _refresh_index(config)
+
+    count, entries = deduplicator._persistence.get_all()
+    assert count == len(image_files)
+    stored_paths = sorted(entry["path"] for entry in entries)
+    assert stored_paths == sorted(str(image_file) for image_file in image_files)
+
+
+def test_get_and_remove_by_path(deduplicator):
+    config = _config()
+    persistence = deduplicator._persistence
+    image_file = str(next(Path("images").rglob("*.jpg")))
+
+    entry = persistence.get(image_file)
+    assert entry is not None
+    assert entry["path"] == image_file
+
+    persistence.remove(image_file)
+    _refresh_index(config)
+    assert persistence.get(image_file) is None
+
+    persistence.add(image_file)
+    _refresh_index(config)
+    assert persistence.get(image_file) is not None
+
+
+def test_cleanup_removes_entries_of_missing_files(deduplicator):
+    config = _config()
+    persistence = deduplicator._persistence
+    image_files = sorted(Path("images").rglob("*.jpg"))
+    root_directories = config.SOURCE_DIRECTORIES.value
+    missing_file = str(root_directories[0] / "does-not-exist.jpg")
+
+    # store an entry for a file that does not exist (anymore), using the image data of an existing one
+    existing_file = str(image_files[0])
+    image_data = persistence._create_metadata_dict(existing_file)
+    image_data["path"] = missing_file
+    persistence._store.add_image(missing_file, img=existing_file, metadata=image_data)
+    _refresh_index(config)
+    assert persistence.get(missing_file) is not None
+
+    deduplicator.cleanup_database(root_directories)
+    _refresh_index(config)
+
+    count, entries = persistence.get_all()
+    assert missing_file not in [entry["path"] for entry in entries]
