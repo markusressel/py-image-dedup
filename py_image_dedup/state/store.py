@@ -509,6 +509,23 @@ class StateStore:
                     "UPDATE groups SET status = ?, resolved_at = ?, updated_at = ? WHERE id = ? AND status != ?",
                     (GroupStatus.RESOLVED, now, now, group_id, GroupStatus.IGNORED))
 
+    def resolve_unseen_groups(self, run_id: int) -> int:
+        """
+        Marks open groups that were not found again by the given (full) run as resolved,
+        f.ex. because some of their files have been removed by another tool in the meantime.
+        Only call this after a full run, which sees every file in the source directories.
+
+        :param run_id: the full run
+        :return: number of resolved groups
+        """
+        now = time.time()
+        with self._lock, self._conn:
+            cursor = self._conn.execute(
+                "UPDATE groups SET status = ?, resolved_at = ?, updated_at = ? "
+                "WHERE status IN (?, ?) AND (last_seen_run_id IS NULL OR last_seen_run_id != ?)",
+                (GroupStatus.RESOLVED, now, now, GroupStatus.OPEN, GroupStatus.REVIEW, run_id))
+            return cursor.rowcount
+
     def _require_group(self, group_id: int) -> dict:
         group = self.get_group(group_id, with_candidates=False)
         if group is None:
@@ -595,6 +612,12 @@ class StateStore:
         with self._lock, self._conn:
             self._conn.execute("DELETE FROM failures WHERE path = ?", (path,))
             self._failure_paths.discard(path)
+
+    def failure_paths(self) -> List[str]:
+        """
+        :return: paths of all files with a recorded failure
+        """
+        return [row["path"] for row in self._query("SELECT path FROM failures")]
 
     def list_failures(self, limit: int = 100, offset: int = 0) -> dict:
         total = self._query_one("SELECT COUNT(*) AS n FROM failures")["n"]
