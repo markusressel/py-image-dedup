@@ -36,7 +36,11 @@ class ThumbnailCache:
         size = normalize_size(size)
         stat = os.stat(image_path)
         key = hashlib.sha1(f"{image_path}|{stat.st_mtime_ns}|{stat.st_size}|{size}".encode("utf-8")).hexdigest()
-        target = self.cache_directory / key[:2] / f"{key}.jpg"
+        cache_root = os.path.realpath(self.cache_directory)
+        target_path = os.path.realpath(os.path.join(cache_root, key[:2], f"{key}.jpg"))
+        if not target_path.startswith(cache_root + os.sep):
+            raise ValueError(f"Thumbnail path outside of the cache directory: {target_path}")
+        target = Path(target_path)
         if target.exists():
             return target
 
