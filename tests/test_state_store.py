@@ -147,6 +147,24 @@ class StateStoreTest(unittest.TestCase):
         self.assertEqual(GroupStatus.RESOLVED, self.store.get_group(group["id"])["status"])
         self.assertEqual(GroupStatus.OPEN, self._record()["status"])
 
+    def test_resolve_unseen_groups(self):
+        old_run = self.store.start_run("full", dry_run=True)
+        gone = self.store.record_group(run_id=old_run, matcher="test", candidates=_candidates("/a/1.jpg", "/a/2.jpg"),
+                                       keep_paths=["/a/1.jpg"], decided_by="x", decision_reason="because")
+        ignored = self.store.record_group(run_id=old_run, matcher="test",
+                                          candidates=_candidates("/b/1.jpg", "/b/2.jpg"),
+                                          keep_paths=["/b/1.jpg"], decided_by="x", decision_reason="because")
+        self.store.ignore_group(ignored["id"])
+
+        new_run = self.store.start_run("full", dry_run=True)
+        seen = self.store.record_group(run_id=new_run, matcher="test", candidates=_candidates("/c/1.jpg", "/c/2.jpg"),
+                                       keep_paths=["/c/1.jpg"], decided_by="x", decision_reason="because")
+
+        self.assertEqual(1, self.store.resolve_unseen_groups(new_run))
+        self.assertEqual(GroupStatus.RESOLVED, self.store.get_group(gone["id"])["status"])
+        self.assertEqual(GroupStatus.IGNORED, self.store.get_group(ignored["id"])["status"])
+        self.assertEqual(GroupStatus.OPEN, self.store.get_group(seen["id"])["status"])
+
     def test_list_groups_review_first_and_filters(self):
         open_group = self._record(paths=("/a/1.jpg", "/a/2.jpg"))
         review_group = self._record(paths=("/b/1.jpg", "/b/2.jpg"), needs_review=True, decided_by="longer-file-name")

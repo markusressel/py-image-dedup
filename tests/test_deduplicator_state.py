@@ -161,6 +161,21 @@ class DeduplicatorStateTest(TestBase):
         self.assertIsNotNone(run["summary"])
         self.assertFalse(self.store.live.snapshot()["busy"])
 
+    def test_full_run_resolves_groups_that_are_gone(self):
+        self.store.record_group(run_id=None, matcher="test", candidates=[{"path": "/gone/1.jpg"}, {"path": "/gone/2.jpg"}],
+                                keep_paths=["/gone/1.jpg"], decided_by="x", decision_reason="because")
+        self.dedup._persistence.get_all.return_value = (0, [])
+        self.dedup.deduplicate_all(skip_analyze_phase=True)
+        self.assertEqual(1, self.store.statistics()["groups"]["resolved"])
+
+    def test_full_run_forgets_failures_of_missing_files(self):
+        existing = next(ROOT.rglob("*.jpg"))
+        self.store.record_failure("/gone/broken.jpg", "OSError: truncated", phase="analysis")
+        self.store.record_failure(str(existing), "OSError: truncated", phase="analysis")
+        self.dedup._persistence.get_all.return_value = (0, [])
+        self.dedup.deduplicate_all(skip_analyze_phase=True)
+        self.assertEqual([str(existing)], [f["path"] for f in self.store.list_failures()["items"]])
+
     def test_failed_run_is_recorded(self):
         self.dedup._persistence.get_all.side_effect = RuntimeError("es down")
         with self.assertRaises(RuntimeError):

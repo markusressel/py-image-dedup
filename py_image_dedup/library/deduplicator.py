@@ -99,6 +99,7 @@ class ImageMatchDeduplicator:
         # state store bookkeeping for the current result: file path -> group id, groups with failed actions
         self._group_of_path = {}
         self._failed_groups = set()
+        self._group_recording_failed = False
 
     def begin_run(self, kind: str, trigger: str | None = None) -> bool:
         """
@@ -185,6 +186,7 @@ class ImageMatchDeduplicator:
                 echo("Phase 1/6: Cleaning up database ...", color='cyan')
                 self.start_phase("Cleaning up database", 1, 6)
                 self.cleanup_database(directories)
+                self._forget_failures_of_missing_files()
 
                 echo("Phase 2/6: Counting files ...", color='cyan')
                 self.start_phase("Counting files", 2, 6)
@@ -208,6 +210,8 @@ class ImageMatchDeduplicator:
 
                 self.start_phase("Removing empty folders", 6, 6)
                 self.remove_empty_folders()
+
+                self._resolve_unseen_groups()
             except BaseException as ex:
                 self.end_run(run_started, error=f"{type(ex).__name__}: {ex}")
                 raise
@@ -311,6 +315,37 @@ class ImageMatchDeduplicator:
             finally:
                 self._progress_manager.inc()
         self._progress_manager.clear()
+
+    def _forget_failures_of_missing_files(self):
+        """
+        Removes recorded failures of files that don't exist anymore from the state store.
+        """
+        if self._state is None:
+            return
+        try:
+            for path in self._state.failure_paths():
+                if not Path(path).exists():
+                    self._state.clear_failure(path)
+        except Exception as ex:
+            LOGGER.exception(ex)
+
+    def _resolve_unseen_groups(self):
+        """
+        Marks groups of earlier runs that this full run did not find again (f.ex. because files
+        were removed by another tool) as resolved in the state store.
+        """
+        if self._state is None or self._run_id is None:
+            return
+        if self._group_recording_failed:
+            # a group that could not be recorded would look like it is gone
+            LOGGER.warning("Not resolving unseen groups, because recording some groups failed")
+            return
+        try:
+            count = self._state.resolve_unseen_groups(self._run_id)
+            if count > 0:
+                echo(f"Marked {count} duplicate groups that were not found again as resolved")
+        except Exception as ex:
+            LOGGER.exception(ex)
 
     def _remove_empty_folders(self, directories: List[Path], recursive: bool):
         """
@@ -526,6 +561,7 @@ class ImageMatchDeduplicator:
         except Exception as ex:
             LOGGER.exception(ex)
             echo(f"Error recording duplicate group in state database, not touching it: {ex}", color='red')
+            self._group_recording_failed = True
             return None
 
         for candidate in files_to_keep + duplicates:
