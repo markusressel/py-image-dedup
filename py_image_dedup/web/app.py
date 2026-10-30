@@ -191,11 +191,12 @@ def create_app(store: StateStore, config: DeduplicatorConfig, static_directory: 
     @app.get("/api/groups")
     def list_groups(status: str | None = Query(None), needs_review: bool | None = Query(None),
                     decided_by: str | None = Query(None), q: str | None = Query(None),
+                    keeps_smaller_copy: bool | None = Query(None),
                     limit: int = Query(50, ge=1, le=500), offset: int = Query(0, ge=0)):
         if status is not None and status not in GroupStatus.ALL:
             raise HTTPException(status_code=400, detail=f"status must be one of {GroupStatus.ALL}")
         return store.list_groups(status=status, needs_review=needs_review, decided_by=decided_by, search=q,
-                                 limit=limit, offset=offset)
+                                 keeps_smaller_copy=keeps_smaller_copy, limit=limit, offset=offset)
 
     @app.get("/api/groups/{group_id}")
     def get_group(group_id: int):
@@ -304,6 +305,13 @@ def create_app(store: StateStore, config: DeduplicatorConfig, static_directory: 
                 message += " Enable deduplication.hold_ambiguous_groups to never act on them automatically."
             hints.append({"level": "warning", "key": "deduplication.prioritization_rules", "message": message,
                           "link": "/groups?needs_review=true"})
+
+        if statistics["keeps_smaller_copy"] > 0:
+            hints.append({"level": "warning", "key": "deduplication.prioritization_rules",
+                          "message": f"{statistics['keeps_smaller_copy']} open duplicate group(s) keep a copy with a "
+                                     "lower resolution or a smaller file than one of the duplicates (e.g. an edited "
+                                     "version with more EXIF tags). Check the order of prioritization_rules.",
+                          "link": "/groups?keeps_smaller_copy=true"})
 
         if statistics["failures"] > 0:
             hints.append({"level": "warning", "key": "analysis",

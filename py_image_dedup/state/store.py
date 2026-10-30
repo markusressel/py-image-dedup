@@ -42,6 +42,13 @@ class RunStatus:
     INTERRUPTED = "interrupted"
 
 
+# a duplicate of the group has a higher resolution, or the same resolution and a bigger file, than the kept copy
+_KEEPS_SMALLER_COPY_SQL = (
+    "EXISTS (SELECT 1 FROM candidates k JOIN candidates d ON d.group_id = k.group_id "
+    "WHERE k.group_id = g.id AND k.path = g.keep_path AND d.path != g.keep_path AND d.role != 'keep' "
+    "AND (d.pixel_count > k.pixel_count OR (d.pixel_count = k.pixel_count AND d.file_size > k.file_size)))"
+)
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (
     key TEXT PRIMARY KEY,
@@ -379,12 +386,16 @@ class StateStore:
         return row
 
     def list_groups(self, status: str | None = None, needs_review: bool | None = None, search: str | None = None,
-                    decided_by: str | None = None, limit: int = 50, offset: int = 0) -> dict:
+                    decided_by: str | None = None, keeps_smaller_copy: bool | None = None,
+                    limit: int = 50, offset: int = 0) -> dict:
         """
         Lists groups, groups that need a human decision first, then most recently updated first.
+        :param keeps_smaller_copy: only groups where a duplicate has a higher resolution or a bigger file
         :return: {"total": int, "items": [group, ...]}
         """
         where, params = [], []
+        if keeps_smaller_copy:
+            where.append(_KEEPS_SMALLER_COPY_SQL)
         if status:
             where.append("g.status = ?")
             params.append(status)
@@ -619,4 +630,7 @@ class StateStore:
             "failures": self._query_one("SELECT COUNT(*) AS n FROM failures")["n"],
             "decided_by": decided_by,
             "runs": self._query_one("SELECT COUNT(*) AS n FROM runs")["n"],
+            "keeps_smaller_copy": self._query_one(
+                f"SELECT COUNT(*) AS n FROM groups g WHERE g.status IN (?, ?) AND {_KEEPS_SMALLER_COPY_SQL}",
+                (GroupStatus.OPEN, GroupStatus.REVIEW))["n"],
         }

@@ -41,6 +41,8 @@ class ThumbnailCache:
             return target
 
         with Image.open(image_path) as image:
+            # let the JPEG decoder downscale while decoding, which is a lot faster for big photos
+            image.draft("RGB", (size, size))
             image = ImageOps.exif_transpose(image)
             image.thumbnail((size, size))
             if image.mode != "RGB":

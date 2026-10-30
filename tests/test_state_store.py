@@ -164,6 +164,17 @@ class StateStoreTest(unittest.TestCase):
         # LIKE wildcards are escaped
         self.assertEqual(0, self.store.list_groups(search="1%x")["total"])
 
+    def test_keeps_smaller_copy(self):
+        # candidates have decreasing file sizes, so keeping the first one is fine
+        fine = self._record(paths=("/a/1.jpg", "/a/2.jpg"))
+        smaller = self._record(paths=("/b/1.jpg", "/b/2.jpg"), keep=["/b/2.jpg"])
+        self.assertEqual(1, self.store.statistics()["keeps_smaller_copy"])
+        self.assertEqual([smaller["id"]], [g["id"] for g in self.store.list_groups(keeps_smaller_copy=True)["items"]])
+
+        # the user decided: still reported, it is about the kept copy
+        self.store.set_user_keeper(fine["id"], "/a/2.jpg")
+        self.assertEqual(2, self.store.statistics()["keeps_smaller_copy"])
+
     def test_actions(self):
         group = self._record()
         self.store.record_action("/a/2.jpg", "move", DecisionSource.RULES, dry_run=True,

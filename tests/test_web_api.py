@@ -182,6 +182,8 @@ class WebApiTest(TestBase):
         self.assertIn("longer-path", messages)
         # the test group was decided by a weak rule
         self.assertIn("weak tie-breaker", messages)
+        # the test group keeps the bigger file
+        self.assertNotIn("keeps_smaller_copy", " ".join(h.get("link", "") for h in config["hints"]))
 
     def test_spa_fallback(self):
         self.assertEqual("<html>spa</html>", self.client.get("/").text)

@@ -698,11 +698,11 @@ class ImageMatchDeduplicator:
             elif rule_name == "smaller-distance":
                 # smaller distance is better
                 distance = candidate[MetadataKey.DISTANCE.value]
-                criteria.append((rule_name, distance, f"distance {distance}"))
+                criteria.append((rule_name, distance, f"distance {round(distance, 4)}"))
             elif rule_name == "bigger-distance":
                 # bigger distance is better
                 distance = candidate[MetadataKey.DISTANCE.value]
-                criteria.append((rule_name, distance * -1, f"distance {distance}"))
+                criteria.append((rule_name, distance * -1, f"distance {round(distance, 4)}"))
             # elif rule_name == "longer-path":
             # elif rule_name == "shorter-path":
             elif rule_name == "contains-copy-in-file-name":
