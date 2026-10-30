@@ -1,0 +1,72 @@
+name: Tests
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+permissions:
+  contents: read
+
+jobs:
+  unit-tests:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install poetry
+        run: pipx install poetry==2.3.2
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+          cache: poetry
+      - name: Install dependencies
+        run: poetry install --no-interaction
+      - name: Run unit tests
+        run: poetry run pytest
+
+  integration-tests:
+    name: Integration tests (Elasticsearch ${{ matrix.elasticsearch }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        # image-match and the elasticsearch client only work with Elasticsearch 7.x
+        elasticsearch: [ "7.9.2", "7.17.28" ]
+    services:
+      elasticsearch:
+        image: elasticsearch:${{ matrix.elasticsearch }}
+        env:
+          discovery.type: single-node
+          xpack.security.enabled: "false"
+          ES_JAVA_OPTS: -Xms512m -Xmx512m
+        ports:
+          - 9200:9200
+        options: >-
+          --health-cmd "curl -fs http://localhost:9200/_cluster/health?wait_for_status=yellow"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 30
+    env:
+      PY_IMAGE_DEDUP_ELASTICSEARCH_HOST: 127.0.0.1
+      PY_IMAGE_DEDUP_ELASTICSEARCH_PORT: 9200
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install poetry
+        run: pipx install poetry==2.3.2
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+          cache: poetry
+      - name: Install dependencies
+        run: poetry install --no-interaction
+      # ElasticSearchStoreBackend retries forever until Elasticsearch answers, so make sure it is up first
+      - name: Wait for Elasticsearch
+        run: |
+          timeout 180 bash -c 'until curl -fs "http://127.0.0.1:9200/_cluster/health?wait_for_status=yellow&timeout=5s"; do sleep 5; done'
+          curl -fs http://127.0.0.1:9200
+      - name: Run integration tests
+        run: timeout 600 poetry run pytest -m integration
