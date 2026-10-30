@@ -12,6 +12,14 @@ updates:
     schedule:
       # Check for updates to GitHub Actions every week
       interval: "weekly"
+  - package-ecosystem: npm
+    directory: "/web"
+    schedule:
+      interval: "weekly"
+    groups:
+      web-ui:
+        patterns:
+          - "*"
   - package-ecosystem: pip
     insecure-external-code-execution: allow
     directory: "/"
