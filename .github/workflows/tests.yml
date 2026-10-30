@@ -18,7 +18,7 @@ jobs:
       - uses: actions/checkout@v7
       - name: Install poetry
         run: pipx install poetry==2.3.2
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.14"
           cache: poetry
@@ -78,7 +78,7 @@ jobs:
       - uses: actions/checkout@v7
       - name: Install poetry
         run: pipx install poetry==2.3.2
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.14"
           cache: poetry
