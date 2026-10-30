@@ -143,6 +143,33 @@ is used to allow you to gather some statistical insights.
 py-image-dedup daemon
 ```
 
+### Web UI
+
+The daemon serves a web UI (and the JSON API it uses, under `/api`, documented at `/api/docs`)
+on `web.port` (default `8080`, env `PY_IMAGE_DEDUP_WEB_PORT`). It shows:
+
+* what the daemon is doing right now (phase, progress, queue size) and past runs
+* duplicate groups with thumbnails, which copy is kept and which prioritization rule decided it.
+  Groups that were only decided by a weak tie-breaker rule (e.g. file name length) are marked for review.
+* the action log: every file that was (or, in a dry run, WOULD have been) moved or deleted
+* the effective configuration with hints, e.g. files that failed analysis
+
+For every duplicate group you can choose a different copy to keep, or ignore the group so the daemon
+never touches it. The daemon executes these decisions within a few seconds (after a running deduplication
+finished). Decisions from the web UI only ever **move** duplicates to `duplicates_target_directory`, they
+never delete files, so they require `duplicates_target_directory` to be set. `dry_run` applies to them too:
+while it is enabled, nothing on disk is touched and the action log shows what would have happened.
+With `deduplication.hold_ambiguous_groups` enabled, groups that need a review are not acted on automatically.
+
+The state shown in the web UI (runs, groups, decisions, action log) is stored in a small SQLite database
+at `state.database_path` (env `PY_IMAGE_DEDUP_STATE_DATABASE_PATH`); generated thumbnails are cached next to it.
+Prometheus metrics are also available at `/metrics` on the web port.
+
+`GET /api/health` returns `{"status": "ok"}` and can be used for liveness/readiness probes.
+
+**CAUTION!** The web UI has no authentication. It listens on `127.0.0.1` by default
+(`PY_IMAGE_DEDUP_WEB_HOST`, the Docker image uses `0.0.0.0`). Only expose it to trusted networks.
+
 ## Dry run
 
 To analyze images and get an overview of what images would be deleted 
@@ -201,8 +228,10 @@ image from DockerHub:
 ```
 docker run -t \
     -p 8000:8000 \
+    -p 8080:8080 \
     -v /where/the/original/photolibrary/is/located:/data/in \
     -v /where/duplicates/should/be/moved/to:/data/out \
+    -v /where/the/state/should/be/stored:/data/state \
     -e PY_IMAGE_DEDUP_DRY_RUN=False \
     -e PY_IMAGE_DEDUP_ANALYSIS_SOURCE_DIRECTORIES=/data/in/ \
     -e PY_IMAGE_DEDUP_ANALYSIS_RECURSIVE=True \
@@ -221,8 +250,13 @@ docker run -t \
     -e PY_IMAGE_DEDUP_REMOVE_EMPTY_FOLDERS=False \
     -e PY_IMAGE_DEDUP_STATS_ENABLED=True \
     -e PY_IMAGE_DEDUP_STATS_PORT=8000 \
+    -e PY_IMAGE_DEDUP_WEB_PORT=8080 \
     markusressel/py-image-dedup:latest
 ```
+
+The image exposes port `8000` (Prometheus metrics) and `8080` (web UI). It stores the state database at
+`/data/state/state.db` (`PY_IMAGE_DEDUP_STATE_DATABASE_PATH`), mount a volume writable by `PUID`/`PGID` there
+to keep the history across container restarts.
 
 Since an elasticsearch instance is required too, you can 
 also use the `docker-compose.yml` file included in this repo which will

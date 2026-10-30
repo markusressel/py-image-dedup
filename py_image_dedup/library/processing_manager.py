@@ -70,11 +70,18 @@ class ProcessingManager(RegularIntervalWorker):
             self.latest_event_time = datetime.now()
             if path not in self.queue:
                 self.queue[path] = path
+            self._update_queue_size()
 
     def remove(self, path: Path):
         if path in self.queue:
             self.queue.pop(path)
+        self._update_queue_size()
         self.deduplicator._persistence.remove(str(path))
+
+    def _update_queue_size(self):
+        state = getattr(self.deduplicator, "_state", None)
+        if state is not None:
+            state.live.set_queue_size(len(self.queue))
 
     def _should_process(self):
         return len(self.queue) > 0 and (
@@ -94,11 +101,14 @@ class ProcessingManager(RegularIntervalWorker):
         while True:
             try:
                 path, value = self.queue.popitem()
-                self._process_queue_item(path, value)
+                self._update_queue_size()
+                with self.deduplicator.work_lock:
+                    self._process_queue_item(path, value)
                 self.progress_manager.inc()
             except KeyError:
                 break
         self.progress_manager.clear()
+        self._update_queue_size()
 
     def _process_queue_item(self, path, value):
         self.deduplicator.reset_result()
@@ -107,6 +117,15 @@ class ProcessingManager(RegularIntervalWorker):
         if path.is_file():
             path = path.parent
 
+        run_started = self.deduplicator.begin_run("incremental", trigger=str(path))
+        try:
+            self._process_directory(path)
+        except BaseException as ex:
+            self.deduplicator.end_run(run_started, error=f"{type(ex).__name__}: {ex}")
+            raise
+        self.deduplicator.end_run(run_started)
+
+    def _process_directory(self, path: Path):
         if path.is_dir():
             files_count = get_files_count(
                 path,
@@ -118,7 +137,9 @@ class ProcessingManager(RegularIntervalWorker):
                 path: files_count
             }
 
+            self.deduplicator.start_phase("Analyzing files", 1, 3)
             self.deduplicator.analyze_directories(directory_map)
+            self.deduplicator.start_phase("Finding duplicates", 2, 3)
             self.deduplicator.find_duplicates_in_directories(directory_map)
 
         # TODO: allow processing individual files
@@ -127,6 +148,7 @@ class ProcessingManager(RegularIntervalWorker):
         #     root_dir = Path(os.path.commonpath([path] + self.config.SOURCE_DIRECTORIES.value))
         #     self.deduplicator.find_duplicates_of_file(self.config.SOURCE_DIRECTORIES.value, root_dir, path)
 
+        self.deduplicator.start_phase("Moving/deleting duplicates", 3, 3)
         self.deduplicator.process_duplicates()
 
         # TODO: this needs rethinking

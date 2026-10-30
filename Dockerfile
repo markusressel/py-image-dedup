@@ -28,7 +28,16 @@ RUN python -m venv /opt/poetry \
 COPY . .
 RUN pip install --no-cache-dir --no-deps .
 
+# the state database (web UI history) lives in /data/state, mount a volume there to keep it.
+# The directory is world writable because the process runs as an arbitrary PUID/PGID.
+RUN mkdir -p /data/state && chmod 0777 /data/state
+
 ENV PUID=1000 PGID=1000
+ENV PY_IMAGE_DEDUP_STATE_DATABASE_PATH=/data/state/state.db
+ENV PY_IMAGE_DEDUP_WEB_HOST=0.0.0.0
+
+# 8000: prometheus metrics, 8080: web UI + API
+EXPOSE 8000 8080
 
 ENTRYPOINT [ "docker/entrypoint.sh", "py-image-dedup" ]
 CMD [ "daemon" ]

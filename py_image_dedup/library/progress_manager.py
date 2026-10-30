@@ -8,7 +8,12 @@ LOGGER.setLevel(logging.DEBUG)
 
 class ProgressManager:
 
-    def __init__(self):
+    def __init__(self, listener=None):
+        """
+        :param listener: optional object notified about progress changes,
+                         see py_image_dedup.state.progress.StateProgressListener
+        """
+        self.listener = listener
         self._progress_bar = None
         self._task = None
         self._n = None
@@ -26,10 +31,14 @@ class ProgressManager:
         self._unit = unit
         if interactive:
             self._progress_bar = self._create_progressbar(total, unit)
+        if self.listener is not None:
+            self.listener.task_started(task, total)
 
     def set_postfix(self, postfix: str):
         if self._progress_bar is not None and postfix is not None:
             self._progress_bar.set_postfix_str(postfix)
+        if self.listener is not None and postfix is not None:
+            self.listener.task_item(str(postfix).strip())
 
     def inc(self, n: int = 1):
         if self._task is None:
@@ -44,6 +53,8 @@ class ProgressManager:
 
         if self._progress_bar is not None:
             self._progress_bar.update(n)
+        if self.listener is not None:
+            self.listener.task_progress(self._n)
 
         new_percentage = int((self._n / self._total) * 100)
         if self._last_percentage is None or self._last_percentage != new_percentage:
@@ -51,6 +62,8 @@ class ProgressManager:
             LOGGER.info(f"{self._task}: {new_percentage}% ({self._n}/{self._total})")
 
     def clear(self):
+        if self.listener is not None and self._task is not None:
+            self.listener.task_finished(self._n or 0, self._total or 0)
         if self._progress_bar is not None:
             self._progress_bar.close()
             self._progress_bar = None

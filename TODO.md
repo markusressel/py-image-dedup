@@ -23,6 +23,9 @@ configurable prioritization rules pick the best one.
 
 - [ ] Introduce a `SignatureBackend` / store interface so backends can be swapped and compared
 - [ ] SQLite store for hashes, metadata, groups, decisions and the action log (single file on a PVC)
+  - [x] Groups, candidates, decisions (deciding rule), user overrides, runs and the action log:
+        `py_image_dedup/state` (web UI backend, backend independent `matcher` column)
+  - [ ] Hashes and image metadata
 - [ ] Decode & normalise: apply EXIF orientation before hashing, support HEIC (`pillow-heif`) and RAW previews (`rawpy`)
 - [ ] Extract matching metadata: `DateTimeOriginal` (+ sub-seconds), camera model, `ImageUniqueID` /
       Apple content identifier, `Software` (edited)
@@ -59,17 +62,22 @@ configurable prioritization rules pick the best one.
 ## Safety
 
 - [ ] Default action "move to quarantine + review" instead of delete
-- [ ] Persist an action log (what was moved/deleted, why, which file was kept) to allow undo
-- [ ] Never act on duplicate groups with ambiguous ranking; queue them for manual review instead
+- [x] Persist an action log (what was moved/deleted, why, which file was kept)
+- [ ] Undo actions from the action log (move files back)
+- [x] Flag duplicate groups with ambiguous ranking (decided by a weak tie-breaker rule) for manual review
+- [x] Opt-in `deduplication.hold_ambiguous_groups`: never act on flagged groups automatically
+- [ ] Enable `hold_ambiguous_groups` by default
 
 ## Web UI (`dedup.markusressel.de`, internal)
 
-- [ ] Choose stack (e.g. FastAPI + server-rendered templates/htmx, served by the daemon process)
+- [x] Choose stack: FastAPI (JSON API + static files, in the daemon process) + Vue 3/Vite/TypeScript SPA in `web/`
+- [x] Backend: SQLite state store, recording in the deduplicator, JSON API under `/api`, thumbnails
 - [ ] Status page: current phase, progress, queue size, last run
 - [ ] History: past runs and actions taken
 - [ ] Review queue: duplicate groups with thumbnails, keep/move/ignore decisions
 - [ ] Insights: files failing analysis, rules that decided ties, config tuning hints
-- [ ] Keep Prometheus metrics endpoint
+- [x] Keep Prometheus metrics endpoint (stats port 8000 unchanged, also `/metrics` on the web port)
+- [ ] Process individual files from the web UI (re-analyse, re-check a group) and an "undo" button
 
 ## Deployment (k3s)
 
