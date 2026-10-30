@@ -1,0 +1,28 @@
+{
+  "name": "py-image-dedup-web",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --build && vite build",
+    "type-check": "vue-tsc --build",
+    "lint": "eslint .",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "vue": "3.5.44",
+    "vue-router": "5.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "@vitejs/plugin-vue": "6.0.10",
+    "@vue/eslint-config-typescript": "14.9.0",
+    "@vue/tsconfig": "0.9.1",
+    "eslint": "10.13.0",
+    "eslint-plugin-vue": "10.12.0",
+    "typescript": "6.0.3",
+    "vite": "8.3.5",
+    "vue-tsc": "3.3.14"
+  }
+}

@@ -27,6 +27,27 @@ jobs:
       - name: Run unit tests
         run: poetry run pytest
 
+  web-ui:
+    name: Web UI (lint, type-check, build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Lint
+        run: npm run lint
+      - name: Type-check and build
+        run: npm run build
+
   integration-tests:
     name: Integration tests (Elasticsearch ${{ matrix.elasticsearch }})
     runs-on: ubuntu-latest

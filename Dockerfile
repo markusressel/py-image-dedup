@@ -1,3 +1,11 @@
+# build the web UI (Vue single page app), only its static files end up in the final image
+FROM node:24-bookworm-slim AS web
+WORKDIR /web
+COPY web/package.json web/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY web/ ./
+RUN npm run build
+
 # dont use alpine for python builds: https://pythonspeed.com/articles/alpine-docker-python/
 FROM python:3.14-slim-bookworm
 
@@ -27,6 +35,9 @@ RUN python -m venv /opt/poetry \
 # install the project itself (provides the py-image-dedup script)
 COPY . .
 RUN pip install --no-cache-dir --no-deps .
+
+COPY --from=web /web/dist /app/web/dist
+ENV PY_IMAGE_DEDUP_WEB_STATIC_DIRECTORY=/app/web/dist
 
 # the state database (web UI history) lives in /data/state, mount a volume there to keep it.
 # The directory is world writable because the process runs as an arbitrary PUID/PGID.
