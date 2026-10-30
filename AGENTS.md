@@ -80,7 +80,15 @@ py_image_dedup_reference.yaml  # documented reference configuration
 - `tests/conftest.py` switches the working directory to `tests/` so `tests/py_image_dedup.yaml` is used.
   Do not rely on a `py_image_dedup.yaml` in the repo root (developers keep a private one there, untracked).
 - `TestBase` patches `ElasticSearchStoreBackend`; unit tests must never need a running Elasticsearch.
-  Put anything requiring a real ES instance behind an explicit marker and keep it out of the default run.
+  Put anything requiring a real ES instance behind the `integration` marker; `pytest.ini` excludes it from the default run.
+- Integration tests (`tests/test_integration_elasticsearch.py`) run the real `ImageMatchDeduplicator` against
+  Elasticsearch over `tests/images/` (dry run, separate index `py-image-dedup-integration-test`):
+  ```shell
+  docker run -d -p 9200:9200 -e discovery.type=single-node -e xpack.security.enabled=false elasticsearch:7.17.28
+  poetry run pytest -m integration   # host/port via PY_IMAGE_DEDUP_ELASTICSEARCH_HOST / _PORT
+  ```
+  Tested Elasticsearch versions: 7.9.2 and 7.17.28 (both run in CI). Only Elasticsearch 7.x is supported
+  (the client is pinned to `elasticsearch = "^7"`, 8.x is untested).
 - Prioritization/selection logic (`_select_images_to_delete`, `_sort_by_quality_descending`) is the most
   safety-critical code: it decides which files get deleted. Cover changes there with tests.
 
@@ -96,11 +104,10 @@ GitHub Actions (`.github/workflows/`):
 
 - `dockerimage-test.yml`: builds the Docker image on PRs (this is the main "does it still install" check).
 - `dockerimage-latest.yml` / `dockerimage-release.yml`: build and push `markusressel/py-image-dedup` on master / tags.
+- `tests.yml`: unit tests and integration tests (Elasticsearch service container) on PRs and pushes to master.
 - `codespell.yml`: spelling (config in `pyproject.toml`, ignores in `.codespellignore`).
 - `codeql-analysis.yml`: CodeQL.
 - Dependabot opens PRs for pip and GitHub Actions updates.
-
-Unit tests are not run in CI yet.
 
 ## Conventions
 
