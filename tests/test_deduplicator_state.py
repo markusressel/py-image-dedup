@@ -93,6 +93,17 @@ class DeduplicatorStateTest(TestBase):
         # hold_ambiguous_groups is disabled by default: the decision is still executed
         self.assertEqual(1, len(self.dedup._deduplication_result.get_removed_or_moved_files()))
 
+    def test_duplicate_backend_entries(self):
+        # the backend may return several entries for the same file
+        group = self._find([
+            _candidate("images/a/small.jpg", filesize=10),
+            _candidate("images/a/big.jpg", filesize=1000),
+            _candidate("images/a/big.jpg", filesize=1000),
+        ])
+        self.assertEqual(2, len(group["candidates"]))
+        self.assertEqual("bigger-file-size", group["decided_by"])
+        self.assertFalse(group["needs_review"])
+
     def test_hold_ambiguous_groups(self):
         self.config.DEDUPLICATION_HOLD_AMBIGUOUS_GROUPS.value = True
         group = self._find([

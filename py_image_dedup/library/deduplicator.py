@@ -487,9 +487,18 @@ class ImageMatchDeduplicator:
         :return: (files to keep, duplicates) to use, or None if no file of this group must be touched
         """
         try:
-            ranked = self._sort_by_quality_descending(files_to_keep + duplicates)
+            # the backend might return the same file more than once, a group contains every file only once
+            ranked, seen = [], set()
+            for candidate in self._sort_by_quality_descending(files_to_keep + duplicates):
+                if candidate[MetadataKey.PATH.value] not in seen:
+                    seen.add(candidate[MetadataKey.PATH.value])
+                    ranked.append(candidate)
+            if len(ranked) < 2:
+                return None
             decided_by, decision_reason = self._explain_decision(ranked)
-            needs_review = len(duplicates) > 0 and (decided_by is None or decided_by in WEAK_PRIORITIZATION_RULES)
+            keep_path_set = set(c[MetadataKey.PATH.value] for c in files_to_keep)
+            has_duplicates = any(d[MetadataKey.PATH.value] not in keep_path_set for d in duplicates)
+            needs_review = has_duplicates and (decided_by is None or decided_by in WEAK_PRIORITIZATION_RULES)
             review_reason = None
             if needs_review:
                 review_reason = f"The best copy was only chosen by the weak tie-breaker rule '{decided_by}'" \
@@ -525,7 +534,7 @@ class ImageMatchDeduplicator:
         if group["status"] == GroupStatus.IGNORED:
             return None
         if group["decision_source"] == DecisionSource.USER:
-            all_candidates = files_to_keep + duplicates
+            all_candidates = ranked
             keep = [c for c in all_candidates if c[MetadataKey.PATH.value] == group["keep_path"]]
             dont_keep = [c for c in all_candidates if c[MetadataKey.PATH.value] != group["keep_path"]]
             if len(keep) != 1:
