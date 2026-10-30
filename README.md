@@ -199,7 +199,7 @@ To run **py-image-dedup** using docker you can use the [markusressel/py-image-de
 image from DockerHub:
 
 ```
-sudo docker run -t \
+docker run -t \
     -p 8000:8000 \
     -v /where/the/original/photolibrary/is/located:/data/in \
     -v /where/duplicates/should/be/moved/to:/data/out \
@@ -217,6 +217,7 @@ sudo docker run -t \
     -e PY_IMAGE_DEDUP_ELASTICSEARCH_INDEX=images \
     -e PY_IMAGE_DEDUP_ELASTICSEARCH_AUTO_CREATE_INDEX=True \
     -e PY_IMAGE_DEDUP_ELASTICSEARCH_MAX_DISTANCE=0.1 \
+    -e PY_IMAGE_DEDUP_ELASTICSEARCH_CONNECTION_TIMEOUT=2m \
     -e PY_IMAGE_DEDUP_REMOVE_EMPTY_FOLDERS=False \
     -e PY_IMAGE_DEDUP_STATS_ENABLED=True \
     -e PY_IMAGE_DEDUP_STATS_PORT=8000 \
@@ -228,7 +229,7 @@ also use the `docker-compose.yml` file included in this repo which will
 set up a single-node elasticsearch cluster too:
 
 ```shell script
-sudo docker-compose up
+docker compose up
 ```
 
 ### UID and GID

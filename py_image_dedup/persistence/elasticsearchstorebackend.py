@@ -1,5 +1,6 @@
 import logging
 import time
+from datetime import timedelta
 
 import requests
 from elasticsearch import Elasticsearch
@@ -8,10 +9,14 @@ from image_match.elasticsearch_driver import SignatureES
 from py_image_dedup.persistence import ImageSignatureStore
 from py_image_dedup.util import echo
 
+LOGGER = logging.getLogger(__name__)
+
 
 class ElasticSearchStoreBackend(ImageSignatureStore):
     DEFAULT_EL_DOC_TYPE_EL_6 = 'image'
     DEFAULT_EL_DOC_TYPE_EL_7 = '_doc'
+
+    CONNECTION_RETRY_INTERVAL_SECONDS = 2
 
     def __init__(self,
                  host: str,
@@ -23,6 +28,7 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
                  max_dist: float = 0.03,
                  use_exif_data: bool = True,
                  setup_database: bool = True,
+                 connection_timeout: timedelta = timedelta(minutes=2),
                  ):
         """
         Image signature persistence backed by image_match and elasticsearch
@@ -33,6 +39,7 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
         :param el_index: elasticsearch index where the data is stored
         :param el_doctype: elasticsearch document type of the stored data
         :param max_dist: maximum "difference" allowed, ranging from [0 .. 1] where 0.2 is still a pretty similar image
+        :param connection_timeout: maximum time to wait for the elasticsearch server to become reachable
         """
         super().__init__(use_exif_data)
 
@@ -40,10 +47,7 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
         self.port = port
         self._connections_per_node = connections_per_node
 
-        detected_version = None
-        while detected_version is None:
-            time.sleep(2)
-            detected_version = self._detect_db_version()
+        detected_version = self._wait_for_db_version(connection_timeout)
 
         self._el_version = el_version
         if self._el_version is not None and detected_version is not None and self._el_version != detected_version:
@@ -85,6 +89,34 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
             doc_type=self._el_doctype,
             distance_cutoff=max_dist,
         )
+
+    def _wait_for_db_version(self, timeout: timedelta) -> int:
+        """
+        Waits until the elasticsearch server is reachable and returns its major version.
+
+        :param timeout: maximum time to wait
+        :return: the major version of the elasticsearch server
+        :raises ConnectionError: if the server is not reachable within the given timeout
+        """
+        deadline = time.monotonic() + timeout.total_seconds()
+        attempt = 0
+        while True:
+            attempt += 1
+            detected_version = self._detect_db_version()
+            if detected_version is not None:
+                return detected_version
+
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise ConnectionError(
+                    f"Elasticsearch at {self.host}:{self.port} is not reachable "
+                    f"after {attempt} attempt(s) within {timeout}, giving up")
+
+            delay = min(self.CONNECTION_RETRY_INTERVAL_SECONDS, remaining)
+            LOGGER.warning(
+                f"Elasticsearch at {self.host}:{self.port} is not reachable (attempt {attempt}), "
+                f"retrying in {delay:.0f}s ({remaining:.0f}s left)")
+            time.sleep(delay)
 
     def _detect_db_version(self) -> int or None:
         try:
