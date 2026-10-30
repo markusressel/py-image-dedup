@@ -4,3 +4,5 @@ duplicates
 mnt
 venv
 *.yaml
+.git
+.venv
