@@ -1,5 +1,6 @@
 import datetime
 import logging
+import os
 import re
 import tempfile
 import time
@@ -86,19 +87,22 @@ def create_app(store: StateStore, config: DeduplicatorConfig, static_directory: 
             if store.database_path != ":memory:" else Path(tempfile.gettempdir()) / "py-image-dedup-thumbnails"
     thumbnails = ThumbnailCache(thumbnail_cache_directory)
 
-    def allowed_roots() -> List[Path]:
-        roots = [Path(d).resolve() for d in config.SOURCE_DIRECTORIES.value]
+    def allowed_roots() -> List[str]:
+        roots = [os.path.realpath(d) for d in config.SOURCE_DIRECTORIES.value]
         target = config.DEDUPLICATOR_DUPLICATES_TARGET_DIRECTORY.value
         if target is not None:
-            roots.append(Path(target).resolve())
+            roots.append(os.path.realpath(target))
         return roots
 
-    def is_allowed(path: Path) -> bool:
-        try:
-            resolved = path.resolve()
-        except (OSError, RuntimeError):
-            return False
-        return any(resolved.is_relative_to(root) for root in allowed_roots())
+    def allowed_file(path: str) -> Path | None:
+        """
+        :return: the real path of the given file, if it is located inside one of the configured directories
+        """
+        real_path = os.path.realpath(path)
+        for root in allowed_roots():
+            if real_path.startswith(root.rstrip(os.sep) + os.sep) and os.path.isfile(real_path):
+                return Path(real_path)
+        return None
 
     def move_target(path: str) -> str | None:
         target = config.DEDUPLICATOR_DUPLICATES_TARGET_DIRECTORY.value
@@ -113,15 +117,15 @@ def create_app(store: StateStore, config: DeduplicatorConfig, static_directory: 
         candidate = store.get_candidate(candidate_id)
         if candidate is None:
             raise HTTPException(status_code=404, detail="Unknown candidate")
-        path = Path(candidate["path"])
-        if not path.is_file():
-            moved_to = store.last_move_target(candidate["path"])
-            if moved_to is None or not Path(moved_to).is_file():
+        path = candidate["path"]
+        if not os.path.isfile(path):
+            path = store.last_move_target(candidate["path"])
+            if path is None or not os.path.isfile(path):
                 raise HTTPException(status_code=404, detail="File does not exist (anymore)")
-            path = Path(moved_to)
-        if not is_allowed(path):
+        safe_path = allowed_file(path)
+        if safe_path is None:
             raise HTTPException(status_code=403, detail="File is outside of the configured directories")
-        return path
+        return safe_path
 
     def group_or_404(group_id: int) -> dict:
         group = store.get_group(group_id)
@@ -346,15 +350,18 @@ def create_app(store: StateStore, config: DeduplicatorConfig, static_directory: 
     static_root = Path(static_directory).resolve() if static_directory is not None else None
     if static_root is not None and (static_root / "index.html").is_file():
         index_file = static_root / "index.html"
+        # the built app is static: only files that exist at startup are served, never a path built from the request
+        static_files = {
+            file.relative_to(static_root).as_posix(): file for file in static_root.rglob("*") if file.is_file()
+        }
 
         @app.get("/{path:path}", include_in_schema=False)
         def spa(path: str):
-            if path:
-                candidate = (static_root / path).resolve()
-                if candidate.is_relative_to(static_root) and candidate.is_file():
-                    # hashed asset file names can be cached forever
-                    cache = "public, max-age=31536000, immutable" if path.startswith("assets/") else "no-cache"
-                    return FileResponse(candidate, headers={"Cache-Control": cache})
+            static_file = static_files.get(path)
+            if static_file is not None:
+                # hashed asset file names can be cached forever
+                cache = "public, max-age=31536000, immutable" if path.startswith("assets/") else "no-cache"
+                return FileResponse(static_file, headers={"Cache-Control": cache})
             # client side routing: every other path is handled by the single page app
             return FileResponse(index_file, headers={"Cache-Control": "no-cache"})
     else:
