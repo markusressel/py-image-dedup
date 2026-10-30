@@ -241,8 +241,11 @@ def create_app(store: StateStore, config: DeduplicatorConfig, static_directory: 
         except Exception as ex:
             LOGGER.warning(f"Could not create thumbnail for {path}: {ex}")
             raise HTTPException(status_code=422, detail="Could not create thumbnail")
-        return FileResponse(thumbnail_path, media_type="image/jpeg",
-                            headers={"Cache-Control": "private, max-age=3600"})
+        real_thumbnail_path = os.path.realpath(thumbnail_path)
+        if real_thumbnail_path.startswith(os.path.realpath(thumbnails.cache_directory) + os.sep):
+            return FileResponse(real_thumbnail_path, media_type="image/jpeg",
+                                headers={"Cache-Control": "private, max-age=3600"})
+        raise HTTPException(status_code=500, detail="Thumbnail outside of the cache directory")
 
     @app.get("/api/candidates/{candidate_id}/image")
     def image(candidate_id: int):
