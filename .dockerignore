@@ -6,3 +6,5 @@ venv
 *.yaml
 .git
 .venv
+web/node_modules
+web/dist
