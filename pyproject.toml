@@ -45,9 +45,12 @@ tqdm = "*"
 prometheus-client = "*"
 image-match = { git = "https://github.com/markusressel/image-match.git", tag = "3.0.0" }
 ruamel-yaml-clib = ">=0.2.15"
+fastapi = "^0.162.0"
+uvicorn = "^0.54.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "*"
+httpx = "^0.28.1"
 
 [tool.poetry.scripts]
 py-image-dedup = 'py_image_dedup.cli:cli'

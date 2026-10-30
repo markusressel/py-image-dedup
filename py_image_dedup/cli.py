@@ -1,4 +1,6 @@
+import logging
 import time
+from pathlib import Path
 
 import click
 
@@ -77,7 +79,22 @@ def c_daemon(dry_run: bool):
         echo("Starting prometheus reporter...")
         start_http_server(config.STATS_PORT.value)
 
-    deduplicator = ImageMatchDeduplicator(interactive=False)
+    from py_image_dedup.state import StateStore
+    state_database_path = Path(config.STATE_DATABASE_PATH.value).expanduser()
+    echo(f"Using state database: {state_database_path}")
+    state_store = StateStore(state_database_path)
+
+    web_server = None
+    if config.WEB_ENABLED.value:
+        from py_image_dedup.web.app import create_app, default_static_directory
+        from py_image_dedup.web.server import WebServer
+        static_directory = config.WEB_STATIC_DIRECTORY.value or default_static_directory()
+        app = create_app(state_store, config, static_directory=static_directory)
+        echo(f"Starting web UI on http://{config.WEB_HOST.value}:{config.WEB_PORT.value} ...")
+        web_server = WebServer(app, config.WEB_HOST.value, config.WEB_PORT.value)
+        web_server.start()
+
+    deduplicator = ImageMatchDeduplicator(interactive=False, state_store=state_store)
     processing_manager = ProcessingManager(deduplicator)
 
     deduplicator.deduplicate_all()
@@ -86,8 +103,15 @@ def c_daemon(dry_run: bool):
     try:
         while True:
             time.sleep(1)
+            # decisions made in the web UI
+            try:
+                deduplicator.execute_user_decisions()
+            except Exception as ex:
+                logging.exception(ex)
     except KeyboardInterrupt:
         processing_manager.stop()
+        if web_server is not None:
+            web_server.stop()
 
 
 if __name__ == '__main__':
