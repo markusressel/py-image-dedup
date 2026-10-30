@@ -29,13 +29,11 @@ LOGGER.setLevel(logging.DEBUG)
 
 
 class ImageMatchDeduplicator:
-    EXECUTOR = ThreadPoolExecutor()
-
     _config: DeduplicatorConfig
     _progress_manager: ProgressManager
 
-    _processed_files: dict = {}
-    _deduplication_result: DeduplicationResult = None
+    _processed_files: dict
+    _deduplication_result: DeduplicationResult
 
     def __init__(self, interactive: bool):
         """
@@ -43,6 +41,7 @@ class ImageMatchDeduplicator:
         :param interactive: whether cli output should be interactive or not
         """
         self.interactive = interactive
+        self.reset_result()
 
         self._progress_manager = ProgressManager()
         self._config = DeduplicatorConfig()
@@ -254,7 +253,7 @@ class ImageMatchDeduplicator:
         :param command: the method to execute for every file found
         :return: file_path -> identifier
         """
-        with ThreadPoolExecutor(max_workers=threads, thread_name_prefix="py-image-dedup-walker") as self.EXECUTOR:
+        with ThreadPoolExecutor(max_workers=threads, thread_name_prefix="py-image-dedup-walker") as executor:
             for (root, dirs, files) in os.walk(str(root_directory)):
                 # root is the place you're listing
                 # dirs is a list of directories directly under root
@@ -278,7 +277,7 @@ class ImageMatchDeduplicator:
                         continue
 
                     try:
-                        self.EXECUTOR.submit(util.reraise_with_stack(command), root_directory, root, file_path)
+                        executor.submit(util.reraise_with_stack(command), root_directory, root, file_path)
                     except Exception as e:
                         click.echo(e, err=True)
                         sys.exit(1)

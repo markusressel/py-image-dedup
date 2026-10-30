@@ -15,18 +15,21 @@ from py_image_dedup.util.file import get_files_count
 
 
 class ProcessingManager(RegularIntervalWorker):
-    lock = Lock()
-    queue = OrderedDict()
+    lock: Lock
+    queue: OrderedDict
 
     progress_manager: ProgressManager
 
-    latest_event_time = None
+    latest_event_time: datetime | None
 
     def __init__(self, deduplicator):
         self.config = DeduplicatorConfig()
         timeout = self.config.DAEMON_PROCESSING_TIMEOUT.value
         interval = timeout.total_seconds()
         super().__init__(interval)
+        self.lock = Lock()
+        self.queue = OrderedDict()
+        self.latest_event_time = None
         self.progress_manager = ProgressManager()
         self.deduplicator = deduplicator
         self.event_handler = EventHandler(self)
