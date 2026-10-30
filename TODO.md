@@ -81,3 +81,11 @@ configurable prioritization rules pick the best one.
   - [ ] Clean up leftover Rancher/Helm labels and duplicate services
 - [ ] Multiarch Docker images (#77)
 - [ ] Pin image tag instead of `latest` + keel force policy
+- [ ] Later: deploy Immich in k3s as the Google Photos-like photo app (replacing the photo part of Plex),
+      using the photo library as an external library; py-image-dedup stays the deduplication service
+
+## Immich interop (later)
+
+- [ ] Make sure moves/deletes by py-image-dedup are picked up by Immich (external library rescan / API trigger)
+- [ ] Optional: link duplicate groups to Immich assets in the web UI (open in Immich, show albums/faces)
+- [ ] Evaluate ideas from Immich-Deduper (weighted auto-selection, preferred folder paths) for the prioritization rules
