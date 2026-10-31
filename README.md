@@ -162,9 +162,20 @@ while it is enabled, nothing on disk is touched and the action log shows what wo
 Set `dry_run_user_decisions: false` to execute your decisions while the prioritization rules stay in dry run.
 
 Decisions made in another tool can be imported with `POST /api/decisions/import-discarded`
-(`{"discarded_paths": [...], "apply": false}`, see `/api/docs`). F.ex. the files trashed by Immich's
-duplicate review: every open group where all but one member are in `discarded_paths` keeps the remaining
-one, other groups are left alone. Without `"apply": true` it only reports what would be decided.
+(`{"discarded_paths": [...], "apply": false}`, see `/api/docs`): every open group where all but one member
+are in `discarded_paths` keeps the remaining one, other groups are left alone. Without `"apply": true` it
+only reports what would be decided.
+
+### Immich
+
+If your library is also an external library in [Immich](https://immich.app), you can use Immich's duplicate
+review and let py-image-dedup move the copies you trashed there: configure `immich.url`, `immich.api_key`
+(an API key with the `asset.read` permission of the user owning the library) and, if Immich sees the files
+under another path, `immich.path_mappings`. The dashboard then shows an "Immich" card to preview and apply the
+import of the Immich trash (`POST /api/integrations/immich/import-trash`). Offline assets (files missing on
+disk) are skipped. Exclude `duplicates_target_directory` from the Immich library, so moved files are not imported
+again.
+
 With `deduplication.hold_ambiguous_groups` enabled, groups that need a review are not acted on automatically.
 
 The state shown in the web UI (runs, groups, decisions, action log) is stored in a small SQLite database

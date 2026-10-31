@@ -57,6 +57,8 @@ py_image_dedup/
     app.py                     # FastAPI app: JSON API under /api, /metrics, SPA static files + fallback
     thumbnails.py              # on-demand thumbnails (EXIF orientation applied), disk cache
     server.py                  # uvicorn in a background thread of the daemon
+  integrations/
+    immich.py                  # ImmichClient: trashed assets via the Immich API (requests), path mappings
   library/
     deduplicator.py            # ImageMatchDeduplicator: the 6 phases, candidate selection & prioritization
     processing_manager.py      # daemon: file watchers + debounced processing queue
@@ -111,7 +113,8 @@ py_image_dedup_reference.yaml  # documented reference configuration
   `work_lock` so they never run concurrently with a deduplication run). They only ever move duplicates to
   `duplicates_target_directory` (never delete), respect `dry_run` (overridable with `dry_run_user_decisions`)
   and abort if the file to keep is missing. `POST /api/decisions/import-discarded` turns decisions made in
-  another tool (f.ex. files trashed by Immich's duplicate review) into such user decisions.
+  another tool into such user decisions; `POST /api/integrations/immich/import-trash` does the same with the
+  Immich trash fetched via the Immich API (`immich.*` config, dashboard card).
 
 ## Testing
 

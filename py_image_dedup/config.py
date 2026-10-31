@@ -62,6 +62,11 @@ NODE_STATE = "state"
 NODE_DATABASE_PATH = "database_path"
 
 NODE_WEB = "web"
+
+NODE_IMMICH = "immich"
+NODE_URL = "url"
+NODE_API_KEY = "api_key"
+NODE_PATH_MAPPINGS = "path_mappings"
 NODE_STATIC_DIRECTORY = "static_directory"
 
 DEFAULT_STATE_DATABASE_PATH = "~/.local/share/py-image-dedup/state.db"
@@ -408,6 +413,46 @@ class DeduplicatorConfig(ConfigBase):
         check_existence=False,
         default=None,
         example="/app/web/dist"
+    )
+
+    IMMICH_URL = StringConfigEntry(
+        description="Base URL of an Immich server. Enables importing the files trashed in Immich "
+                    "(f.ex. by its duplicate review) as decisions for the duplicate groups.",
+        key_path=[
+            NODE_MAIN,
+            NODE_IMMICH,
+            NODE_URL
+        ],
+        required=False,
+        default=None,
+        example="http://immich-server:2283"
+    )
+
+    IMMICH_API_KEY = StringConfigEntry(
+        description="Immich API key (needs the asset.read permission) of the user who owns the trashed assets.",
+        key_path=[
+            NODE_MAIN,
+            NODE_IMMICH,
+            NODE_API_KEY
+        ],
+        required=False,
+        default=None,
+        secret=True
+    )
+
+    IMMICH_PATH_MAPPINGS = ListConfigEntry(
+        description="Maps the file paths Immich reports (immich) to the paths this application sees (local), "
+                    "f.ex. when Immich mounts the photo library at a different location. "
+                    "The first matching mapping is used, unmapped paths are used as they are.",
+        item_type=DictConfigEntry,
+        key_path=[
+            NODE_MAIN,
+            NODE_IMMICH,
+            NODE_PATH_MAPPINGS
+        ],
+        required=False,
+        default=[],
+        example=[{"immich": "/mnt/photos", "local": "/data/photos"}]
     )
 
     @property

@@ -1,9 +1,11 @@
 import shutil
 import tempfile
 from pathlib import Path
+from unittest import mock
 
 from fastapi.testclient import TestClient
 
+from py_image_dedup.integrations.immich import ImmichError
 from py_image_dedup.state import StateStore, ActionStatus, DecisionSource
 from py_image_dedup.web.app import create_app
 from tests import TestBase
@@ -110,6 +112,35 @@ class WebApiTest(TestBase):
         applied = self.client.post("/api/decisions/import-discarded", json=body).json()
         self.assertTrue(applied["applied"])
         self.assertEqual(str(IMAGE_2), self.store.get_group(self.group_id)["keep_path"])
+
+    def test_immich_import_trash(self):
+        immich_entries = [self.config.IMMICH_URL, self.config.IMMICH_API_KEY, self.config.IMMICH_PATH_MAPPINGS]
+        for entry, value in [(e, e.value) for e in immich_entries]:
+            self.addCleanup(setattr, entry, "value", value)
+
+        self.assertFalse(self.client.get("/api/integrations/immich").json()["configured"])
+        self.assertEqual(409, self.client.post("/api/integrations/immich/import-trash", json={}).status_code)
+
+        self.config.IMMICH_URL.value = "http://immich:2283"
+        self.config.IMMICH_API_KEY.value = "key"
+        self.config.IMMICH_PATH_MAPPINGS.value = [{"immich": "/immich", "local": str(IMAGE.parent)}]
+        self.config.DEDUPLICATOR_DUPLICATES_TARGET_DIRECTORY.value = self.tmp
+        self.assertTrue(self.client.get("/api/integrations/immich").json()["configured"])
+
+        trashed = [f"/immich/{IMAGE.name}", "/upload/other.jpg"]
+        with mock.patch("py_image_dedup.integrations.immich.ImmichClient.trashed_original_paths",
+                        return_value=trashed):
+            preview = self.client.post("/api/integrations/immich/import-trash", json={}).json()
+            # /etc/hostname is not trashed, so two members remain
+            self.assertEqual({"trashed": 2, "unmapped": 1, "several_remaining": 1},
+                             {k: preview.get(k, preview["outcomes"].get(k))
+                              for k in ("trashed", "unmapped", "several_remaining")})
+            self.assertFalse(preview["applied"])
+
+        with mock.patch("py_image_dedup.integrations.immich.ImmichClient.trashed_original_paths",
+                        side_effect=ImmichError("down")):
+            response = self.client.post("/api/integrations/immich/import-trash", json={"apply": True})
+            self.assertEqual((502, "down"), (response.status_code, response.json()["detail"]))
 
     def test_keep_ignore_reset(self):
         self.config.DEDUPLICATOR_DUPLICATES_TARGET_DIRECTORY.value = self.tmp
