@@ -82,6 +82,16 @@ prioritization_rules:
   # copies are usually younger than the original
   - name: "older-file-modification-date"
 ```
+
+`prefer-edited` ranks intentionally edited copies before their original. A copy counts as edited if its file name
+(without extension) matches one of `file_name_patterns` (default: `_edit`, `-edited`, `bearbeitet`, ...) or its
+EXIF `Software` tag matches one of `software_patterns` (default: Lightroom, Photoshop, Snapseed, GIMP, darktable, ...).
+As some edits are only made for fun, a group with an edited copy and its original is always marked for review
+(with `hold_ambiguous_groups: true` nothing is moved until you decide; ignore the group to keep both).
+
+Files matching one of `deduplication.protected_paths` (regular expressions, f.ex. curated albums) are never moved
+or deleted, neither by the rules nor by decisions from the web UI. If the best copy of a group is somewhere else,
+both are kept.
  
 ### Phase 5 - Moving/Deleting duplicates
 

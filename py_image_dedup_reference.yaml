@@ -63,6 +63,14 @@ py_image_dedup:
         patterns: ["/Camera/"]
       - name: "avoided-paths"
         patterns: ["/Telegram "]
+      # edited copies (file name/EXIF Software, patterns are optional) before their original
+      - name: "prefer-edited"
+        file_name_patterns: ["(?i)[-_ .(](edit|edited|bearbeitet)(\\W|_|$)"]
+        software_patterns: ["(?i)lightroom|photoshop|snapseed"]
+    # Files matching one of these regular expressions are never moved or deleted
+    # (f.ex. curated albums). If the best copy is somewhere else, both are kept.
+    protected_paths: []
+    #  - "/Familie/"
 
   # Daemon specific configuration options, see README.md
   daemon:
