@@ -200,6 +200,21 @@ export interface ConfigResponse {
 export interface ImmichStatus {
   configured: boolean
   url: string | null
+  public_url: string | null
+  rescan_after_changes: boolean
+}
+
+export interface ImmichCandidateAsset {
+  candidate_id: number
+  asset_id: string | null
+  url: string | null
+}
+
+export interface GroupImmichAssets {
+  configured: boolean
+  url: string | null
+  error: string | null
+  candidates: ImmichCandidateAsset[]
 }
 
 export interface ImportOutcomes {

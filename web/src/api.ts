@@ -4,6 +4,7 @@ import type {
   Failure,
   Group,
   GroupDetail,
+  GroupImmichAssets,
   ImmichImportResult,
   ImmichStatus,
   Page,
@@ -65,6 +66,7 @@ export const api = {
   failures: (params?: Params) => request<Page<Failure>>('GET', `/api/failures${query(params)}`),
   config: () => request<ConfigResponse>('GET', '/api/config'),
   immich: () => request<ImmichStatus>('GET', '/api/integrations/immich'),
+  groupImmich: (groupId: number) => request<GroupImmichAssets>('GET', `/api/groups/${groupId}/immich`),
   importImmichTrash: (apply: boolean) =>
     request<ImmichImportResult>('POST', '/api/integrations/immich/import-trash', { apply }),
 }

@@ -1,7 +1,9 @@
 import shutil
 import tempfile
 from pathlib import Path
+from unittest import mock
 
+from py_image_dedup.integrations.immich import ImmichError
 from py_image_dedup.library import ActionEnum
 from py_image_dedup.library.deduplicator import ImageMatchDeduplicator
 from py_image_dedup.persistence.metadata_key import MetadataKey
@@ -302,3 +304,61 @@ class ExecuteUserDecisionTest(TestBase):
 
         self.assertTrue(all(f.exists() for f in self.files))
         self.assertEqual({ActionStatus.SKIPPED}, {a["status"] for a in self.store.list_actions()["items"]})
+
+    def _enable_immich_rescan(self):
+        entries = [self.config.IMMICH_URL, self.config.IMMICH_API_KEY, self.config.IMMICH_PATH_MAPPINGS,
+                   self.config.IMMICH_RESCAN_AFTER_CHANGES]
+        for entry, value in [(e, e.value) for e in entries]:
+            self.addCleanup(setattr, entry, "value", value)
+        self.config.IMMICH_URL.value = "http://immich:2283"
+        self.config.IMMICH_API_KEY.value = "key"
+        self.config.IMMICH_PATH_MAPPINGS.value = [{"immich": "/immich", "local": str(self.source)}]
+        self.config.IMMICH_RESCAN_AFTER_CHANGES.value = True
+        # run the rescan synchronously
+        self.dedup._run_in_background = lambda function: function()
+        rescan = mock.patch("py_image_dedup.integrations.immich.ImmichClient.rescan_libraries",
+                            return_value=["lib"]).start()
+        self.addCleanup(mock.patch.stopall)
+        return rescan
+
+    def test_immich_rescan_once_after_moving_files(self):
+        rescan = self._enable_immich_rescan()
+        self.config.DRY_RUN.value = False
+        self.store.set_user_keeper(self.group_id, str(self.files[1]))
+
+        self.dedup.execute_user_decisions()
+
+        rescan.assert_called_once()
+        self.assertEqual({f"/immich/{self.files[0].name}", f"/immich/{self.files[2].name}"},
+                         set(rescan.call_args.args[0]))
+
+        # nothing changed since
+        self.dedup.execute_user_decisions()
+        rescan.assert_called_once()
+
+    def test_no_immich_rescan_in_dry_run_or_when_disabled(self):
+        rescan = self._enable_immich_rescan()
+        self.config.DRY_RUN.value = True
+        self.store.set_user_keeper(self.group_id, str(self.files[1]))
+        self.dedup.execute_user_decisions()
+        rescan.assert_not_called()
+
+        self.config.IMMICH_RESCAN_AFTER_CHANGES.value = False
+        self.config.DRY_RUN.value = False
+        self.store.set_user_keeper(self.group_id, str(self.files[1]))
+        self.dedup.execute_user_decisions()
+        self.assertFalse(self.files[0].exists())
+        rescan.assert_not_called()
+
+    def test_unreachable_immich_does_not_break_decisions(self):
+        rescan = self._enable_immich_rescan()
+        rescan.side_effect = ImmichError("down")
+        self.config.DRY_RUN.value = False
+        self.store.set_user_keeper(self.group_id, str(self.files[1]))
+
+        with self.assertLogs("py_image_dedup.library.deduplicator", level="WARNING") as logs:
+            self.dedup.execute_user_decisions()
+
+        rescan.assert_called_once()
+        self.assertIn("down", "".join(logs.output))
+        self.assertEqual(GroupStatus.RESOLVED, self.store.get_group(self.group_id)["status"])

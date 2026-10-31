@@ -204,6 +204,19 @@ import of the Immich trash (`POST /api/integrations/immich/import-trash`). Offli
 disk) are skipped. Exclude `duplicates_target_directory` from the Immich library, so moved files are not imported
 again.
 
+The group detail page links every file Immich knows to its asset in Immich ("open in Immich", looked up via
+`GET /api/groups/{id}/immich`). Local paths are translated with the inverse of `immich.path_mappings`.
+Set `immich.public_url` if the browser reaches Immich under another URL than `immich.url` (f.ex. a cluster
+internal service URL). Finding assets by path uses the structured search filter of Immich v3.2.0 and newer,
+older versions fall back to the deprecated `originalPath` search parameter.
+
+With `immich.rescan_after_changes: true`, py-image-dedup queues a scan of the Immich external libraries
+containing the affected files (of all external libraries, if none matches) after it really moved or deleted
+files: at most once per deduplication run and once per batch of executed web UI decisions, never in dry run.
+The scan runs in the background; if Immich is unreachable, only a warning is logged. Library scans are admin
+endpoints in Immich: the API key must belong to an Immich admin and needs the `library.read` and `library.update`
+permissions in addition to `asset.read`.
+
 With `deduplication.hold_ambiguous_groups` enabled, groups that need a review are not acted on automatically.
 
 The state shown in the web UI (runs, groups, decisions, action log) is stored in a small SQLite database

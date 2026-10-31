@@ -142,6 +142,56 @@ class WebApiTest(TestBase):
             response = self.client.post("/api/integrations/immich/import-trash", json={"apply": True})
             self.assertEqual((502, "down"), (response.status_code, response.json()["detail"]))
 
+    def test_group_immich_assets(self):
+        immich_entries = [self.config.IMMICH_URL, self.config.IMMICH_API_KEY, self.config.IMMICH_PATH_MAPPINGS,
+                          self.config.IMMICH_PUBLIC_URL]
+        for entry, value in [(e, e.value) for e in immich_entries]:
+            self.addCleanup(setattr, entry, "value", value)
+
+        url = f"/api/groups/{self.group_id}/immich"
+        self.assertEqual({"configured": False, "url": None, "error": None, "candidates": []},
+                         self.client.get(url).json())
+        self.assertEqual(404, self.client.get("/api/groups/999/immich").status_code)
+
+        self.config.IMMICH_URL.value = "http://immich-server:2283"
+        self.config.IMMICH_API_KEY.value = "key"
+        self.config.IMMICH_PATH_MAPPINGS.value = [{"immich": "/immich", "local": str(IMAGE.parent)}]
+        self.config.IMMICH_PUBLIC_URL.value = "https://immich.example.com/"
+        self.assertEqual("https://immich.example.com",
+                         self.client.get("/api/integrations/immich").json()["public_url"])
+
+        with mock.patch("py_image_dedup.integrations.immich.ImmichClient.find_asset_ids",
+                        return_value={f"/immich/{IMAGE.name}": "asset-1"}) as find:
+            result = self.client.get(url).json()
+            # cached
+            self.client.get(url)
+        find.assert_called_once()
+        # /etc/hostname is not covered by the path mappings
+        self.assertEqual(sorted([f"/immich/{IMAGE.name}", f"/immich/{IMAGE_2.name}"]), find.call_args.args[0])
+        self.assertTrue(result["configured"])
+        self.assertIsNone(result["error"])
+        by_candidate = {c["candidate_id"]: c for c in result["candidates"]}
+        self.assertEqual("https://immich.example.com/photos/asset-1", by_candidate[self.candidates[0]["id"]]["url"])
+        self.assertEqual("asset-1", by_candidate[self.candidates[0]["id"]]["asset_id"])
+        self.assertIsNone(by_candidate[self.candidates[1]["id"]]["url"])
+        self.assertIsNone(by_candidate[self.candidates[2]["id"]]["url"])
+
+    def test_group_immich_assets_when_immich_is_down(self):
+        immich_entries = [self.config.IMMICH_URL, self.config.IMMICH_API_KEY, self.config.IMMICH_PATH_MAPPINGS]
+        for entry, value in [(e, e.value) for e in immich_entries]:
+            self.addCleanup(setattr, entry, "value", value)
+        self.config.IMMICH_URL.value = "http://immich-server:2283"
+        self.config.IMMICH_API_KEY.value = "key"
+        self.config.IMMICH_PATH_MAPPINGS.value = []
+
+        with mock.patch("py_image_dedup.integrations.immich.ImmichClient.find_asset_ids",
+                        side_effect=ImmichError("down")):
+            response = self.client.get(f"/api/groups/{self.group_id}/immich")
+        self.assertEqual(200, response.status_code)
+        self.assertEqual("down", response.json()["error"])
+        self.assertEqual([None, None, None], [c["url"] for c in response.json()["candidates"]])
+        self.assertEqual("http://immich-server:2283", response.json()["url"])
+
     def test_keep_ignore_reset(self):
         self.config.DEDUPLICATOR_DUPLICATES_TARGET_DIRECTORY.value = self.tmp
         response = self.client.post(f"/api/groups/{self.group_id}/keep",

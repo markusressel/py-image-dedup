@@ -68,6 +68,8 @@ NODE_IMMICH = "immich"
 NODE_URL = "url"
 NODE_API_KEY = "api_key"
 NODE_PATH_MAPPINGS = "path_mappings"
+NODE_PUBLIC_URL = "public_url"
+NODE_RESCAN_AFTER_CHANGES = "rescan_after_changes"
 NODE_STATIC_DIRECTORY = "static_directory"
 
 DEFAULT_STATE_DATABASE_PATH = "~/.local/share/py-image-dedup/state.db"
@@ -468,6 +470,32 @@ class DeduplicatorConfig(ConfigBase):
         required=False,
         default=[],
         example=[{"immich": "/mnt/photos", "local": "/data/photos"}]
+    )
+
+    IMMICH_PUBLIC_URL = StringConfigEntry(
+        description="URL of the Immich server as reachable from the browser, used for the \"open in Immich\" "
+                    "links in the web UI. Falls back to immich.url.",
+        key_path=[
+            NODE_MAIN,
+            NODE_IMMICH,
+            NODE_PUBLIC_URL
+        ],
+        required=False,
+        default=None,
+        example="https://immich.example.com"
+    )
+
+    IMMICH_RESCAN_AFTER_CHANGES = BoolConfigEntry(
+        description="Queue a scan of the Immich external libraries after files were really moved or deleted "
+                    "(at most once per run / batch of executed decisions), so Immich notices the change. "
+                    "Needs an API key of an Immich admin with the library.read and library.update permissions.",
+        key_path=[
+            NODE_MAIN,
+            NODE_IMMICH,
+            NODE_RESCAN_AFTER_CHANGES
+        ],
+        required=False,
+        default=False
     )
 
     @property

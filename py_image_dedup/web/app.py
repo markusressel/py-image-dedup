@@ -21,6 +21,10 @@ from py_image_dedup.web.thumbnails import ThumbnailCache
 
 LOGGER = logging.getLogger(__name__)
 
+# how long asset lookups in Immich are cached (also failed ones, so a down Immich is not asked on every page load)
+IMMICH_ASSET_CACHE_SECONDS = 60
+IMMICH_ASSET_CACHE_SIZE = 500
+
 # keep in sync with ImageMatchDeduplicator._quality_criteria and WEAK_PRIORITIZATION_RULES
 KNOWN_PRIORITIZATION_RULES = {
     "more-exif-data", "less-exif-data",
@@ -238,10 +242,60 @@ def create_app(store: StateStore, config: DeduplicatorConfig, static_directory: 
                                 detail="duplicates_target_directory is not configured. User decisions "
                                        "only move duplicates, they never delete files.")
 
+    def immich_configured() -> bool:
+        return bool(config.IMMICH_URL.value and config.IMMICH_API_KEY.value)
+
+    def immich_public_url() -> str | None:
+        url = config.IMMICH_PUBLIC_URL.value or config.IMMICH_URL.value
+        return url.rstrip("/") if url else None
+
     @app.get("/api/integrations/immich")
     def immich_status():
-        return {"configured": bool(config.IMMICH_URL.value and config.IMMICH_API_KEY.value),
-                "url": config.IMMICH_URL.value}
+        return {"configured": immich_configured(),
+                "url": config.IMMICH_URL.value,
+                "public_url": immich_public_url(),
+                "rescan_after_changes": config.IMMICH_RESCAN_AFTER_CHANGES.value}
+
+    immich_asset_cache = {}
+
+    @app.get("/api/groups/{group_id}/immich")
+    def group_immich_assets(group_id: int):
+        """
+        Finds the Immich assets of the files of a group, for "open in Immich" links.
+        Never fails because of Immich: errors are reported in "error". Cached briefly.
+        """
+        group = group_or_404(group_id)
+        if not immich_configured():
+            return {"configured": False, "url": None, "error": None, "candidates": []}
+
+        client = ImmichClient(config.IMMICH_URL.value, config.IMMICH_API_KEY.value,
+                              path_mappings=config.IMMICH_PATH_MAPPINGS.value, timeout=5)
+        immich_paths = {c["id"]: client.to_immich_path(c["path"]) for c in group["candidates"]}
+        cache_key = tuple(sorted(p for p in immich_paths.values() if p is not None))
+        cached = immich_asset_cache.get(cache_key)
+        if cached is not None and time.monotonic() - cached[0] < IMMICH_ASSET_CACHE_SECONDS:
+            asset_ids, error = cached[1], cached[2]
+        else:
+            asset_ids, error = {}, None
+            try:
+                asset_ids = client.find_asset_ids(list(cache_key))
+            except Exception as ex:
+                LOGGER.warning(f"Could not look up the Immich assets of group {group_id}: {ex}")
+                error = str(ex)
+            if len(immich_asset_cache) >= IMMICH_ASSET_CACHE_SIZE:
+                immich_asset_cache.clear()
+            immich_asset_cache[cache_key] = (time.monotonic(), asset_ids, error)
+
+        base_url = immich_public_url()
+        candidates = []
+        for candidate_id, immich_path in immich_paths.items():
+            asset_id = asset_ids.get(immich_path) if immich_path is not None else None
+            candidates.append({
+                "candidate_id": candidate_id,
+                "asset_id": asset_id,
+                "url": f"{base_url}/photos/{asset_id}" if asset_id is not None else None,
+            })
+        return {"configured": True, "url": base_url, "error": error, "candidates": candidates}
 
     @app.post("/api/integrations/immich/import-trash")
     def immich_import_trash(request: ImportRequest):
