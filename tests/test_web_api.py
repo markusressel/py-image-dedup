@@ -106,12 +106,31 @@ class WebApiTest(TestBase):
 
         self.config.DEDUPLICATOR_DUPLICATES_TARGET_DIRECTORY.value = self.tmp
         preview = self.client.post("/api/decisions/import-discarded", json={**body, "apply": False}).json()
-        self.assertEqual([{"group_id": self.group_id, "keep_path": str(IMAGE_2)}], preview["decided"])
-        self.assertEqual(str(IMAGE), self.store.get_group(self.group_id)["keep_path"])
+        self.assertEqual(1, preview["outcomes"]["disagrees_with_rules"])
+        self.assertEqual([], preview["agreeing"])
+        self.assertEqual({"group_id": self.group_id, "suggested_keep_path": str(IMAGE_2),
+                          "rule_keep_path": str(IMAGE), "decided_by": "longer-file-name",
+                          "suggested": {"pixel_count": None, "file_size": 1, "exif_tag_count": None},
+                          "rule": {"pixel_count": None, "file_size": 2, "exif_tag_count": None},
+                          "already_suggested": False}, preview["disagreeing"][0])
+        self.assertIsNone(self.store.get_group(self.group_id)["suggested_keep_path"])
 
         applied = self.client.post("/api/decisions/import-discarded", json=body).json()
         self.assertTrue(applied["applied"])
-        self.assertEqual(str(IMAGE_2), self.store.get_group(self.group_id)["keep_path"])
+        group = self.client.get(f"/api/groups/{self.group_id}").json()
+        # disagrees with the rules: only a suggestion, nothing is executed
+        self.assertEqual((str(IMAGE), str(IMAGE_2), "import", False),
+                         (group["keep_path"], group["suggested_keep_path"], group["suggestion_source"],
+                          group["execute_requested"]))
+        self.assertEqual(1, self.client.get("/api/groups", params={"has_suggestion": "true"}).json()["total"])
+
+        # agrees with the rules: executed
+        body = {"discarded_paths": [str(IMAGE_2), "/etc/hostname"], "apply": True}
+        applied = self.client.post("/api/decisions/import-discarded", json=body).json()
+        self.assertEqual([{"group_id": self.group_id, "keep_path": str(IMAGE)}], applied["agreeing"])
+        group = self.store.get_group(self.group_id)
+        self.assertEqual((DecisionSource.USER, str(IMAGE), True),
+                         (group["decision_source"], group["keep_path"], group["execute_requested"]))
 
     def test_immich_import_trash(self):
         immich_entries = [self.config.IMMICH_URL, self.config.IMMICH_API_KEY, self.config.IMMICH_PATH_MAPPINGS]

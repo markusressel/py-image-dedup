@@ -140,6 +140,20 @@ class DeduplicatorStateTest(TestBase):
         self.assertEqual([Path("images/a/small.jpg")],
                          self.dedup._deduplication_result.get_file_with_action(ActionEnum.NONE))
 
+    def test_group_with_disagreeing_suggestion_is_held(self):
+        candidates = [_candidate("images/a/small.jpg", filesize=10), _candidate("images/a/big.jpg", filesize=1000)]
+        self._find(candidates)
+        # f.ex. Immich kept the smaller copy
+        self.store.import_discarded_paths(["images/a/big.jpg"], apply=True, source="immich")
+
+        self.dedup.reset_result()
+        group = self._find(candidates)
+        self.assertEqual(GroupStatus.REVIEW, group["status"])
+        self.assertTrue(group["needs_review"])
+        self.assertEqual("images/a/small.jpg", group["suggested_keep_path"])
+        self.assertEqual("Immich kept images/a/small.jpg, the rules keep images/a/big.jpg", group["review_reason"])
+        self.assertEqual([], self.dedup._deduplication_result.get_removed_or_moved_files())
+
     def test_dry_run_actions_are_simulated(self):
         self.config.DRY_RUN.value = True
         target = tempfile.mkdtemp()

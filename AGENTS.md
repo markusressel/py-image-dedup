@@ -119,7 +119,12 @@ py_image_dedup_reference.yaml  # documented reference configuration
   `duplicates_target_directory` (never delete), respect `dry_run` (overridable with `dry_run_user_decisions`)
   and abort if the file to keep is missing. `POST /api/decisions/import-discarded` turns decisions made in
   another tool into such user decisions; `POST /api/integrations/immich/import-trash` does the same with the
-  Immich trash fetched via the Immich API (`immich.*` config, dashboard card).
+  Immich trash fetched via the Immich API (`immich.*` config, dashboard card). `StateStore.import_discarded_paths`
+  only executes groups where the remaining file is the rule keeper (`agrees_with_rules`). Disagreeing groups are
+  never executed: they go to review with the other tool's choice in `groups.suggested_keep_path` /
+  `suggestion_source` (accepting it = `set_user_keeper`), `record_group` keeps them in review and the deduplicator
+  holds them (regardless of `hold_ambiguous_groups`) as long as the rules keep another file. Re-imports only
+  refresh the suggestion. New columns are added to existing databases via `_ADDED_COLUMNS` in `store.py`.
   `POST /api/groups/bulk` applies accept (rule keeper becomes the user keeper)/ignore/reset to many groups
   (`StateStore.bulk_decision`, never changes resolved groups). Undo of a move: `request_restore` queues the
   last successful move of a file (`restore_requests` table), `execute_restore_requests` (same main loop,

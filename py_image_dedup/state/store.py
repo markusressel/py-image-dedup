@@ -11,7 +11,7 @@ from py_image_dedup.state.runtime_status import RuntimeStatus
 
 LOGGER = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 class GroupStatus:
@@ -26,6 +26,13 @@ class GroupStatus:
 class DecisionSource:
     RULES = "rules"
     USER = "user"
+
+
+class SuggestionSource:
+    IMMICH = "immich"  # files trashed in Immich
+    IMPORT = "import"  # discarded paths imported from another tool
+
+    LABELS = {IMMICH: "Immich", IMPORT: "The imported decision"}
 
 
 class ActionStatus:
@@ -102,7 +109,9 @@ CREATE TABLE IF NOT EXISTS groups (
     last_seen_run_id INTEGER,
     created_at REAL NOT NULL,
     updated_at REAL NOT NULL,
-    resolved_at REAL
+    resolved_at REAL,
+    suggested_keep_path TEXT,
+    suggestion_source TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_groups_status ON groups(status);
 CREATE TABLE IF NOT EXISTS candidates (
@@ -166,7 +175,33 @@ _ACTION_COLUMNS_SQL = (
     "EXISTS (SELECT 1 FROM restore_requests r WHERE r.action_id = a.id) AS restore_requested"
 )
 
+# columns added after the first release of the schema: (table, column, definition), added to existing databases
+_ADDED_COLUMNS = [
+    ("groups", "suggested_keep_path", "TEXT"),
+    ("groups", "suggestion_source", "TEXT"),
+]
+
+# separates the reasons in groups.review_reason if a group needs a review for more than one reason
+_REVIEW_REASON_SEPARATOR = "; "
+
 CANDIDATE_FIELDS = ["distance", "score", "file_size", "pixel_count", "modified_at", "exif_tag_count"]
+
+
+def _suggestion_reason(source: str | None, suggested_keep_path: str, rule_keep_path: str | None) -> str:
+    """
+    :return: review reason of a group whose suggested keeper (see StateStore.import_discarded_paths)
+             differs from the one of the prioritization rules
+    """
+    label = SuggestionSource.LABELS.get(source, "The imported decision")
+    return f"{label} kept {suggested_keep_path}, the rules keep {rule_keep_path}"
+
+
+def _join_review_reasons(*reasons: str | None) -> str | None:
+    """
+    Joins review reasons, skipping empty and duplicate ones.
+    """
+    unique = list(dict.fromkeys(r for r in reasons if r))
+    return _REVIEW_REASON_SEPARATOR.join(unique) if unique else None
 
 
 def group_key(paths: Iterable[str]) -> str:
@@ -208,8 +243,9 @@ class StateStore:
             if self.database_path != ":memory:":
                 self._conn.execute("PRAGMA journal_mode = WAL")
             self._conn.executescript(_SCHEMA)
-            self._conn.execute("INSERT OR IGNORE INTO meta (key, value) VALUES ('schema_version', ?)",
-                               (str(SCHEMA_VERSION),))
+            self._add_missing_columns()
+            self._conn.execute("INSERT INTO meta (key, value) VALUES ('schema_version', ?) "
+                               "ON CONFLICT(key) DO UPDATE SET value = excluded.value", (str(SCHEMA_VERSION),))
             # runs that were still "running" belong to a previous process that did not shut down cleanly
             self._conn.execute("UPDATE runs SET status = ?, finished_at = COALESCE(finished_at, started_at) "
                                "WHERE status = ?", (RunStatus.INTERRUPTED, RunStatus.RUNNING))
@@ -219,6 +255,17 @@ class StateStore:
     def close(self):
         with self._lock:
             self._conn.close()
+
+    def _add_missing_columns(self):
+        """
+        Migrates databases created by an older version: adds the columns listed in _ADDED_COLUMNS
+        (CREATE TABLE IF NOT EXISTS does not change existing tables).
+        """
+        for table, column, definition in _ADDED_COLUMNS:
+            existing = [row[1] for row in self._conn.execute(f"PRAGMA table_info({table})")]
+            if column not in existing:
+                LOGGER.info(f"Adding column {table}.{column} to the state database")
+                self._conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
     # ---------------------------------------------------------------- helpers
 
@@ -353,6 +400,13 @@ class StateStore:
                     decision_source = DecisionSource.RULES
                     keep_path = rule_keep_path
 
+                # a decision imported from another tool that disagrees with the rules keeps the group in review
+                suggestion = existing["suggested_keep_path"]
+                if suggestion in paths and suggestion != rule_keep_path:
+                    needs_review = True
+                    review_reason = _join_review_reasons(
+                        _suggestion_reason(existing["suggestion_source"], suggestion, rule_keep_path), review_reason)
+
                 status = existing["status"]
                 if status != GroupStatus.IGNORED and not (
                     decision_source == DecisionSource.USER and status == GroupStatus.OPEN):
@@ -412,14 +466,16 @@ class StateStore:
 
     def list_groups(self, status: str | None = None, needs_review: bool | None = None, search: str | None = None,
                     decided_by: str | None = None, keeps_smaller_copy: bool | None = None,
-                    limit: int = 50, offset: int = 0) -> dict:
+                    has_suggestion: bool | None = None, limit: int = 50, offset: int = 0) -> dict:
         """
         Lists groups, groups that need a human decision first, then most recently updated first.
         :param keeps_smaller_copy: only groups where a duplicate has a higher resolution or a bigger file
+        :param has_suggestion: only groups with a keeper suggested by another tool (see import_discarded_paths)
         :return: {"total": int, "items": [group, ...]}
         """
         where_sql, params = self._group_filter(status=status, needs_review=needs_review, search=search,
-                                               decided_by=decided_by, keeps_smaller_copy=keeps_smaller_copy)
+                                               decided_by=decided_by, keeps_smaller_copy=keeps_smaller_copy,
+                                               has_suggestion=has_suggestion)
 
         total = self._query_one(f"SELECT COUNT(*) AS n FROM groups g {where_sql}", params)["n"]
         rows = self._query(
@@ -443,23 +499,28 @@ class StateStore:
         return {"total": total, "items": items}
 
     def list_group_ids(self, status: str | None = None, needs_review: bool | None = None, search: str | None = None,
-                       decided_by: str | None = None, keeps_smaller_copy: bool | None = None) -> List[int]:
+                       decided_by: str | None = None, keeps_smaller_copy: bool | None = None,
+                       has_suggestion: bool | None = None) -> List[int]:
         """
         :return: ids of all groups matching the given filter (same filter as list_groups)
         """
         where_sql, params = self._group_filter(status=status, needs_review=needs_review, search=search,
-                                               decided_by=decided_by, keeps_smaller_copy=keeps_smaller_copy)
+                                               decided_by=decided_by, keeps_smaller_copy=keeps_smaller_copy,
+                                               has_suggestion=has_suggestion)
         return [row["id"] for row in self._query(f"SELECT g.id FROM groups g {where_sql} ORDER BY g.id", params)]
 
     @staticmethod
     def _group_filter(status: str | None = None, needs_review: bool | None = None, search: str | None = None,
-                      decided_by: str | None = None, keeps_smaller_copy: bool | None = None) -> tuple:
+                      decided_by: str | None = None, keeps_smaller_copy: bool | None = None,
+                      has_suggestion: bool | None = None) -> tuple:
         """
         :return: (WHERE clause for the groups table aliased as "g", parameters)
         """
         where, params = [], []
         if keeps_smaller_copy:
             where.append(_KEEPS_SMALLER_COPY_SQL)
+        if has_suggestion:
+            where.append("g.suggested_keep_path IS NOT NULL")
         if status:
             where.append("g.status = ?")
             params.append(status)
@@ -574,26 +635,39 @@ class StateStore:
                 self._update_roles(group_id, group["rule_keep_path"])
         return self.get_group(group_id)
 
-    def import_discarded_paths(self, discarded_paths: Iterable[str], apply: bool = False) -> dict:
+    def import_discarded_paths(self, discarded_paths: Iterable[str], apply: bool = False,
+                               source: str = SuggestionSource.IMPORT) -> dict:
         """
-        Applies decisions made in another tool (f.ex. the duplicate review of Immich) to the open groups:
-        if all but one member of a group were discarded there, the remaining one becomes the user chosen keeper.
-        Groups with an existing user decision, without discarded members, with all members discarded or with
-        more than one remaining member are left alone.
+        Applies decisions made in another tool (f.ex. the duplicate review of Immich) to the open groups
+        decided by the prioritization rules, if all but one member of a group were discarded there:
+
+        * agrees_with_rules: the remaining file is the one the rules keep. It becomes the user chosen keeper,
+          so the daemon executes the decision (like set_user_keeper).
+        * disagrees_with_rules: the rules keep another file. Nothing is executed, the group goes to review
+          with the remaining file as suggested keeper (suggested_keep_path), which the user can accept
+          with set_user_keeper. Importing again only refreshes the suggestion.
+
+        Groups with an existing user decision (or ignored/resolved ones), without discarded members,
+        with all members discarded or with more than one remaining member are left alone.
 
         :param discarded_paths: paths of the files that were discarded (as seen by this application)
         :param apply: False only reports what would be decided
-        :return: number of groups per outcome and the decided groups ({"group_id", "keep_path"})
+        :param source: where the decisions come from, one of SuggestionSource
+        :return: number of groups per outcome, the agreeing groups ({"group_id", "keep_path"}) and
+                 the disagreeing groups (both keepers with their file size, pixel count and number of EXIF tags,
+                 the rule that decided the group and whether the group already had this suggestion)
         """
         discarded = set(str(p) for p in discarded_paths)
-        outcomes = {"decided": 0, "no_discarded_member": 0, "all_discarded": 0, "several_remaining": 0,
-                    "already_decided_by_user": 0}
-        decided = []
-        rows = self._query("SELECT id, decision_source FROM groups WHERE status IN (?, ?) ORDER BY id",
+        outcomes = {"agrees_with_rules": 0, "disagrees_with_rules": 0, "no_discarded_member": 0,
+                    "all_discarded": 0, "several_remaining": 0, "already_decided_by_user": 0}
+        agreeing, disagreeing = [], []
+        rows = self._query("SELECT * FROM groups WHERE status IN (?, ?) ORDER BY id",
                            (GroupStatus.OPEN, GroupStatus.REVIEW))
         for row in rows:
-            paths = [c["path"] for c in self.get_candidates(row["id"])]
+            candidates = self.get_candidates(row["id"])
+            paths = [c["path"] for c in candidates]
             remaining = [p for p in paths if p not in discarded]
+            rule_keep_path = row["rule_keep_path"] or row["keep_path"]
             if len(remaining) == len(paths):
                 outcome = "no_discarded_member"
             elif row["decision_source"] == DecisionSource.USER:
@@ -602,15 +676,58 @@ class StateStore:
                 outcome = "all_discarded"
             elif len(remaining) > 1:
                 outcome = "several_remaining"
+            elif remaining[0] == rule_keep_path:
+                outcome = "agrees_with_rules"
+                agreeing.append({"group_id": row["id"], "keep_path": remaining[0]})
             else:
-                outcome = "decided"
-                decided.append({"group_id": row["id"], "keep_path": remaining[0]})
+                outcome = "disagrees_with_rules"
+                by_path = {c["path"]: c for c in candidates}
+
+                def comparison(path: str | None) -> dict | None:
+                    candidate = by_path.get(path)
+                    if candidate is None:
+                        return None
+                    return {f: candidate[f] for f in ("pixel_count", "file_size", "exif_tag_count")}
+
+                disagreeing.append({
+                    "group_id": row["id"],
+                    "suggested_keep_path": remaining[0],
+                    "rule_keep_path": rule_keep_path,
+                    "decided_by": row["decided_by"],
+                    "suggested": comparison(remaining[0]),
+                    "rule": comparison(rule_keep_path),
+                    "already_suggested": row["suggested_keep_path"] == remaining[0]
+                                         and row["suggestion_source"] == source,
+                })
             outcomes[outcome] += 1
 
         if apply:
-            for decision in decided:
+            for decision in agreeing:
                 self.set_user_keeper(decision["group_id"], decision["keep_path"])
-        return {"applied": apply, "outcomes": outcomes, "decided": decided}
+            for disagreement in disagreeing:
+                self._suggest_keeper(disagreement["group_id"], disagreement["suggested_keep_path"], source)
+        return {"applied": apply, "source": source, "outcomes": outcomes,
+                "agreeing": agreeing, "disagreeing": disagreeing}
+
+    def _suggest_keeper(self, group_id: int, keep_path: str, source: str):
+        """
+        Stores a keeper suggested by another tool that differs from the decision of the rules
+        and puts the group into review. Nothing is executed.
+        """
+        with self._lock, self._conn:
+            group = dict(self._conn.execute("SELECT * FROM groups WHERE id = ?", (group_id,)).fetchone())
+            reasons = (group["review_reason"] or "").split(_REVIEW_REASON_SEPARATOR)
+            if group["suggested_keep_path"]:
+                # replace the reason of a previous suggestion
+                previous = _suggestion_reason(group["suggestion_source"], group["suggested_keep_path"],
+                                              group["rule_keep_path"])
+                reasons = [r for r in reasons if r != previous]
+            review_reason = _join_review_reasons(
+                _suggestion_reason(source, keep_path, group["rule_keep_path"]), *reasons)
+            self._conn.execute(
+                "UPDATE groups SET suggested_keep_path = ?, suggestion_source = ?, status = ?, needs_review = 1, "
+                "review_reason = ?, execute_requested = 0, updated_at = ? WHERE id = ?",
+                (keep_path, source, GroupStatus.REVIEW, review_reason, time.time(), group_id))
 
     def pending_executions(self) -> List[dict]:
         """

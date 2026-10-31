@@ -20,6 +20,7 @@ const filterStatus = computed(() => (route.query.status as GroupStatus | undefin
 const needsReview = computed(() => route.query.needs_review === 'true')
 const decidedBy = computed(() => (route.query.decided_by as string | undefined) ?? '')
 const keepsSmallerCopy = computed(() => route.query.keeps_smaller_copy === 'true')
+const hasSuggestion = computed(() => route.query.has_suggestion === 'true')
 const search = computed(() => (route.query.q as string | undefined) ?? '')
 const offset = computed(() => Number(route.query.offset ?? 0))
 
@@ -50,6 +51,7 @@ const groups = usePolling(
       needs_review: needsReview.value ? true : undefined,
       decided_by: decidedBy.value,
       keeps_smaller_copy: keepsSmallerCopy.value ? true : undefined,
+      has_suggestion: hasSuggestion.value ? true : undefined,
       q: search.value,
       limit: LIMIT,
       offset: offset.value,
@@ -117,6 +119,7 @@ function currentFilter(): GroupFilter {
   if (decidedBy.value) filter.decided_by = decidedBy.value
   if (search.value) filter.q = search.value
   if (keepsSmallerCopy.value) filter.keeps_smaller_copy = true
+  if (hasSuggestion.value) filter.has_suggestion = true
   return filter
 }
 
@@ -201,6 +204,14 @@ function statusCount(value: GroupStatus | ''): number | undefined {
       <label class="check">
         <input type="checkbox" :checked="needsReview" @change="setQuery({ needs_review: needsReview ? undefined : 'true' })" />
         weak decision
+      </label>
+      <label class="check" title="Another tool (f.ex. Immich) keeps a different copy than the rules">
+        <input
+          type="checkbox"
+          :checked="hasSuggestion"
+          @change="setQuery({ has_suggestion: hasSuggestion ? undefined : 'true' })"
+        />
+        suggestion
       </label>
       <input
         v-model="searchInput"

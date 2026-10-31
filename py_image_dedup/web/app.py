@@ -16,7 +16,7 @@ from pydantic import BaseModel
 
 from py_image_dedup.config import DeduplicatorConfig
 from py_image_dedup.integrations.immich import ImmichClient, ImmichError
-from py_image_dedup.state.store import StateStore, GroupStatus, DecisionSource, BulkAction
+from py_image_dedup.state.store import StateStore, GroupStatus, DecisionSource, BulkAction, SuggestionSource
 from py_image_dedup.web.thumbnails import ThumbnailCache
 
 LOGGER = logging.getLogger(__name__)
@@ -62,6 +62,7 @@ class GroupFilter(BaseModel):
     decided_by: str | None = None
     q: str | None = None
     keeps_smaller_copy: bool | None = None
+    has_suggestion: bool | None = None
 
 
 class BulkRequest(BaseModel):
@@ -233,12 +234,13 @@ def create_app(store: StateStore, config: DeduplicatorConfig, static_directory: 
     @app.get("/api/groups")
     def list_groups(status: str | None = Query(None), needs_review: bool | None = Query(None),
                     decided_by: str | None = Query(None), q: str | None = Query(None),
-                    keeps_smaller_copy: bool | None = Query(None),
+                    keeps_smaller_copy: bool | None = Query(None), has_suggestion: bool | None = Query(None),
                     limit: int = Query(50, ge=1, le=500), offset: int = Query(0, ge=0)):
         if status is not None and status not in GroupStatus.ALL:
             raise HTTPException(status_code=400, detail=f"status must be one of {GroupStatus.ALL}")
         return store.list_groups(status=status, needs_review=needs_review, decided_by=decided_by, search=q,
-                                 keeps_smaller_copy=keeps_smaller_copy, limit=limit, offset=offset)
+                                 keeps_smaller_copy=keeps_smaller_copy, has_suggestion=has_suggestion,
+                                 limit=limit, offset=offset)
 
     @app.get("/api/groups/{group_id}")
     def get_group(group_id: int):
@@ -336,7 +338,8 @@ def create_app(store: StateStore, config: DeduplicatorConfig, static_directory: 
             raise HTTPException(status_code=502, detail=str(ex))
         mapped = [client.map_path(p) for p in trashed]
         unmapped = [p for p, m in zip(trashed, mapped) if m is None]
-        result = store.import_discarded_paths([m for m in mapped if m is not None], apply=request.apply)
+        result = store.import_discarded_paths([m for m in mapped if m is not None], apply=request.apply,
+                                              source=SuggestionSource.IMMICH)
         result["trashed"] = len(trashed)
         result["unmapped"] = len(unmapped)
         result["unmapped_examples"] = unmapped[:5]
@@ -345,8 +348,10 @@ def create_app(store: StateStore, config: DeduplicatorConfig, static_directory: 
     @app.post("/api/decisions/import-discarded")
     def import_discarded(request: ImportDiscardedRequest):
         """
-        Applies decisions made in another tool (f.ex. Immich): groups where all but one member
-        are in discarded_paths keep the remaining one. Without apply, only reports what would happen.
+        Applies decisions made in another tool (f.ex. Immich) to groups where all but one member are in
+        discarded_paths: if the remaining one is the keeper of the prioritization rules, the decision is executed,
+        otherwise the group goes to review with the remaining one as suggested keeper (nothing is moved).
+        Without apply, only reports what would happen, see StateStore.import_discarded_paths.
         """
         if request.apply:
             require_target_directory()
@@ -382,7 +387,8 @@ def create_app(store: StateStore, config: DeduplicatorConfig, static_directory: 
             if f.status is not None and f.status not in GroupStatus.ALL:
                 raise HTTPException(status_code=400, detail=f"status must be one of {GroupStatus.ALL}")
             group_ids = store.list_group_ids(status=f.status, needs_review=f.needs_review, decided_by=f.decided_by,
-                                             search=f.q, keeps_smaller_copy=f.keeps_smaller_copy)
+                                             search=f.q, keeps_smaller_copy=f.keeps_smaller_copy,
+                                             has_suggestion=f.has_suggestion)
         else:
             group_ids = request.group_ids
         result = store.bulk_decision(group_ids, request.action)
