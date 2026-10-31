@@ -107,6 +107,42 @@ folder structure.
 In the last phase, folders that are empty due to the deduplication 
 process are deleted, cleaning up the directory structure (if turned on in configuration).
 
+## Matching backends
+
+`matching.backend` (env `PY_IMAGE_DEDUP_MATCHING_BACKEND`) selects which matcher finds the duplicates:
+
+* `image-match` (default): image-match + Elasticsearch, as described above.
+* `hashes`: the new hash pipeline (`py_image_dedup/matching`, see
+  [docs/matching-prototype.md](docs/matching-prototype.md)): SHA-256 of the file, hash of the decoded pixels and
+  pHash/dHash (also of rotated/mirrored copies), stored in its own SQLite file (`matching.store_url`, default
+  `signatures.db` next to the state database, or Postgres with the `postgres` extra). No Elasticsearch is needed.
+  The phases are the same, phase 3 and 4 are "Analyzing files (hashes)" (only new/changed files) and
+  "Finding duplicates (hashes)". Every group gets a confidence and a variant kind per file (`copy`, `exact`,
+  `pixel-identical`, `rotated`, `grayscale`, `colour-edited`, `crop`, `burst`). The prioritization rules,
+  `protected_paths` and `hold_ambiguous_groups` decide which copy is kept like with image-match, but groups
+  with a variant (grayscale, colour-edited, crop), burst shots or a confidence below
+  `matching.auto_act_min_confidence` are **always held for review** with the reasons shown in the web UI.
+  In the daemon, file changes trigger a full run (it only analyses new/changed files and matches against the
+  whole library).
+* `both`: run both side by side to compare them before switching. image-match decides exactly as before (also
+  in incremental daemon runs). On full runs the hash pipeline additionally runs over the same source directories
+  (phases 5 and 6 of 8) and records its groups with matcher `hashes`. These groups are **record-only**: they are
+  never moved or deleted, neither by the rules nor by decisions in the web UI (choosing a copy and "accept" are
+  refused, ignoring works) until `matching.backend` is `hashes`. If the hash pipeline fails, image-match is not
+  affected (the error is shown in the run).
+
+The thresholds of the hash pipeline are configurable (`matching.max_phash_distance`, `max_dhash_distance`,
+`burst_window_seconds`, `burst_confidence_penalty`, `auto_act_min_confidence`, `colour_edit_tolerance`,
+`aspect_ratio_tolerance`, `match_rotations`), see [py_image_dedup_reference.yaml](/py_image_dedup_reference.yaml).
+
+Crops are only found by the opt-in crop detection (`matching.embeddings.enabled: true`): SSCD copy detection
+embeddings via onnxruntime (extra `embeddings`, included in the Docker image). The model is never bundled: set
+`matching.embeddings.model_path` to an ONNX file (f.ex. exported with `tools/export_sscd_onnx.py`) or let it be
+downloaded from `model_url` (requires `model_sha256`, default: a pinned ONNX export of SSCD disc_mixup) into
+`matching.embeddings.cache_directory` (default `embeddings` next to the state database, which also holds the
+embedding cache). `similarity_threshold` (default 0.6) is the minimum cosine similarity. Crops and their source
+always go to review.
+
 # How to use
 
 ## Install
@@ -244,6 +280,15 @@ permissions in addition to `asset.read`.
 
 With `deduplication.hold_ambiguous_groups` enabled, groups that need a review are not acted on automatically.
 
+With `matching.backend: both` the web UI shows a **Compare** page (`/compare`, `GET /api/compare`): groups of
+image-match and the hash pipeline that share a file are compared and counted as "same" (identical members),
+"grouped differently" (other members, split or merged groups, with the files only one of them grouped), "only
+hashes" and "only image-match", each with thumbnails and links to both groups. By default open and review groups
+are compared (`all_statuses=true` includes resolved and ignored ones). The group list can be filtered by matcher
+(`GET /api/groups?matcher=hashes`), record-only groups are marked as such. The group detail page shows the
+confidence, the reasons why a group is held for review and per file the variant kind, the orientation (rotated or
+mirrored copies), the match reason and confidence and the notes of the strongest match.
+
 The state shown in the web UI (runs, groups, decisions, action log) is stored in a small SQLite database
 at `state.database_path` (env `PY_IMAGE_DEDUP_STATE_DATABASE_PATH`); generated thumbnails are cached next to it.
 Prometheus metrics are also available at `/metrics` on the web port.
@@ -339,7 +384,12 @@ docker run -t \
 
 The image exposes port `8000` (Prometheus metrics) and `8080` (web UI). It stores the state database at
 `/data/state/state.db` (`PY_IMAGE_DEDUP_STATE_DATABASE_PATH`), mount a volume writable by `PUID`/`PGID` there
-to keep the history across container restarts.
+to keep the history across container restarts. With `matching.backend` `hashes` or `both`, the signature store
+(`signatures.db`) and the embedding cache are stored next to it by default.
+
+The image includes the `embeddings` extra (onnxruntime) for the optional crop detection, but never the model.
+Build without it with `docker build --build-arg EXTRAS= .`, or add the Postgres signature store with
+`--build-arg EXTRAS="embeddings postgres"`.
 
 Since an elasticsearch instance is required too, you can 
 also use the `docker-compose.yml` file included in this repo which will

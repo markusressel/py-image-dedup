@@ -1,10 +1,10 @@
 """
-Experimental matching pipeline (prototype, see docs/matching-prototype.md).
+Hash matching pipeline (see docs/matching-prototype.md), used with matching.backend "hashes" or "both".
 
 Replaces image-match + Elasticsearch with local signatures (file hash, pixel hash, pHash, dHash) in SQLite,
 staged grouping with a confidence and variant kind per match (rotation/mirror invariant), burst shots as a
 confidence factor and connected-component clustering with an auto-act/review decision per group.
-Not wired into the deduplicator, CLI defaults or the daemon yet.
+The deduplicator runs it through py_image_dedup/library/hash_matcher.py.
 """
 from py_image_dedup.matching.grouping import burst_note, classify_variant, cluster, find_matches
 from py_image_dedup.matching.models import (

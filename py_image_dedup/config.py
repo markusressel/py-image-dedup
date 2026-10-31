@@ -1,5 +1,6 @@
 import os
 from datetime import timedelta
+from pathlib import Path
 
 from container_app_conf import ConfigBase
 from container_app_conf.entry.bool import BoolConfigEntry
@@ -14,6 +15,9 @@ from container_app_conf.entry.timedelta import TimeDeltaConfigEntry
 from container_app_conf.source.env_source import EnvSource
 from container_app_conf.source.yaml_source import YamlSource
 from py_range_parse import Range
+
+from py_image_dedup.matching.embeddings import DEFAULT_MIN_SIMILARITY
+from py_image_dedup.matching.models import MatchingThresholds
 
 NODE_MAIN = "py_image_dedup"
 
@@ -72,7 +76,37 @@ NODE_PUBLIC_URL = "public_url"
 NODE_RESCAN_AFTER_CHANGES = "rescan_after_changes"
 NODE_STATIC_DIRECTORY = "static_directory"
 
+NODE_MATCHING = "matching"
+NODE_BACKEND = "backend"
+NODE_STORE_URL = "store_url"
+NODE_MAX_PHASH_DISTANCE = "max_phash_distance"
+NODE_MAX_DHASH_DISTANCE = "max_dhash_distance"
+NODE_BURST_WINDOW_SECONDS = "burst_window_seconds"
+NODE_BURST_CONFIDENCE_PENALTY = "burst_confidence_penalty"
+NODE_AUTO_ACT_MIN_CONFIDENCE = "auto_act_min_confidence"
+NODE_COLOUR_EDIT_TOLERANCE = "colour_edit_tolerance"
+NODE_ASPECT_RATIO_TOLERANCE = "aspect_ratio_tolerance"
+NODE_MATCH_ROTATIONS = "match_rotations"
+NODE_EMBEDDINGS = "embeddings"
+NODE_MODEL_PATH = "model_path"
+NODE_MODEL_URL = "model_url"
+NODE_MODEL_SHA256 = "model_sha256"
+NODE_CACHE_DIRECTORY = "cache_directory"
+NODE_SIMILARITY_THRESHOLD = "similarity_threshold"
+
+# matching.backend: which matcher finds the duplicate groups
+MATCHING_BACKEND_IMAGE_MATCH = "image-match"  # image-match + Elasticsearch (default)
+MATCHING_BACKEND_HASHES = "hashes"  # the hash pipeline (py_image_dedup/matching), no Elasticsearch
+MATCHING_BACKEND_BOTH = "both"  # image-match decides, the hash pipeline only records its groups for comparison
+MATCHING_BACKENDS = [MATCHING_BACKEND_IMAGE_MATCH, MATCHING_BACKEND_HASHES, MATCHING_BACKEND_BOTH]
+
+# names of the matchers in the state store (groups.matcher)
+MATCHER_IMAGE_MATCH = "image-match"
+MATCHER_HASHES = "hashes"
+
 DEFAULT_STATE_DATABASE_PATH = "~/.local/share/py-image-dedup/state.db"
+
+_DEFAULT_THRESHOLDS = MatchingThresholds()
 
 
 class DeduplicatorConfig(ConfigBase):
@@ -497,6 +531,270 @@ class DeduplicatorConfig(ConfigBase):
         required=False,
         default=False
     )
+
+    MATCHING_BACKEND = StringConfigEntry(
+        description="Which matcher finds duplicates: 'image-match' (image-match + Elasticsearch, default), "
+                    "'hashes' (the hash pipeline: SHA-256, pixel hash, pHash/dHash, no Elasticsearch needed) "
+                    "or 'both': image-match decides as before, the hash pipeline additionally runs on full runs "
+                    "and only records its groups (never acted on) to compare both in the web UI (/compare).",
+        key_path=[
+            NODE_MAIN,
+            NODE_MATCHING,
+            NODE_BACKEND
+        ],
+        regex=f"^({'|'.join(MATCHING_BACKENDS)})$",
+        default=MATCHING_BACKEND_IMAGE_MATCH,
+        required=True
+    )
+
+    MATCHING_STORE_URL = StringConfigEntry(
+        description="Where the hash pipeline stores its signatures: a SQLite file path, sqlite:////absolute/path.db "
+                    "or postgresql://user:password@host:5432/db (needs the 'postgres' extra). "
+                    "If not set, signatures.db next to the state database is used (a separate file).",
+        key_path=[
+            NODE_MAIN,
+            NODE_MATCHING,
+            NODE_STORE_URL
+        ],
+        required=False,
+        default=None,
+        # may contain a database password
+        secret=True,
+        example="sqlite:////data/state/signatures.db"
+    )
+
+    MATCHING_MAX_PHASH_DISTANCE = IntConfigEntry(
+        description="Hash pipeline: maximum Hamming distance (of 64 bits) of the pHash of two near-duplicates.",
+        key_path=[
+            NODE_MAIN,
+            NODE_MATCHING,
+            NODE_MAX_PHASH_DISTANCE
+        ],
+        range=Range(0, 64),
+        default=_DEFAULT_THRESHOLDS.max_phash_distance
+    )
+
+    MATCHING_MAX_DHASH_DISTANCE = IntConfigEntry(
+        description="Hash pipeline: maximum Hamming distance (of 64 bits) of the dHash of two near-duplicates "
+                    "(both the pHash and the dHash distance must be within their limit).",
+        key_path=[
+            NODE_MAIN,
+            NODE_MATCHING,
+            NODE_MAX_DHASH_DISTANCE
+        ],
+        range=Range(0, 64),
+        default=_DEFAULT_THRESHOLDS.max_dhash_distance
+    )
+
+    MATCHING_BURST_WINDOW_SECONDS = FloatConfigEntry(
+        description="Hash pipeline: files of the same camera whose capture times are at most this many seconds "
+                    "apart (but not equal) are burst/series shots: they still match, with a lower confidence, "
+                    "and their group always goes to review.",
+        key_path=[
+            NODE_MAIN,
+            NODE_MATCHING,
+            NODE_BURST_WINDOW_SECONDS
+        ],
+        default=_DEFAULT_THRESHOLDS.burst_window_seconds
+    )
+
+    MATCHING_BURST_CONFIDENCE_PENALTY = FloatConfigEntry(
+        description="Hash pipeline: confidence subtracted from a match between burst shots.",
+        key_path=[
+            NODE_MAIN,
+            NODE_MATCHING,
+            NODE_BURST_CONFIDENCE_PENALTY
+        ],
+        default=_DEFAULT_THRESHOLDS.burst_confidence_penalty
+    )
+
+    MATCHING_AUTO_ACT_MIN_CONFIDENCE = FloatConfigEntry(
+        description="Hash pipeline: groups with a lower confidence (of their weakest match) are never acted on "
+                    "automatically, they wait for a decision in the web UI.",
+        key_path=[
+            NODE_MAIN,
+            NODE_MATCHING,
+            NODE_AUTO_ACT_MIN_CONFIDENCE
+        ],
+        default=_DEFAULT_THRESHOLDS.auto_act_min_confidence
+    )
+
+    MATCHING_COLOUR_EDIT_TOLERANCE = FloatConfigEntry(
+        description="Hash pipeline: largest difference of a colour channel mean or standard deviation (0..255) "
+                    "that still counts as the same colours. Above it a match is a colour-edited variant (review).",
+        key_path=[
+            NODE_MAIN,
+            NODE_MATCHING,
+            NODE_COLOUR_EDIT_TOLERANCE
+        ],
+        default=_DEFAULT_THRESHOLDS.colour_edit_tolerance
+    )
+
+    MATCHING_ASPECT_RATIO_TOLERANCE = FloatConfigEntry(
+        description="Hash pipeline: relative aspect ratio difference above which a match is flagged as cropped.",
+        key_path=[
+            NODE_MAIN,
+            NODE_MATCHING,
+            NODE_ASPECT_RATIO_TOLERANCE
+        ],
+        default=_DEFAULT_THRESHOLDS.aspect_ratio_tolerance
+    )
+
+    MATCHING_MATCH_ROTATIONS = BoolConfigEntry(
+        description="Hash pipeline: also match copies that were rotated/mirrored without an orientation tag "
+                    "(compares all 8 orientations, about 7x search time).",
+        key_path=[
+            NODE_MAIN,
+            NODE_MATCHING,
+            NODE_MATCH_ROTATIONS
+        ],
+        default=_DEFAULT_THRESHOLDS.match_rotations
+    )
+
+    MATCHING_EMBEDDINGS_ENABLED = BoolConfigEntry(
+        description="Hash pipeline: opt-in crop detection with SSCD embeddings (needs the 'embeddings' extra, "
+                    "onnxruntime). Crops and their source always go to review.",
+        key_path=[
+            NODE_MAIN,
+            NODE_MATCHING,
+            NODE_EMBEDDINGS,
+            NODE_ENABLED
+        ],
+        default=False
+    )
+
+    MATCHING_EMBEDDINGS_MODEL_PATH = StringConfigEntry(
+        description="ONNX model file of the crop detection (f.ex. exported with tools/export_sscd_onnx.py). "
+                    "If not set, the model is downloaded from model_url (or the default SSCD model) into "
+                    "cache_directory.",
+        key_path=[
+            NODE_MAIN,
+            NODE_MATCHING,
+            NODE_EMBEDDINGS,
+            NODE_MODEL_PATH
+        ],
+        required=False,
+        default=None,
+        example="/data/models/sscd_disc_mixup.onnx"
+    )
+
+    MATCHING_EMBEDDINGS_MODEL_URL = StringConfigEntry(
+        description="Where to download the ONNX model from if model_path is not set (requires model_sha256). "
+                    "If neither is set, a pinned ONNX export of SSCD disc_mixup is downloaded.",
+        key_path=[
+            NODE_MAIN,
+            NODE_MATCHING,
+            NODE_EMBEDDINGS,
+            NODE_MODEL_URL
+        ],
+        required=False,
+        default=None
+    )
+
+    MATCHING_EMBEDDINGS_MODEL_SHA256 = StringConfigEntry(
+        description="SHA-256 of the model file, verified before loading (required with model_url, optional "
+                    "with model_path).",
+        key_path=[
+            NODE_MAIN,
+            NODE_MATCHING,
+            NODE_EMBEDDINGS,
+            NODE_MODEL_SHA256
+        ],
+        regex="^[0-9a-fA-F]{64}$",
+        required=False,
+        default=None
+    )
+
+    MATCHING_EMBEDDINGS_CACHE_DIRECTORY = StringConfigEntry(
+        description="Directory for the downloaded model and the embedding cache (embeddings.db). "
+                    "If not set, an 'embeddings' directory next to the state database is used.",
+        key_path=[
+            NODE_MAIN,
+            NODE_MATCHING,
+            NODE_EMBEDDINGS,
+            NODE_CACHE_DIRECTORY
+        ],
+        required=False,
+        default=None,
+        example="/data/state/embeddings"
+    )
+
+    MATCHING_EMBEDDINGS_SIMILARITY_THRESHOLD = FloatConfigEntry(
+        description="Minimum cosine similarity [-1..1] of two embeddings to be considered a crop/copy.",
+        key_path=[
+            NODE_MAIN,
+            NODE_MATCHING,
+            NODE_EMBEDDINGS,
+            NODE_SIMILARITY_THRESHOLD
+        ],
+        default=DEFAULT_MIN_SIMILARITY
+    )
+
+    @property
+    def matching_backend(self) -> str:
+        """
+        :return: one of MATCHING_BACKENDS
+        """
+        return self.MATCHING_BACKEND.value or MATCHING_BACKEND_IMAGE_MATCH
+
+    @property
+    def uses_image_match(self) -> bool:
+        """
+        :return: True if image-match + Elasticsearch runs (backend image-match or both)
+        """
+        return self.matching_backend in (MATCHING_BACKEND_IMAGE_MATCH, MATCHING_BACKEND_BOTH)
+
+    @property
+    def uses_hashes(self) -> bool:
+        """
+        :return: True if the hash pipeline runs (backend hashes or both)
+        """
+        return self.matching_backend in (MATCHING_BACKEND_HASHES, MATCHING_BACKEND_BOTH)
+
+    @property
+    def acting_matcher(self) -> str:
+        """
+        :return: the matcher whose groups may be acted on (by the rules and by user decisions).
+                 Groups of any other matcher are record-only.
+        """
+        return MATCHER_HASHES if self.matching_backend == MATCHING_BACKEND_HASHES else MATCHER_IMAGE_MATCH
+
+    @property
+    def state_directory(self) -> Path:
+        """
+        :return: the directory of the state database
+        """
+        return Path(self.STATE_DATABASE_PATH.value).expanduser().parent
+
+    @property
+    def signature_store_url(self) -> str:
+        """
+        :return: matching.store_url, default: signatures.db next to the state database
+        """
+        return self.MATCHING_STORE_URL.value or str(self.state_directory / "signatures.db")
+
+    @property
+    def embeddings_cache_directory(self) -> Path:
+        """
+        :return: matching.embeddings.cache_directory, default: "embeddings" next to the state database
+        """
+        configured = self.MATCHING_EMBEDDINGS_CACHE_DIRECTORY.value
+        return Path(configured).expanduser() if configured else self.state_directory / "embeddings"
+
+    def matching_thresholds(self) -> MatchingThresholds:
+        """
+        :return: thresholds of the hash pipeline from the matching.* configuration
+        """
+        return MatchingThresholds(
+            max_phash_distance=self.MATCHING_MAX_PHASH_DISTANCE.value,
+            max_dhash_distance=self.MATCHING_MAX_DHASH_DISTANCE.value,
+            burst_window_seconds=self.MATCHING_BURST_WINDOW_SECONDS.value,
+            burst_confidence_penalty=self.MATCHING_BURST_CONFIDENCE_PENALTY.value,
+            aspect_ratio_tolerance=self.MATCHING_ASPECT_RATIO_TOLERANCE.value,
+            colour_edit_tolerance=self.MATCHING_COLOUR_EDIT_TOLERANCE.value,
+            match_rotations=self.MATCHING_MATCH_ROTATIONS.value,
+            auto_act_min_confidence=self.MATCHING_AUTO_ACT_MIN_CONFIDENCE.value,
+        )
 
     @property
     def user_decisions_dry_run(self) -> bool:

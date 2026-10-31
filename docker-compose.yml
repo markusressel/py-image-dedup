@@ -31,6 +31,8 @@ services:
       - PY_IMAGE_DEDUP_ELASTICSEARCH_INDEX=images
       - PY_IMAGE_DEDUP_ELASTICSEARCH_AUTO_CREATE_INDEX=True
       - PY_IMAGE_DEDUP_ELASTICSEARCH_MAX_DISTANCE=0.1
+      # image-match (default) | hashes (no Elasticsearch needed) | both (compare in the web UI under /compare)
+      - PY_IMAGE_DEDUP_MATCHING_BACKEND=image-match
       - PY_IMAGE_DEDUP_REMOVE_EMPTY_FOLDERS=False
       - PY_IMAGE_DEDUP_STATS_ENABLED=True
       - PY_IMAGE_DEDUP_STATS_PORT=8000

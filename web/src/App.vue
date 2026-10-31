@@ -1,11 +1,18 @@
 <script setup lang="ts">
-import { watchEffect } from 'vue'
+import { computed, watchEffect } from 'vue'
 import { api } from './api'
 import { usePolling } from './polling'
 import { status, statusError } from './status'
 import DryRunBanner from './components/DryRunBanner.vue'
 
 const polled = usePolling(api.status, (s) => (s?.live.busy ? 1000 : 3000))
+
+// the comparison only makes sense with groups of more than one matcher (matching.backend "both")
+const showCompare = computed(() => {
+  const s = status.value
+  if (!s) return false
+  return s.matching.matchers.length > 1 || Object.keys(s.statistics.groups_by_matcher).length > 1
+})
 
 watchEffect(() => {
   if (polled.data.value) status.value = polled.data.value
@@ -26,6 +33,9 @@ watchEffect(() => {
         <span v-if="status && status.statistics.needs_review > 0" class="count warn" title="Groups that need review">
           {{ status.statistics.needs_review }}
         </span>
+      </RouterLink>
+      <RouterLink v-if="showCompare" to="/compare" title="Compare the groups of image-match and the hash pipeline">
+        Compare
       </RouterLink>
       <RouterLink to="/actions">Action log</RouterLink>
       <RouterLink to="/config">

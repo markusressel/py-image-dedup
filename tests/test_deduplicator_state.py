@@ -180,7 +180,7 @@ class DeduplicatorStateTest(TestBase):
         self.assertFalse(self.store.live.snapshot()["busy"])
 
     def test_full_run_resolves_groups_that_are_gone(self):
-        self.store.record_group(run_id=None, matcher="test", candidates=[{"path": "/gone/1.jpg"}, {"path": "/gone/2.jpg"}],
+        self.store.record_group(run_id=None, matcher="image-match", candidates=[{"path": "/gone/1.jpg"}, {"path": "/gone/2.jpg"}],
                                 keep_paths=["/gone/1.jpg"], decided_by="x", decision_reason="because")
         self.dedup._persistence.get_all.return_value = (0, [])
         self.dedup.deduplicate_all(skip_analyze_phase=True)
@@ -246,7 +246,7 @@ class ExecuteUserDecisionTest(TestBase):
         self.config.DEDUPLICATOR_DUPLICATES_TARGET_DIRECTORY.value = self.target
 
         group = self.store.record_group(
-            run_id=None, matcher="test", candidates=[{"path": str(f)} for f in self.files],
+            run_id=None, matcher="image-match", candidates=[{"path": str(f)} for f in self.files],
             keep_paths=[str(self.files[0])], decided_by="file-path", decision_reason="test", needs_review=True)
         self.group_id = group["id"]
 

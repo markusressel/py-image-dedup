@@ -28,17 +28,24 @@ configurable prioritization rules pick the best one.
 - [ ] Run the benchmark read-only on a real library sample, calibrate thresholds and the auto-act confidence
 - [x] Signature store interface (`SignatureStore`, `open_signature_store(url)`), SQLite in its own file (default)
 - [x] Optional Postgres signature store (`matching/store_postgres.py`, `postgres` extra, integration tests in CI)
-- [ ] Wire the signature store URL into `config.py` (e.g. `matching.store: sqlite:////data/signatures.db`)
+- [x] Wire the signature store URL into `config.py` (`matching.store_url`, default `signatures.db` next to the state DB)
 - [ ] Introduce a `SignatureBackend` interface so image-match and the hash pipeline can be swapped and compared
-- [ ] Side-by-side comparison: `matching.backend: image-match|hashes|both`, compare the groups on the owner's
-      dataset in the web UI (`matcher` column)
+      (today: `ImageMatchDeduplicator` + `library/hash_matcher.py`, switched by `matching.backend`)
+- [x] Side-by-side comparison: `matching.backend: image-match|hashes|both`, record-only hash groups with `both`,
+      comparison page `/compare` (`GET /api/compare`), matcher filter in the group list
+- [ ] Run `matching.backend: both` on the owner's library (k3s), review `/compare`, then switch to `hashes`
+- [ ] Hash pipeline in incremental daemon runs: match only new/changed files against the library (today: `both`
+      only on full runs, `hashes` triggers a full run per batch of file changes)
+- [ ] Rank crops first by default (`rank_crops_first`), expose variant kind/burst notes to the prioritization rules
+- [ ] `DeduplicatorConfig()` reloads all sources on every instantiation: values set in code (CLI `--dry-run`,
+      tests) are overwritten by the YAML/env when another component creates the config
 - [x] Rotation/mirror matching: hashes of all 8 dihedral orientations for copies without orientation tag,
       option `match_rotations` (prototype, ~7x search time)
 - [x] Variants (grayscale, colour-edited) and crops: keep as matches, but always route to review instead of
       auto-acting: variant kind per match/member, `auto_act_allowed` + `review_reasons` per group (prototype)
 - [x] Burst window as a decision factor (confidence penalty + note, group goes to review) instead of a hard veto
       (prototype, `burst_window_seconds`, `burst_confidence_penalty`)
-- [ ] Expose variant kind, orientation and review reasons in the state store / web UI once the pipeline is wired in
+- [x] Expose variant kind, orientation and review reasons in the state store / web UI (schema version 3)
 - [ ] Crop detection with embeddings (SSCD via onnxruntime, opt-in); crops usually, but not always, win (review)
 - [ ] SQLite store for hashes, metadata, groups, decisions and the action log (single file on a PVC)
   - [x] Groups, candidates, decisions (deciding rule), user overrides, runs and the action log:
@@ -55,15 +62,17 @@ configurable prioritization rules pick the best one.
   - [ ] Near-duplicate: pHash + dHash (`imagehash`), Hamming distance search via numpy / BK-tree
   - [x] Optional, opt-in: embeddings (SSCD via onnxruntime) for cropped variants, crop and source go to
         review with the crop ranked first (prototype: `matching/embeddings.py`, `matching/crop_benchmark.py`)
-  - [ ] Embeddings: wire into config/daemon (enable flag, model path, cache dir, min similarity), model volume
-        in Docker/k3s, calibrate the similarity threshold on a real library sample
+  - [x] Embeddings: wire into config/daemon (`matching.embeddings.*`: enabled, model_path or model_url +
+        model_sha256, cache_directory, similarity_threshold), onnxruntime in the Docker image (`EXTRAS` build arg)
+  - [ ] Embeddings: model volume in k3s, calibrate the similarity threshold on a real library sample
   - [ ] Embeddings: ANN index (`sqlite-vec` / FAISS) above ~100k images or for incremental daemon runs
 - [x] Metadata boost: same capture time / unique ID boosts confidence (prototype)
 - [ ] Cluster groups (connected components) instead of per-reference-file candidate lists
       (current matching is not transitive and depends on processing order)
 - [ ] Additional quality signals for prioritization rules: format tier (RAW > lossless > HEIC > JPEG),
       estimated JPEG quality, sharpness (Laplacian variance), edited flag
-- [ ] Confidence-based action: auto-act only on high confidence with a clear winner, otherwise queue for review
+- [x] Confidence-based action: auto-act only on high confidence with a clear winner, otherwise queue for review
+      (`matching.backend: hashes`: groups with review reasons are held, `auto_act_min_confidence`)
 - [ ] Benchmark against the current `image-match` backend on `tests/images/` and a real library sample
 - [ ] Migration: full re-analysis, new config options for thresholds, remove Elasticsearch from docs/compose/k3s
 

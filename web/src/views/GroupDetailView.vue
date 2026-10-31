@@ -8,6 +8,7 @@ import type { Candidate, GroupDetail, GroupImmichAssets } from '../types'
 import StatusBadge from '../components/StatusBadge.vue'
 import ThumbImage from '../components/ThumbImage.vue'
 import ActionTable from '../components/ActionTable.vue'
+import VariantBadge from '../components/VariantBadge.vue'
 
 const props = defineProps<{ id: number }>()
 
@@ -41,7 +42,10 @@ const busy = ref(false)
 const actionError = ref<string | null>(null)
 
 const g = computed(() => group.data.value)
-const canDecide = computed(() => !!status.value?.duplicates_target_directory)
+// record-only groups (found by a matcher that does not decide, matching.backend "both") are never acted on
+const actionable = computed(() => g.value?.actionable ?? true)
+const actingMatcher = computed(() => status.value?.matching.acting_matcher ?? 'image-match')
+const canDecide = computed(() => !!status.value?.duplicates_target_directory && actionable.value)
 const dryRun = computed(() => g.value?.dry_run ?? status.value?.dry_run ?? true)
 
 const criteriaRows = computed(() => {
@@ -113,7 +117,23 @@ function plannedFor(candidate: Candidate) {
             <span v-if="g.execute_requested" class="tag tag-info">your decision is queued</span>
             <span v-if="g.restore_requested" class="tag tag-info">restore queued</span>
           </h2>
-          <span class="muted small">{{ g.candidate_count }} files · matched by {{ g.matcher }}</span>
+          <span class="muted small">
+            {{ g.candidate_count }} files · matched by {{ g.matcher }}
+            <template v-if="g.match_confidence !== null">· confidence {{ g.match_confidence.toFixed(2) }}</template>
+          </span>
+        </div>
+
+        <div v-if="!actionable" class="warn-box">
+          <strong>Record-only:</strong> this group was found by <code>{{ g.matcher }}</code>, which only records its
+          groups to compare them with <code>{{ actingMatcher }}</code>
+          (<RouterLink to="/compare">comparison</RouterLink>). Nothing is ever moved or deleted for it, and it cannot
+          be decided on until <code>matching.backend</code> is <code>{{ g.matcher }}</code>.
+        </div>
+        <div v-if="g.match_review_reasons.length > 0" class="small">
+          <strong>Not acted on automatically ({{ g.matcher }}):</strong>
+          <ul class="reasons">
+            <li v-for="reason in g.match_review_reasons" :key="reason">{{ reason }}</li>
+          </ul>
         </div>
 
         <div class="decision">
@@ -150,7 +170,10 @@ function plannedFor(candidate: Candidate) {
         </div>
 
         <div class="plan">
-          <template v-if="g.status === 'ignored'">
+          <template v-if="!actionable">
+            <strong>Record-only:</strong> nothing happens to the files of this group.
+          </template>
+          <template v-else-if="g.status === 'ignored'">
             <strong>Ignored:</strong> the daemon never touches the files of this group.
           </template>
           <template v-else-if="g.status === 'resolved'">
@@ -188,7 +211,10 @@ function plannedFor(candidate: Candidate) {
           >
             Undo moves ({{ g.undoable_moves - g.restore_requested }})
           </button>
-          <span v-if="!canDecide" class="muted small">
+          <span v-if="!actionable" class="muted small">
+            Record-only: the group can be ignored, but no copy can be chosen.
+          </span>
+          <span v-else-if="!canDecide" class="muted small">
             Choosing a different copy requires <code>duplicates_target_directory</code>: the web UI only moves files.
           </span>
           <span v-else-if="dryRun" class="muted small">
@@ -212,6 +238,10 @@ function plannedFor(candidate: Candidate) {
           <div class="candidate-head">
             <span v-if="c.role === 'keep'" class="badge badge-keep">keep</span>
             <span v-else class="badge badge-duplicate">duplicate</span>
+            <VariantBadge v-if="c.variant_kind" :kind="c.variant_kind" />
+            <span v-if="c.orientation" class="tag" title="Transform that turns the matched copy into this file">
+              {{ c.orientation }}
+            </span>
             <span v-if="!c.exists && c.moved_to" class="tag">moved</span>
             <span v-else-if="!c.exists" class="tag tag-warn">missing</span>
             <span class="muted small">rank {{ c.rank + 1 }}</span>
@@ -234,9 +264,18 @@ function plannedFor(candidate: Candidate) {
             <dt>Modified</dt><dd>{{ formatTime(c.modified_at) }}</dd>
             <dt>EXIF tags</dt><dd>{{ c.exif_tag_count ?? '–' }}</dd>
             <dt>Distance</dt><dd>{{ c.distance?.toFixed(4) ?? '–' }}</dd>
+            <template v-if="c.match_reason">
+              <dt>Match</dt>
+              <dd :title="c.metadata.match?.partner ? `strongest match: ${c.metadata.match.partner}` : undefined">
+                {{ c.match_reason }} {{ c.match_confidence?.toFixed(2) ?? '' }}
+              </dd>
+            </template>
+            <template v-if="c.metadata.match?.notes?.length">
+              <dt>Notes</dt><dd>{{ c.metadata.match.notes.join(', ') }}</dd>
+            </template>
           </dl>
           <button
-            v-if="c.role !== 'keep' && g.status !== 'ignored'"
+            v-if="c.role !== 'keep' && g.status !== 'ignored' && actionable"
             class="primary"
             :disabled="busy || !canDecide || !c.exists"
             @click="keep(c)"

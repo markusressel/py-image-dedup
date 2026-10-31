@@ -1,7 +1,7 @@
 # Matching pipeline prototype
 
-Status: **experimental prototype**, not used by the deduplicator, the CLI or the daemon. Production still uses
-`image-match` + Elasticsearch. This document summarises the design, the benchmark results on `tests/images/`
+Status: wired into the deduplicator behind `matching.backend` (`image-match` default, `hashes`, `both`), see
+"Integration" below. Production still defaults to `image-match` + Elasticsearch. This document summarises the design, the benchmark results on `tests/images/`
 and the owner's decisions on the open questions. See the "Matching & ranking pipeline" section of `TODO.md` for the plan.
 
 ## What the prototype does
@@ -292,7 +292,8 @@ source always go to review, with the crop ranked first by default.
   detection (crops, rescaling, colour changes, overlays), run with `onnxruntime` on the CPU.
 - **Optional dependency**: `poetry install -E embeddings` / `pip install 'py-image-dedup[embeddings]'`
   (`onnxruntime`, cp314 wheels for amd64 and arm64). `onnxruntime` is only imported when an
-  `OnnxEmbeddingExtractor` is created; the matching package works without it. Not installed in the Docker image.
+  `OnnxEmbeddingExtractor` is created; the matching package works without it. Installed in the Docker image
+  (build arg `EXTRAS`, default `embeddings`), the model is not.
 - **Model file**: not bundled in the repo or the image. Either
   - downloaded on demand by `ensure_model()` into `$PY_IMAGE_DEDUP_MODEL_CACHE` (default
     `~/.cache/py-image-dedup/models`), SHA-256 verified after the download and on every load. Default source: an
@@ -372,15 +373,42 @@ FAISS) is the next step. float16 storage would halve the memory.
 - The 320x320 squash distorts crops with another aspect ratio; a dynamic size export
   (`tools/export_sscd_onnx.py`) could keep the aspect ratio (resize the short edge) and might raise the
   similarity of strong crops.
-- Not wired into the deduplicator/daemon/config yet (options needed: enable flag, model path or URL + sha256,
-  cache dir, min similarity); the Docker image would need the extra and a model volume.
+- Wired in via `matching.embeddings.*` (enabled, model_path or model_url + model_sha256, cache_directory,
+  similarity_threshold), see "Integration".
 - Light crops (~10 %) that are hash matched with the same aspect ratio are not flagged as crops.
 - The embedding cache (`EmbeddingStore`) is a plain SQLite table (own file or in memory); it is not part of the
   `SignatureStore` interface, so there is no Postgres variant yet.
 
+## Integration
+
+`matching.backend` (config, README "Matching backends"):
+
+- `image-match` (default): unchanged.
+- `both`: full runs additionally run `HashMatcher` (`py_image_dedup/library/hash_matcher.py`: file discovery with
+  `recursive`, `file_extensions`, `exclusions`; without `across_dirs` only pairs within the same source directory
+  are clustered) after the image-match phases and before move/delete (8 phases). Its groups are stored in the
+  state store with `matcher="hashes"` and are record-only: never acted on, user decisions refused (API 409,
+  bulk accept skipped), for the comparison page `/compare` (`StateStore.compare_matchers`: same / grouped
+  differently / only one matcher, by shared files). Incremental daemon runs stay image-match only. A failure of
+  the hash pipeline is logged in the run summary and does not affect image-match.
+- `hashes`: the hash pipeline drives decisions without Elasticsearch: members are ranked with the configured
+  prioritization rules (metadata read like the ES backend does, `distance` = 1 - match confidence), protected
+  paths, `max_file_modification_time_diff` and `hold_ambiguous_groups` apply as before. Groups with
+  `review_reasons` (variants, crops, burst shots, confidence below `auto_act_min_confidence`) are always held
+  for review, with the reasons in the group. In the daemon, file changes trigger a full run (analysis is
+  incremental, matching always covers the whole library).
+- State store (schema version 3): candidates get `variant_kind`, `orientation` (transform from the strongest
+  matching partner), `match_confidence`, `match_reason` and notes, groups `match_confidence` and
+  `match_review_reasons`. Group keys of other matchers than image-match include the matcher name.
+- Thresholds and the store URL are configurable (`matching.*`); the signature store defaults to `signatures.db`
+  next to the state database, the embedding cache/model download to `embeddings/` next to it.
+
+Open: crops are not ranked first automatically (they always go to review, the human decides), the burst/variant
+notes are not available to the prioritization rules, no file-level incremental matching (needs a per-file
+search instead of the all-pairs run).
+
 ## Not done (intentionally)
 
-- No wiring into `ImageMatchDeduplicator`, the daemon, CLI, config or Docker image.
 - No `SignatureBackend` interface (image-match vs. hashes) yet: the prototype API (`MatchingPipeline.analyse/match`)
   should inform it. The store itself is abstracted (`SignatureStore`).
 - Quality signals for prioritization (format tier, JPEG quality estimate, sharpness) are not part of this

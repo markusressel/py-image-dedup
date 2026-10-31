@@ -43,7 +43,25 @@ watch(() => props.id, () => {
           <dt>{{ run.data.value.dry_run ? 'Would move' : 'Moved' }}</dt><dd>{{ run.data.value.summary.moved }}</dd>
           <dt>{{ run.data.value.dry_run ? 'Would delete' : 'Deleted' }}</dt><dd>{{ run.data.value.summary.deleted }}</dd>
           <dt>Removed folders</dt><dd>{{ run.data.value.summary.removed_folders }}</dd>
+          <template v-if="run.data.value.summary.hashes_groups !== undefined">
+            <dt>Hash groups</dt>
+            <dd>
+              {{ run.data.value.summary.hashes_groups }}
+              ({{ run.data.value.summary.hashes_review_groups ?? 0 }} need review{{
+                run.data.value.summary.hashes_record_only ? ', record-only' : '' }})
+            </dd>
+          </template>
+          <template v-if="run.data.value.summary.hashes_analysed !== undefined">
+            <dt>Hash analysis</dt>
+            <dd>
+              {{ run.data.value.summary.hashes_analysed }} analysed, {{ run.data.value.summary.hashes_failed ?? 0 }}
+              failed
+            </dd>
+          </template>
         </dl>
+        <div v-if="run.data.value.summary?.hashes_error" class="error-box">
+          Hash matching failed (image-match was not affected): {{ run.data.value.summary.hashes_error }}
+        </div>
       </section>
 
       <section class="card">
