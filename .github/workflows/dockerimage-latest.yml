@@ -33,7 +33,6 @@ jobs:
           cache-to: type=gha,mode=max
 
   dockerHubDescription:
-    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
