@@ -2,6 +2,7 @@ import datetime
 import filecmp
 import logging
 import os
+import re
 import shutil
 import sys
 import threading
@@ -50,6 +51,17 @@ WEAK_PRIORITIZATION_RULES = {
 
 # EXIF values longer than this are not copied into the state database (e.g. maker notes)
 MAX_STORED_EXIF_VALUE_LENGTH = 200
+
+
+def _path_matches(pattern: str, path: str) -> bool:
+    """
+    :return: True if the regular expression matches (anywhere in) the path, False for invalid expressions
+    """
+    try:
+        return re.search(pattern, path) is not None
+    except re.error:
+        LOGGER.warning(f"Invalid path pattern in prioritization rules: {pattern}")
+        return False
 
 
 def _format_timestamp(timestamp: float) -> str:
@@ -784,6 +796,20 @@ class ImageMatchDeduplicator:
                 # lower is better
                 score = candidate[MetadataKey.SCORE.value]
                 criteria.append((rule_name, score * 1, f"score {score}"))
+            elif rule_name in ("preferred-paths", "avoided-paths"):
+                # path patterns (regular expressions) in priority order: matching an earlier pattern is better.
+                # preferred-paths: files matching no pattern come after all matching files,
+                # avoided-paths: files matching no pattern come before all matching files
+                patterns = rule.get("patterns") or []
+                path = str(candidate[MetadataKey.PATH.value])
+                index = next((i for i, pattern in enumerate(patterns) if _path_matches(pattern, path)), None)
+                if index is None:
+                    value = len(patterns) if rule_name == "preferred-paths" else -1
+                    text = f"no {rule_name} pattern matches"
+                else:
+                    value = index
+                    text = f"matches {rule_name} pattern '{patterns[index]}'"
+                criteria.append((rule_name, value, text))
             elif rule_name == "higher-pixel-count":
                 # higher pixel count is better
                 pixel_count = metadata[MetadataKey.PIXELCOUNT.value]
