@@ -14,9 +14,10 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from prometheus_client import CONTENT_TYPE_LATEST, REGISTRY, generate_latest
 from pydantic import BaseModel
 
-from py_image_dedup.config import DeduplicatorConfig
+from py_image_dedup.config import DeduplicatorConfig, MATCHER_HASHES, MATCHER_IMAGE_MATCH, MATCHING_BACKEND_BOTH
 from py_image_dedup.integrations.immich import ImmichClient, ImmichError
-from py_image_dedup.state.store import StateStore, GroupStatus, DecisionSource, BulkAction, SuggestionSource
+from py_image_dedup.state.store import StateStore, GroupStatus, DecisionSource, BulkAction, SuggestionSource, \
+    GroupNotActionableError
 from py_image_dedup.web.thumbnails import ThumbnailCache
 
 LOGGER = logging.getLogger(__name__)
@@ -63,6 +64,7 @@ class GroupFilter(BaseModel):
     q: str | None = None
     keeps_smaller_copy: bool | None = None
     has_suggestion: bool | None = None
+    matcher: str | None = None
 
 
 class BulkRequest(BaseModel):
@@ -178,7 +180,8 @@ def create_app(store: StateStore, config: DeduplicatorConfig, static_directory: 
             candidate["exists"] = Path(candidate["path"]).is_file()
             candidate["moved_to"] = store.last_move_target(candidate["path"])
         planned = []
-        if group["status"] in (GroupStatus.OPEN, GroupStatus.REVIEW):
+        # record-only groups (f.ex. the hash pipeline with backend "both") are never acted on
+        if group["actionable"] and group["status"] in (GroupStatus.OPEN, GroupStatus.REVIEW):
             for candidate in group["candidates"]:
                 if candidate["role"] == "keep" or not candidate["exists"]:
                     continue
@@ -210,10 +213,21 @@ def create_app(store: StateStore, config: DeduplicatorConfig, static_directory: 
             "user_decisions_dry_run": config.user_decisions_dry_run,
             "duplicates_target_directory": _jsonable(config.DEDUPLICATOR_DUPLICATES_TARGET_DIRECTORY.value),
             "hold_ambiguous_groups": config.DEDUPLICATION_HOLD_AMBIGUOUS_GROUPS.value,
+            "matching": matching_status(),
             "live": store.live.snapshot(),
             "statistics": store.statistics(),
             "last_run": store.last_run(),
             "last_full_run": store.last_run("full"),
+        }
+
+    def matching_status() -> dict:
+        return {
+            "backend": config.matching_backend,
+            # groups of other matchers are record-only
+            "acting_matcher": config.acting_matcher,
+            "matchers": [m for m, used in ((MATCHER_IMAGE_MATCH, config.uses_image_match),
+                                           (MATCHER_HASHES, config.uses_hashes)) if used],
+            "embeddings": config.uses_hashes and bool(config.MATCHING_EMBEDDINGS_ENABLED.value),
         }
 
     # ------------------------------------------------------------------ runs
@@ -235,12 +249,37 @@ def create_app(store: StateStore, config: DeduplicatorConfig, static_directory: 
     def list_groups(status: str | None = Query(None), needs_review: bool | None = Query(None),
                     decided_by: str | None = Query(None), q: str | None = Query(None),
                     keeps_smaller_copy: bool | None = Query(None), has_suggestion: bool | None = Query(None),
+                    matcher: str | None = Query(None),
                     limit: int = Query(50, ge=1, le=500), offset: int = Query(0, ge=0)):
         if status is not None and status not in GroupStatus.ALL:
             raise HTTPException(status_code=400, detail=f"status must be one of {GroupStatus.ALL}")
         return store.list_groups(status=status, needs_review=needs_review, decided_by=decided_by, search=q,
                                  keeps_smaller_copy=keeps_smaller_copy, has_suggestion=has_suggestion,
-                                 limit=limit, offset=offset)
+                                 matcher=matcher, limit=limit, offset=offset)
+
+    @app.get("/api/compare")
+    def compare(left: str = Query(MATCHER_IMAGE_MATCH), right: str = Query(MATCHER_HASHES),
+                category: str | None = Query(None), status: List[str] | None = Query(None),
+                all_statuses: bool = Query(False),
+                limit: int = Query(50, ge=1, le=500), offset: int = Query(0, ge=0)):
+        """
+        Compares the groups of two matchers by their members (default: image-match vs. the hash pipeline,
+        open and review groups): clusters of groups sharing files are "same" (identical members), "different"
+        (grouped differently) or only found by one matcher (only_<matcher>). See StateStore.compare_matchers.
+        status (repeatable) or all_statuses select other groups than the open and review ones.
+        """
+        if all_statuses:
+            status = GroupStatus.ALL
+        if left == right:
+            raise HTTPException(status_code=400, detail="left and right must be different matchers")
+        for value in status or []:
+            if value not in GroupStatus.ALL:
+                raise HTTPException(status_code=400, detail=f"status must be one of {GroupStatus.ALL}")
+        try:
+            return store.compare_matchers(left, right, statuses=status, category=category, limit=limit,
+                                          offset=offset)
+        except ValueError as ex:
+            raise HTTPException(status_code=400, detail=str(ex))
 
     @app.get("/api/groups/{group_id}")
     def get_group(group_id: int):
@@ -252,12 +291,22 @@ def create_app(store: StateStore, config: DeduplicatorConfig, static_directory: 
         candidate = next((c for c in group["candidates"] if c["id"] == request.candidate_id), None)
         if candidate is None:
             raise HTTPException(status_code=400, detail="Candidate is not a member of this group")
+        if not group["actionable"]:
+            raise HTTPException(status_code=409, detail=record_only_message(group))
         if config.DEDUPLICATOR_DUPLICATES_TARGET_DIRECTORY.value is None:
             raise HTTPException(status_code=409,
                                 detail="duplicates_target_directory is not configured. Decisions from the web UI "
                                        "only move duplicates, they never delete files.")
-        store.set_user_keeper(group_id, candidate["path"])
+        try:
+            store.set_user_keeper(group_id, candidate["path"])
+        except GroupNotActionableError as ex:
+            raise HTTPException(status_code=409, detail=str(ex))
         return with_details(store.get_group(group_id))
+
+    def record_only_message(group: dict) -> str:
+        return f"This group was found by the '{group['matcher']}' matcher, which only records its groups for " \
+               f"comparison (matching.backend: {config.matching_backend}, decisions are made by " \
+               f"'{config.acting_matcher}'). Set matching.backend to '{group['matcher']}' to decide on it."
 
     def require_target_directory():
         if config.DEDUPLICATOR_DUPLICATES_TARGET_DIRECTORY.value is None:
@@ -388,7 +437,7 @@ def create_app(store: StateStore, config: DeduplicatorConfig, static_directory: 
                 raise HTTPException(status_code=400, detail=f"status must be one of {GroupStatus.ALL}")
             group_ids = store.list_group_ids(status=f.status, needs_review=f.needs_review, decided_by=f.decided_by,
                                              search=f.q, keeps_smaller_copy=f.keeps_smaller_copy,
-                                             has_suggestion=f.has_suggestion)
+                                             has_suggestion=f.has_suggestion, matcher=f.matcher)
         else:
             group_ids = request.group_ids
         result = store.bulk_decision(group_ids, request.action)
@@ -531,6 +580,13 @@ def create_app(store: StateStore, config: DeduplicatorConfig, static_directory: 
                           "message": f"{statistics['failures']} file(s) failed analysis and are never deduplicated. "
                                      "They might be corrupt or use an unsupported format.",
                           "link": "/config#failures"})
+
+        if config.matching_backend == MATCHING_BACKEND_BOTH:
+            hints.append({"level": "info", "key": "matching.backend",
+                          "message": "Both matchers run: image-match decides as before, the groups of the hash "
+                                     "pipeline are only recorded (never acted on, also not by your decisions) "
+                                     "to compare both. The hash pipeline only runs on full runs.",
+                          "link": "/compare"})
 
         if len(config.SOURCE_DIRECTORIES.value) > 1 and not config.SEARCH_ACROSS_ROOT_DIRS.value:
             hints.append({"level": "info", "key": "analysis.across_dirs",

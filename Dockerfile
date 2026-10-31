@@ -25,12 +25,18 @@ RUN apt-get update \
 
 WORKDIR /app
 
+# optional extras (space separated): "embeddings" (onnxruntime, crop detection of the hash pipeline, default),
+# "postgres" (Postgres signature store). Build without any: docker build --build-arg EXTRAS= .
+# The embedding model is never part of the image: mount it (matching.embeddings.model_path) or let it be
+# downloaded into matching.embeddings.cache_directory.
+ARG EXTRAS="embeddings"
+
 # install dependencies first, so this layer is cached as long as the lock file does not change
 COPY poetry.lock pyproject.toml ./
 # poetry lives in a throwaway venv, so neither poetry nor its own dependencies end up in the image
 RUN python -m venv /opt/poetry \
  && /opt/poetry/bin/pip install --no-cache-dir "poetry==$POETRY_VERSION" \
- && /opt/poetry/bin/poetry install --without dev --no-root --no-interaction \
+ && /opt/poetry/bin/poetry install --without dev --no-root --no-interaction ${EXTRAS:+--extras "$EXTRAS"} \
  && rm -rf /opt/poetry /root/.cache
 
 # install the project itself (provides the py-image-dedup script)

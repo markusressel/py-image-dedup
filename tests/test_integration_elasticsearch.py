@@ -164,3 +164,46 @@ def test_cleanup_removes_entries_of_missing_files(deduplicator):
 
     count, entries = persistence.get_all()
     assert missing_file not in [entry["path"] for entry in entries]
+
+
+def test_both_backends_side_by_side():
+    """
+    matching.backend "both": image-match decides, the hash pipeline only records its groups (dry run).
+    """
+    from py_image_dedup.library.deduplicator import ImageMatchDeduplicator
+    from py_image_dedup.state import StateStore
+
+    config = _config()
+    image_files = sorted(Path("images").rglob("*.jpg"))
+    config.MATCHING_BACKEND.value = "both"
+    config.MATCHING_STORE_URL.value = ":memory:"
+    store = StateStore(":memory:")
+    try:
+        deduplicator = ImageMatchDeduplicator(interactive=False, state_store=store)
+        # the constructor reloads the configuration
+        config = _config()
+        deduplicator.analyse_all()
+        _refresh_index(config)
+        deduplicator.deduplicate_all(skip_analyze_phase=True)
+
+        for image_file in image_files:
+            assert image_file.exists()
+        image_match_groups = store.list_groups(matcher="image-match")["items"]
+        hash_groups = store.list_groups(matcher="hashes")["items"]
+        assert len(image_match_groups) == len(IMAGE_GROUPS)
+        assert len(hash_groups) == len(IMAGE_GROUPS)
+        assert all(g["actionable"] for g in image_match_groups)
+        assert not any(g["actionable"] for g in hash_groups)
+        assert all(g["candidate_count"] == 4 for g in hash_groups)
+        # no action (not even a simulated one) for the record-only groups
+        for group in hash_groups:
+            assert store.list_actions(group_id=group["id"])["total"] == 0
+
+        comparison = store.compare_matchers("image-match", "hashes")
+        assert comparison["counts"]["only_image-match"] == 0
+        assert comparison["counts"]["only_hashes"] == 0
+        assert comparison["counts"]["same"] + comparison["counts"]["different"] == len(IMAGE_GROUPS)
+    finally:
+        config.MATCHING_BACKEND.value = "image-match"
+        config.MATCHING_STORE_URL.value = None
+        store.close()

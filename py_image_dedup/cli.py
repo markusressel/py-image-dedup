@@ -82,7 +82,15 @@ def c_daemon(dry_run: bool):
     from py_image_dedup.state import StateStore
     state_database_path = Path(config.STATE_DATABASE_PATH.value).expanduser()
     echo(f"Using state database: {state_database_path}")
-    state_store = StateStore(state_database_path)
+    # groups of a matcher that does not decide (f.ex. the hash pipeline with backend "both") are record-only
+    state_store = StateStore(state_database_path, actionable_matchers=[config.acting_matcher])
+    echo(f"Matching backend: {config.matching_backend}")
+    if config.uses_hashes:
+        store_url = config.signature_store_url
+        if store_url.lower().startswith(("postgres://", "postgresql://")):
+            # never print the database password
+            store_url = store_url.split("://", 1)[0] + "://..."
+        echo(f"Hash pipeline signature store: {store_url}")
 
     web_server = None
     if config.WEB_ENABLED.value:

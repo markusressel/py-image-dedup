@@ -14,7 +14,7 @@ import click
 from ordered_set import OrderedSet
 
 from py_image_dedup import util
-from py_image_dedup.config import DeduplicatorConfig
+from py_image_dedup.config import DeduplicatorConfig, MATCHER_HASHES, MATCHER_IMAGE_MATCH
 from py_image_dedup.integrations.immich import ImmichClient
 from py_image_dedup.library import ActionEnum
 from py_image_dedup.library.deduplication_result import DeduplicationResult
@@ -32,7 +32,10 @@ from py_image_dedup.util.file import get_files_count, file_has_extension
 LOGGER = logging.getLogger(__name__)
 LOGGER.setLevel(logging.DEBUG)
 
-MATCHER_NAME = "image-match"
+MATCHER_NAME = MATCHER_IMAGE_MATCH
+
+# phase of failures recorded by the hash pipeline (failures.phase)
+HASH_ANALYSIS_FAILURE_PHASE = "analysis (hashes)"
 
 # prioritization rules which only break ties between otherwise equal copies.
 # A group whose best copy was chosen by one of these is flagged for review.
@@ -144,24 +147,46 @@ class ImageMatchDeduplicator:
         listener = StateProgressListener(state_store, lambda: self._run_id) if state_store is not None else None
         self._progress_manager = ProgressManager(listener=listener)
         self._config = DeduplicatorConfig()
-        self._persistence: ImageSignatureStore = ElasticSearchStoreBackend(
-            host=self._config.ELASTICSEARCH_HOST.value,
-            port=self._config.ELASTICSEARCH_PORT.value,
-            connections_per_node=self._config.ANALYSIS_THREADS.value,
-            el_index=self._config.ELASTICSEARCH_INDEX.value,
-            use_exif_data=self._config.ANALYSIS_USE_EXIF_DATA.value,
-            max_dist=self._config.ELASTICSEARCH_MAX_DISTANCE.value,
-            setup_database=self._config.ELASTICSEARCH_AUTO_CREATE_INDEX.value,
-            connection_timeout=self._config.ELASTICSEARCH_CONNECTION_TIMEOUT.value,
-        )
+        if state_store is not None and state_store.actionable_matchers is None:
+            # groups of the other matcher (f.ex. the hash pipeline with backend "both") are record-only
+            state_store.actionable_matchers = {self._config.acting_matcher}
+        # image-match + Elasticsearch, None with matching.backend "hashes" (no Elasticsearch needed)
+        self._persistence: ImageSignatureStore | None = None
+        if self._config.uses_image_match:
+            self._persistence = ElasticSearchStoreBackend(
+                host=self._config.ELASTICSEARCH_HOST.value,
+                port=self._config.ELASTICSEARCH_PORT.value,
+                connections_per_node=self._config.ANALYSIS_THREADS.value,
+                el_index=self._config.ELASTICSEARCH_INDEX.value,
+                use_exif_data=self._config.ANALYSIS_USE_EXIF_DATA.value,
+                max_dist=self._config.ELASTICSEARCH_MAX_DISTANCE.value,
+                setup_database=self._config.ELASTICSEARCH_AUTO_CREATE_INDEX.value,
+                connection_timeout=self._config.ELASTICSEARCH_CONNECTION_TIMEOUT.value,
+            )
+        # the hash pipeline (matching.backend "hashes" or "both"), created on first use, see hash_matcher
+        self._hash_matcher = None
+        # reads file metadata (size, pixel count, EXIF) of hash pipeline groups for the prioritization rules
+        self._metadata_reader = ImageSignatureStore(use_exif_data=self._config.ANALYSIS_USE_EXIF_DATA.value)
 
     def reset_result(self):
         self._deduplication_result = DeduplicationResult()
+        # statistics of the hash pipeline in the current run (added to the run summary)
+        self._hash_summary = {}
         self._processed_files = {}
         # state store bookkeeping for the current result: file path -> group id, groups with failed actions
         self._group_of_path = {}
         self._failed_groups = set()
         self._group_recording_failed = False
+
+    @property
+    def hash_matcher(self):
+        """
+        :return: the hash pipeline (created on first access from the matching.* configuration)
+        """
+        if self._hash_matcher is None:
+            from py_image_dedup.library.hash_matcher import HashMatcher
+            self._hash_matcher = HashMatcher(self._config)
+        return self._hash_matcher
 
     def begin_run(self, kind: str, trigger: str | None = None) -> bool:
         """
@@ -194,6 +219,7 @@ class ImageMatchDeduplicator:
             "deleted": len(result.get_file_with_action(ActionEnum.DELETE)),
             "removed_folders": len(result.get_removed_empty_folders()),
         }
+        summary.update(self._hash_summary)
         try:
             self._state.finish_run(self._run_id, error=error, summary=summary)
         except Exception as ex:
@@ -218,16 +244,21 @@ class ImageMatchDeduplicator:
         """
         directories = self._config.SOURCE_DIRECTORIES.value
 
-        echo("Phase 1/2: Counting files ...", color='cyan')
-        directory_map = self._count_files(directories)
+        if self._config.uses_image_match:
+            echo("Phase 1/2: Counting files ...", color='cyan')
+            directory_map = self._count_files(directories)
 
-        echo("Phase 2/2: Analyzing files ...", color='cyan')
-        self.analyze_directories(directory_map)
+            echo("Phase 2/2: Analyzing files ...", color='cyan')
+            self.analyze_directories(directory_map)
+        if self._config.uses_hashes:
+            echo("Analyzing files (hashes) ...", color='cyan')
+            self.analyze_files_with_hashes(directories)
 
-    def deduplicate_all(self, skip_analyze_phase: bool = False) -> DeduplicationResult:
+    def deduplicate_all(self, skip_analyze_phase: bool = False, trigger: str | None = None) -> DeduplicationResult:
         """
-        Runs the full 6 deduplication phases.
+        Runs the full deduplication phases (6, or 8 with matching.backend "both").
         :param skip_analyze_phase: useful if you already did a dry run and want to do a real run afterwards
+        :param trigger: what triggered the run (state store)
         :return: result of the operation
         """
         # see: https://stackoverflow.com/questions/14861891/runtimewarning-invalid-value-encountered-in-divide
@@ -242,44 +273,207 @@ class ImageMatchDeduplicator:
         if self._config.DRY_RUN.value:
             echo("==> DRY RUN! No files or folders will actually be deleted! <==", color='yellow')
 
+        use_image_match = self._config.uses_image_match
+        use_hashes = self._config.uses_hashes
+        # backend "both": image-match decides, the hash pipeline only records its groups
+        hashes_record_only = use_image_match and use_hashes
+        phase_count = 6 + (2 if hashes_record_only else 0)
+        phase_index = 0
+
+        def next_phase(name: str) -> str:
+            nonlocal phase_index
+            phase_index += 1
+            self.start_phase(name, phase_index, phase_count)
+            return f"Phase {phase_index}/{phase_count}: {name}"
+
         with self.work_lock:
-            run_started = self.begin_run("full")
+            run_started = self.begin_run("full", trigger=trigger)
+            # matchers that saw all files in this run: their groups that were not found again are resolved
+            complete_matchers = []
             try:
-                echo("Phase 1/6: Cleaning up database ...", color='cyan')
-                self.start_phase("Cleaning up database", 1, 6)
+                echo(next_phase("Cleaning up database") + " ...", color='cyan')
                 self.cleanup_database(directories)
                 self._forget_failures_of_missing_files()
 
-                echo("Phase 2/6: Counting files ...", color='cyan')
-                self.start_phase("Counting files", 2, 6)
+                echo(next_phase("Counting files") + " ...", color='cyan')
                 directory_map = self._count_files(directories)
 
-                phase_3_text = "Phase 3/6: Analyzing files"
-                self.start_phase("Analyzing files", 3, 6)
-                if skip_analyze_phase:
-                    echo(phase_3_text + " - Skipping", color='yellow')
-                else:
-                    echo(phase_3_text, color='cyan')
-                    self.analyze_directories(directory_map)
+                self.reset_result()
+                if use_image_match:
+                    phase_text = next_phase("Analyzing files")
+                    if skip_analyze_phase:
+                        echo(phase_text + " - Skipping", color='yellow')
+                    else:
+                        echo(phase_text, color='cyan')
+                        self.analyze_directories(directory_map)
 
-                echo("Phase 4/6: Finding duplicate files ...", color='cyan')
-                self.start_phase("Finding duplicates", 4, 6)
-                self.find_duplicates_in_directories(directory_map)
+                    echo(next_phase("Finding duplicates") + " ...", color='cyan')
+                    self.find_duplicates_in_directories(directory_map)
+                    complete_matchers.append(MATCHER_IMAGE_MATCH)
+
+                if use_hashes:
+                    try:
+                        self._run_hash_matcher(directories, next_phase, skip_analyze_phase,
+                                               record_only=hashes_record_only)
+                        complete_matchers.append(MATCHER_HASHES)
+                    except Exception as ex:
+                        if not hashes_record_only:
+                            raise
+                        # the comparison must never break the deduplication by image-match
+                        LOGGER.exception(ex)
+                        echo(f"Hash matching failed, continuing without it: {ex}", color='red')
+                        self._hash_summary["hashes_error"] = f"{type(ex).__name__}: {ex}"
+                        while phase_index < phase_count - 2:
+                            next_phase("Skipped (hash matching failed)")
 
                 # Phase 5/6: Move or Delete duplicate files
-                self.start_phase("Moving/deleting duplicates", 5, 6)
-                self.process_duplicates()
+                phase_text = next_phase("Moving/deleting duplicates")
+                self.process_duplicates(phase_label=phase_text.split(":")[0])
 
-                self.start_phase("Removing empty folders", 6, 6)
-                self.remove_empty_folders()
+                phase_text = next_phase("Removing empty folders")
+                self.remove_empty_folders(phase_label=phase_text.split(":")[0])
 
-                self._resolve_unseen_groups()
+                self._resolve_unseen_groups(complete_matchers)
             except BaseException as ex:
                 self.end_run(run_started, error=f"{type(ex).__name__}: {ex}")
                 raise
             self.end_run(run_started)
 
         return self._deduplication_result
+
+    def analyze_files_with_hashes(self, directories: List[Path]):
+        """
+        Computes the hash pipeline signatures of all new/changed files (the analysis phase of the hash pipeline).
+        :param directories: source directories
+        """
+        matcher = self.hash_matcher
+        files = matcher.find_files(directories)
+        task = "Analyzing files (hashes)"
+        started = False
+
+        def progress(done: int, total: int):
+            nonlocal started
+            if not started:
+                self._progress_manager.start(task, total, "Files", self.interactive)
+                started = True
+            self._progress_manager.inc()
+
+        try:
+            result = matcher.analyse(files, progress)
+        finally:
+            if started:
+                self._progress_manager.clear()
+        echo(f"Hash signatures: {result.analysed} analysed, {result.skipped_unchanged} unchanged, "
+             f"{result.removed_missing} removed, {len(result.failed)} failed")
+        self._hash_summary.update({"hashes_analysed": result.analysed, "hashes_failed": len(result.failed)})
+        self._record_hash_failures(result.failed)
+
+    def _record_hash_failures(self, failed: dict):
+        """
+        Records files the hash pipeline could not analyse, forgets earlier failures of files that work now.
+        :param failed: path -> error message
+        """
+        if self._state is None:
+            return
+        try:
+            for path in self._state.failure_paths(phase=HASH_ANALYSIS_FAILURE_PHASE):
+                if path not in failed:
+                    self._state.clear_failure(path)
+            for path, error in failed.items():
+                self._state.record_failure(path, error, phase=HASH_ANALYSIS_FAILURE_PHASE, run_id=self._run_id)
+        except Exception as ex:
+            LOGGER.exception(ex)
+
+    def _run_hash_matcher(self, directories: List[Path], next_phase, skip_analyze_phase: bool, record_only: bool):
+        """
+        Runs the hash pipeline (analysis + matching) and records its groups. With record_only (backend "both")
+        the groups are only recorded, otherwise they are decided by the prioritization rules like image-match groups
+        (groups the pipeline does not allow to act on automatically are held for review).
+
+        :param directories: source directories
+        :param next_phase: starts the next phase of the run, returns its console label
+        :param skip_analyze_phase: don't analyse new/changed files
+        :param record_only: never act on the groups
+        """
+        phase_text = next_phase("Analyzing files (hashes)")
+        if skip_analyze_phase:
+            echo(phase_text + " - Skipping", color='yellow')
+        else:
+            echo(phase_text, color='cyan')
+            self.analyze_files_with_hashes(directories)
+
+        echo(next_phase("Finding duplicates (hashes)") + " ...", color='cyan')
+        self._progress_manager.start("Finding duplicates (hashes)", 1, "Steps", self.interactive)
+        try:
+            groups = self.hash_matcher.match(directories)
+            self._progress_manager.inc()
+        finally:
+            self._progress_manager.clear()
+
+        self._progress_manager.start("Recording duplicate groups (hashes)", len(groups), "Groups", self.interactive)
+        try:
+            for group in groups:
+                try:
+                    self._process_hash_group(group, record_only)
+                except Exception as ex:
+                    LOGGER.exception(ex)
+                    echo(f"Error processing duplicate group {group.paths}: {ex}", color='red')
+                    self._group_recording_failed = True
+                finally:
+                    self._progress_manager.inc()
+        finally:
+            self._progress_manager.clear()
+        self._hash_summary.update({
+            "hashes_groups": len(groups),
+            "hashes_review_groups": sum(1 for g in groups if not g.auto_act_allowed),
+            "hashes_record_only": record_only,
+        })
+
+    def _process_hash_group(self, group, record_only: bool):
+        """
+        Ranks the members of a hash pipeline group with the prioritization rules, records it in the state store
+        and (unless record_only) marks the duplicates for the move/delete phase.
+
+        :param group: a matching.models.DuplicateGroup
+        :param record_only: never act on the group
+        """
+        from py_image_dedup.library.hash_matcher import member_match_info
+        members = member_match_info(group)
+        candidates = []
+        for path in group.paths:
+            if not Path(path).is_file():
+                # deleted since the analysis
+                continue
+            try:
+                metadata = self._metadata_reader._create_metadata_dict(path)
+            except Exception as ex:
+                LOGGER.warning(f"Could not read the metadata of {path}: {ex}")
+                continue
+            confidence = members[path]["match_confidence"]
+            candidates.append({
+                MetadataKey.PATH.value: path,
+                # rules like smaller-distance: the less sure the match, the "farther" the copy
+                MetadataKey.DISTANCE.value: round(1.0 - confidence, 4) if confidence is not None else 0.0,
+                MetadataKey.SCORE.value: 0,
+                MetadataKey.METADATA.value: metadata,
+            })
+        if len(candidates) < 2:
+            return
+
+        files_to_keep, duplicates = self._select_images_to_delete(candidates)
+        match_details = {"confidence": round(group.confidence, 4), "review_reasons": list(group.review_reasons),
+                         "members": members}
+        if self._state is None:
+            # without a state store (CLI) there is no review: only act on groups the pipeline allows
+            if record_only or not group.auto_act_allowed:
+                return
+            self._save_duplicates_for_result(files_to_keep, duplicates)
+            return
+        decision = self._record_group(files_to_keep, duplicates, matcher=MATCHER_HASHES,
+                                      match_details=match_details, record_only=record_only)
+        if decision is None:
+            return
+        self._save_duplicates_for_result(*decision)
 
     def analyze_directories(self, directory_map: dict):
         """
@@ -330,6 +524,8 @@ class ImageMatchDeduplicator:
         """
         # TODO: This iterates through all db entries - even the ones we are ignoring.
         # The db query should be improved to speed this up
+        if self._persistence is None:
+            return
 
         count, entries = self._persistence.get_all()
         if count <= 0:
@@ -391,10 +587,11 @@ class ImageMatchDeduplicator:
         except Exception as ex:
             LOGGER.exception(ex)
 
-    def _resolve_unseen_groups(self):
+    def _resolve_unseen_groups(self, matchers: List[str] | None = None):
         """
         Marks groups of earlier runs that this full run did not find again (f.ex. because files
         were removed by another tool) as resolved in the state store.
+        :param matchers: only groups of these matchers (the ones that saw all files in this run), None: all
         """
         if self._state is None or self._run_id is None:
             return
@@ -403,7 +600,7 @@ class ImageMatchDeduplicator:
             LOGGER.warning("Not resolving unseen groups, because recording some groups failed")
             return
         try:
-            count = self._state.resolve_unseen_groups(self._run_id)
+            count = self._state.resolve_unseen_groups(self._run_id, matchers)
             if count > 0:
                 echo(f"Marked {count} duplicate groups that were not found again as resolved")
         except Exception as ex:
@@ -600,7 +797,8 @@ class ImageMatchDeduplicator:
                 existing.append(candidate)
                 continue
 
-            if any(root_dir in candidate_path.parents for root_dir in root_directories):
+            if self._persistence is not None and any(root_dir in candidate_path.parents
+                                                     for root_dir in root_directories):
                 echo(f"Removing db entry of missing file: {candidate_path}", color='yellow')
                 try:
                     self._persistence.remove(str(candidate_path))
@@ -611,13 +809,19 @@ class ImageMatchDeduplicator:
                              f"{candidate_path}")
         return existing
 
-    def _record_group(self, files_to_keep: List[dict], duplicates: List[dict]) -> tuple | None:
+    def _record_group(self, files_to_keep: List[dict], duplicates: List[dict], matcher: str = MATCHER_NAME,
+                      match_details: dict | None = None, record_only: bool = False) -> tuple | None:
         """
         Records a duplicate group and the decision of the prioritization rules in the state store,
         and applies decisions the user made for this group in the web UI.
 
         :param files_to_keep: files the prioritization rules decided to keep (best first)
         :param duplicates: files the prioritization rules decided to move/delete
+        :param matcher: the matcher that found the group
+        :param match_details: hash pipeline only: {"confidence", "review_reasons", "members": {path: info}}
+                              (see hash_matcher.member_match_info). Groups with review reasons are held for review.
+        :param record_only: only record the group, never act on it (and don't touch the bookkeeping of the
+                            acting matcher)
         :return: (files to keep, duplicates) to use, or None if no file of this group must be touched
         """
         try:
@@ -645,6 +849,12 @@ class ImageMatchDeduplicator:
                     needs_review = True
                     review_reason = "Contains an edited copy and its original: check that the edit should " \
                                     "replace the original (ignore the group to keep both)"
+            match_review_reasons = list(match_details["review_reasons"]) if match_details is not None else []
+            if has_duplicates and match_review_reasons:
+                # variants (grayscale, colour-edited, crop), burst shots or a low match confidence
+                needs_review = True
+                review_reason = "; ".join(r for r in [*match_review_reasons, review_reason] if r)
+            member_details = match_details["members"] if match_details is not None else {}
 
             keep_paths = [c[MetadataKey.PATH.value] for c in files_to_keep]
             best_path = files_to_keep[0][MetadataKey.PATH.value]
@@ -661,16 +871,22 @@ class ImageMatchDeduplicator:
                                   f"from the best copy, so it is not considered a duplicate"
                 else:
                     keep_reason = None
-                candidates.append(self._to_state_candidate(candidate, keep_reason))
+                candidates.append(self._to_state_candidate(candidate, keep_reason, member_details.get(path)))
 
             group = self._state.record_group(
-                run_id=self._run_id, matcher=MATCHER_NAME, candidates=candidates, keep_paths=keep_paths,
+                run_id=self._run_id, matcher=matcher, candidates=candidates, keep_paths=keep_paths,
                 decided_by=decided_by, decision_reason=decision_reason,
-                needs_review=needs_review, review_reason=review_reason)
+                needs_review=needs_review, review_reason=review_reason,
+                match_confidence=match_details["confidence"] if match_details is not None else None,
+                match_review_reasons=match_review_reasons if match_details is not None else None)
         except Exception as ex:
             LOGGER.exception(ex)
             echo(f"Error recording duplicate group in state database, not touching it: {ex}", color='red')
             self._group_recording_failed = True
+            return None
+
+        if record_only or not group.get("actionable", True):
+            # f.ex. the hash pipeline with backend "both": recorded for comparison, never acted on
             return None
 
         for candidate in files_to_keep + duplicates:
@@ -689,14 +905,19 @@ class ImageMatchDeduplicator:
         if group.get("suggested_keep_path") and group["suggested_keep_path"] != group["keep_path"]:
             # another tool (f.ex. Immich) keeps a different file than the rules: wait for the user to decide
             return None
+        if match_review_reasons:
+            # the matcher does not allow automatic action (variants, burst shots, low confidence): wait for the user
+            return None
         if group["needs_review"] and self._config.DEDUPLICATION_HOLD_AMBIGUOUS_GROUPS.value:
             return None
         return files_to_keep, duplicates
 
     @classmethod
-    def _to_state_candidate(cls, candidate: dict, keep_reason: str | None) -> dict:
+    def _to_state_candidate(cls, candidate: dict, keep_reason: str | None, match_info: dict | None = None) -> dict:
         """
-        Converts an image-match candidate into the backend independent format of the state store.
+        Converts a candidate into the backend independent format of the state store.
+
+        :param match_info: hash pipeline only: how the member was matched (see hash_matcher.member_match_info)
         """
         metadata = candidate.get(MetadataKey.METADATA.value, {})
         exif = metadata.get(MetadataKey.EXIF_DATA.value)
@@ -715,10 +936,16 @@ class ImageMatchDeduplicator:
             "pixel_count": metadata.get(MetadataKey.PIXELCOUNT.value),
             "modified_at": metadata.get(MetadataKey.FILE_MODIFICATION_DATE.value),
             "exif_tag_count": len(exif) if isinstance(exif, dict) else None,
+            "variant_kind": match_info.get("variant_kind") if match_info else None,
+            "orientation": match_info.get("orientation") if match_info else None,
+            "match_confidence": match_info.get("match_confidence") if match_info else None,
+            "match_reason": match_info.get("match_reason") if match_info else None,
             "metadata": {
                 "criteria": [{"rule": name, "value": display} for name, _, display in
                              cls._quality_criteria(candidate)],
                 "exif": stored_exif,
+                **({"match": {"notes": match_info.get("notes") or [], "partner": match_info.get("partner")}}
+                   if match_info else {}),
             },
         }
 
@@ -947,17 +1174,18 @@ class ImageMatchDeduplicator:
 
         return criteria
 
-    def process_duplicates(self):
+    def process_duplicates(self, phase_label: str = "Phase 5/6"):
         """
         Moves or removes duplicates based on the configuration
+        :param phase_label: prefix of the console output
         """
         dry_run = self._config.DRY_RUN.value
         duplicate_target_directory = self._config.DEDUPLICATOR_DUPLICATES_TARGET_DIRECTORY.value
         if duplicate_target_directory:
-            echo("Phase 5/6: Moving duplicates ...", color='cyan')
+            echo(f"{phase_label}: Moving duplicates ...", color='cyan')
             self._move_files_marked_as_delete(duplicate_target_directory, dry_run)
         else:
-            echo("Phase 5/6: Removing duplicates ...", color='cyan')
+            echo(f"{phase_label}: Removing duplicates ...", color='cyan')
             self._remove_files_marked_as_delete(dry_run)
 
         if self._state is not None and not dry_run:
@@ -1031,6 +1259,11 @@ class ImageMatchDeduplicator:
             return len(groups)
 
     def _execute_user_decision(self, group: dict):
+        if not self._state.is_actionable(group.get("matcher")):
+            # record-only group (see StateStore.pending_executions, set_user_keeper refuses these)
+            LOGGER.warning(f"Not executing the decision of record-only group {group['id']} ({group.get('matcher')})")
+            self._state.mark_executed(group["id"], resolved=False)
+            return
         dry_run = self._config.user_decisions_dry_run
         target_dir = self._config.DEDUPLICATOR_DUPLICATES_TARGET_DIRECTORY.value
         group_id = group["id"]
@@ -1263,7 +1496,8 @@ class ImageMatchDeduplicator:
                         os.remove(file_path)
 
                     # remove from persistence
-                    self._persistence.remove(file_path)
+                    if self._persistence is not None:
+                        self._persistence.remove(file_path)
                 except Exception as ex:
                     self._record_action(file_path, "delete", ActionStatus.FAILED, dry_run=dry_run,
                                         message=f"{type(ex).__name__}: {ex}")
@@ -1313,8 +1547,9 @@ class ImageMatchDeduplicator:
                     target_file.parent.mkdir(parents=True, exist_ok=True)
                     shutil.move(file_path, target_file)
 
-                # remove from persistence
-                self._persistence.remove(str(file_path))
+                # remove from persistence (the hash pipeline forgets missing files on its next analysis)
+                if self._persistence is not None:
+                    self._persistence.remove(str(file_path))
 
                 DUPLICATE_ACTION_MOVE_COUNT.inc()
                 self._record_action(file_path, "move", ActionStatus.DONE, dry_run=dry_run, source=source,
@@ -1339,8 +1574,8 @@ class ImageMatchDeduplicator:
         n_1 = max_length - n_2 - 3
         return '{0}...{1}'.format(text[:n_1], text[-n_2:])
 
-    def remove_empty_folders(self):
-        phase_6_text = "Phase 6/6: Removing empty folders"
+    def remove_empty_folders(self, phase_label: str = "Phase 6/6"):
+        phase_6_text = f"{phase_label}: Removing empty folders"
         if not self._config.REMOVE_EMPTY_FOLDERS.value:
             echo(phase_6_text + " - Skipping", color='yellow')
         else:

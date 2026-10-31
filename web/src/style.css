@@ -853,3 +853,76 @@ td .tag {
     grid-template-columns: auto 1fr;
   }
 }
+
+/* matcher comparison */
+
+.compare-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.compare-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  text-align: left;
+}
+
+.compare-stat.active {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.compare-stat-value {
+  font-size: 1.4rem;
+  font-weight: 600;
+}
+
+.compare-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+@media (max-width: 800px) {
+  .compare-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.compare-side {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.compare-thumbs {
+  width: auto;
+  flex-wrap: wrap;
+}
+
+.compare-members {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+.compare-diff {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.compare-diff .path {
+  margin-left: 8px;
+}
+
+ul.reasons {
+  margin: 4px 0 0;
+  padding-left: 20px;
+}

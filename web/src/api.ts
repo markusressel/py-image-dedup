@@ -2,6 +2,7 @@ import type {
   Action,
   BulkAction,
   BulkResult,
+  CompareResult,
   ConfigResponse,
   Failure,
   Group,
@@ -61,6 +62,7 @@ export const api = {
   run: (id: number) => request<Run>('GET', `/api/runs/${id}`),
   groups: (params?: Params) => request<Page<Group>>('GET', `/api/groups${query(params)}`),
   group: (id: number) => request<GroupDetail>('GET', `/api/groups/${id}`),
+  compare: (params?: Params) => request<CompareResult>('GET', `/api/compare${query(params)}`),
   keep: (groupId: number, candidateId: number) =>
     request<GroupDetail>('POST', `/api/groups/${groupId}/keep`, { candidate_id: candidateId }),
   ignore: (groupId: number) => request<GroupDetail>('POST', `/api/groups/${groupId}/ignore`),

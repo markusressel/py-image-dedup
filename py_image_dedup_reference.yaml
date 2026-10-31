@@ -105,6 +105,53 @@ py_image_dedup:
   # Whether to remove empty folders or not.
   remove_empty_folders: false
 
+  # Which matcher finds the duplicates, see README.md ("Matching backends")
+  matching:
+    # image-match: image-match + Elasticsearch (default, unchanged behaviour)
+    # hashes: the hash pipeline (SHA-256, pixel hash, pHash/dHash), no Elasticsearch needed.
+    #         Groups with variants (grayscale, colour-edited, crop), burst shots or a low
+    #         confidence are always held for review.
+    # both: image-match decides as before, the hash pipeline additionally runs on full runs
+    #       and only records its groups (never acted on, not even by your decisions) to
+    #       compare both in the web UI (/compare).
+    backend: image-match
+    # Where the hash pipeline stores its signatures: a SQLite file (default: signatures.db
+    # next to state.database_path), sqlite:////absolute/path.db or
+    # postgresql://user:password@host:5432/db (needs the "postgres" extra).
+    # store_url: sqlite:////data/state/signatures.db
+    # Maximum Hamming distance (of 64 bits) of pHash and dHash of two near-duplicates (both must hold)
+    max_phash_distance: 10
+    max_dhash_distance: 12
+    # Files of the same camera taken at most this many seconds apart (but not at the same time)
+    # are burst/series shots: they still match, with a lower confidence, and always go to review.
+    burst_window_seconds: 10.0
+    # Confidence subtracted from a match between burst shots
+    burst_confidence_penalty: 0.3
+    # Groups with a lower confidence (of their weakest match) are never acted on automatically
+    auto_act_min_confidence: 0.8
+    # Largest difference of a colour channel mean/standard deviation (0..255) that still counts
+    # as the same colours, above it a match is a colour-edited variant (review)
+    colour_edit_tolerance: 5.0
+    # Relative aspect ratio difference above which a match is flagged as cropped
+    aspect_ratio_tolerance: 0.02
+    # Also match copies rotated/mirrored without an orientation tag (about 7x search time)
+    match_rotations: true
+    # Opt-in crop detection with SSCD embeddings (needs the "embeddings" extra, onnxruntime,
+    # included in the Docker image). Crops and their source always go to review.
+    embeddings:
+      enabled: false
+      # ONNX model file (f.ex. exported with tools/export_sscd_onnx.py). If not set, the model is
+      # downloaded from model_url (or a pinned ONNX export of SSCD disc_mixup) into cache_directory.
+      # model_path: /data/models/sscd_disc_mixup.onnx
+      # model_url: https://example.com/sscd_disc_mixup.onnx
+      # SHA-256 of the model file (required with model_url, verified before loading)
+      # model_sha256: e65e2a5b9a5e44a0b0f011bddaa6f28621021f6120ca7ce8b526c19f2f6156f8
+      # Downloaded model and embedding cache (embeddings.db), default: "embeddings" next to
+      # state.database_path
+      # cache_directory: /data/state/embeddings
+      # Minimum cosine similarity of two embeddings to be considered a crop/copy
+      similarity_threshold: 0.6
+
   # Prometheus exporter specific configuration options, see README.md
   stats:
     # Whether to enable prometheus statistics or not.

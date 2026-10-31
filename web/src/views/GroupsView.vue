@@ -22,6 +22,7 @@ const decidedBy = computed(() => (route.query.decided_by as string | undefined) 
 const keepsSmallerCopy = computed(() => route.query.keeps_smaller_copy === 'true')
 const hasSuggestion = computed(() => route.query.has_suggestion === 'true')
 const search = computed(() => (route.query.q as string | undefined) ?? '')
+const matcher = computed(() => (route.query.matcher as string | undefined) ?? '')
 const offset = computed(() => Number(route.query.offset ?? 0))
 
 const searchInput = ref(search.value)
@@ -52,6 +53,7 @@ const groups = usePolling(
       decided_by: decidedBy.value,
       keeps_smaller_copy: keepsSmallerCopy.value ? true : undefined,
       has_suggestion: hasSuggestion.value ? true : undefined,
+      matcher: matcher.value,
       q: search.value,
       limit: LIMIT,
       offset: offset.value,
@@ -60,6 +62,10 @@ const groups = usePolling(
 )
 
 watch(() => route.query, () => groups.refresh(), { deep: true })
+
+// matchers with recorded groups (more than one with matching.backend "both")
+const matchers = computed(() => Object.keys(status.value?.statistics.groups_by_matcher ?? {}))
+const actingMatcher = computed(() => status.value?.matching.acting_matcher ?? 'image-match')
 
 const STATUS_FILTERS: { value: GroupStatus | ''; label: string }[] = [
   { value: '', label: 'All' },
@@ -120,6 +126,7 @@ function currentFilter(): GroupFilter {
   if (search.value) filter.q = search.value
   if (keepsSmallerCopy.value) filter.keeps_smaller_copy = true
   if (hasSuggestion.value) filter.has_suggestion = true
+  if (matcher.value) filter.matcher = matcher.value
   return filter
 }
 
@@ -136,6 +143,7 @@ const SKIP_REASONS: Record<string, string> = {
   no_rule_decision: 'without a rule decision',
   already_ignored: 'already ignored',
   nothing_to_reset: 'without a decision of yours',
+  record_only: 'record-only (found by a matcher that does not decide)',
   unknown: 'unknown',
 }
 
@@ -213,6 +221,13 @@ function statusCount(value: GroupStatus | ''): number | undefined {
         />
         suggestion
       </label>
+      <div v-if="matchers.length > 1" class="segmented" title="Matcher that found the group">
+        <button :class="{ active: matcher === '' }" @click="setQuery({ matcher: undefined })">All matchers</button>
+        <button v-for="m in matchers" :key="m" :class="{ active: matcher === m }" @click="setQuery({ matcher: m })">
+          {{ m }}
+          <span class="muted">{{ status?.statistics.groups_by_matcher[m] }}</span>
+        </button>
+      </div>
       <input
         v-model="searchInput"
         class="search"
@@ -306,6 +321,14 @@ function statusCount(value: GroupStatus | ''): number | undefined {
             <div class="group-title">
               <StatusBadge :value="group.status" />
               <span v-if="group.execute_requested" class="tag tag-info">queued</span>
+              <span
+                v-if="!group.actionable"
+                class="tag"
+                :title="`Only recorded for comparison, decisions are made by ${actingMatcher}`"
+              >
+                record-only
+              </span>
+              <span v-if="matchers.length > 1" class="tag">{{ group.matcher }}</span>
               <span v-if="group.decision_source === 'user'" class="tag">your choice</span>
               <span v-else-if="group.needs_review && group.status !== 'review'" class="tag tag-warn">weak decision</span>
               <strong class="path">{{ group.keep_path ? fileName(group.keep_path) : '–' }}</strong>
@@ -315,6 +338,9 @@ function statusCount(value: GroupStatus | ''): number | undefined {
               {{ group.candidate_count }} files ·
               <template v-if="group.decision_source === 'user'">chosen by you</template>
               <template v-else>decided by <code>{{ group.decided_by ?? 'nothing' }}</code></template>
+              <template v-if="group.match_confidence !== null">
+                · confidence {{ group.match_confidence.toFixed(2) }}
+              </template>
               · {{ formatRelative(group.updated_at, status?.server_time) }}
             </div>
           </div>

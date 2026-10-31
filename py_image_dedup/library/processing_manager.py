@@ -76,7 +76,9 @@ class ProcessingManager(RegularIntervalWorker):
         with self.lock:
             self.queue.pop(path, None)
             self._update_queue_size()
-        self.deduplicator._persistence.remove(str(path))
+        # None with matching.backend "hashes": the hash pipeline forgets missing files on its next analysis
+        if self.deduplicator._persistence is not None:
+            self.deduplicator._persistence.remove(str(path))
 
     def _update_queue_size(self):
         state = getattr(self.deduplicator, "_state", None)
@@ -97,6 +99,19 @@ class ProcessingManager(RegularIntervalWorker):
         if not self._should_process():
             return
 
+        if not self.config.uses_image_match:
+            # matching.backend "hashes": the hash pipeline only analyses new/changed files and always matches
+            # against the whole library, so a batch of file changes triggers one full run
+            paths = list(self.queue)
+            self.queue.clear()
+            self._update_queue_size()
+            trigger = str(paths[0]) if len(paths) == 1 else f"{len(paths)} changed paths"
+            with self.deduplicator.work_lock:
+                self.deduplicator.reset_result()
+                self.deduplicator.deduplicate_all(trigger=trigger)
+            return
+
+        # image-match (also with backend "both": the hash pipeline only runs on full runs)
         self.progress_manager.start("Processing", len(self.queue), "Files", False)
         while True:
             try:

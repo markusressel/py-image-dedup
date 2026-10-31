@@ -1,7 +1,7 @@
 """
-Experimental matching pipeline (prototype): SQLite + staged grouping instead of image-match + Elasticsearch.
+Matching pipeline: SQLite + staged grouping instead of image-match + Elasticsearch.
 
-Not used by the deduplicator or the daemon yet.
+Used by the deduplicator with matching.backend "hashes" or "both" (see py_image_dedup/library/hash_matcher.py).
 """
 import logging
 import os
@@ -145,10 +145,12 @@ class MatchingPipeline:
             self._full_pixel_hashes[signature.path] = full_pixel_hash
         return full_pixel_hash
 
-    def match(self) -> MatchingResult:
+    def match(self, match_filter: Callable[[Match], bool] = None) -> MatchingResult:
         """
         Groups all files of the store.
 
+        :param match_filter: optional, only matches for which it returns True are clustered
+                             (f.ex. only pairs within the same source directory)
         :return: groups and matches
         """
         timings = {}
@@ -165,6 +167,9 @@ class MatchingPipeline:
             start = time.perf_counter()
             matches = matches + self.embedding_stage.find_matches(signatures, matches, self.thresholds)
             timings["embeddings"] = time.perf_counter() - start
+
+        if match_filter is not None:
+            matches = [m for m in matches if match_filter(m)]
 
         start = time.perf_counter()
         groups = cluster(signatures, matches, self.thresholds)

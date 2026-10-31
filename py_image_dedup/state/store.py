@@ -11,7 +11,7 @@ from py_image_dedup.state.runtime_status import RuntimeStatus
 
 LOGGER = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 class GroupStatus:
@@ -40,6 +40,13 @@ class ActionStatus:
     SIMULATED = "simulated"  # dry run: this is what WOULD have happened
     SKIPPED = "skipped"
     FAILED = "failed"
+
+
+class GroupNotActionableError(Exception):
+    """
+    The group was found by a matcher that only records its groups (f.ex. the hash pipeline with
+    matching.backend "both"): neither the rules nor user decisions may act on it.
+    """
 
 
 class BulkAction:
@@ -111,7 +118,9 @@ CREATE TABLE IF NOT EXISTS groups (
     updated_at REAL NOT NULL,
     resolved_at REAL,
     suggested_keep_path TEXT,
-    suggestion_source TEXT
+    suggestion_source TEXT,
+    match_confidence REAL,
+    match_review_reasons TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_groups_status ON groups(status);
 CREATE TABLE IF NOT EXISTS candidates (
@@ -128,6 +137,10 @@ CREATE TABLE IF NOT EXISTS candidates (
     modified_at REAL,
     exif_tag_count INTEGER,
     metadata TEXT,
+    variant_kind TEXT,
+    orientation TEXT,
+    match_confidence REAL,
+    match_reason TEXT,
     UNIQUE (group_id, path)
 );
 CREATE INDEX IF NOT EXISTS idx_candidates_path ON candidates(path);
@@ -179,12 +192,23 @@ _ACTION_COLUMNS_SQL = (
 _ADDED_COLUMNS = [
     ("groups", "suggested_keep_path", "TEXT"),
     ("groups", "suggestion_source", "TEXT"),
+    # schema version 3: details of the hash matching pipeline
+    ("groups", "match_confidence", "REAL"),
+    ("groups", "match_review_reasons", "TEXT"),
+    ("candidates", "variant_kind", "TEXT"),
+    ("candidates", "orientation", "TEXT"),
+    ("candidates", "match_confidence", "REAL"),
+    ("candidates", "match_reason", "TEXT"),
 ]
 
 # separates the reasons in groups.review_reason if a group needs a review for more than one reason
 _REVIEW_REASON_SEPARATOR = "; "
 
-CANDIDATE_FIELDS = ["distance", "score", "file_size", "pixel_count", "modified_at", "exif_tag_count"]
+CANDIDATE_FIELDS = ["distance", "score", "file_size", "pixel_count", "modified_at", "exif_tag_count",
+                    "variant_kind", "orientation", "match_confidence", "match_reason"]
+
+# matcher whose group keys are the plain hash of the member paths (keys of existing databases stay valid)
+_LEGACY_KEY_MATCHER = "image-match"
 
 
 def _suggestion_reason(source: str | None, suggested_keep_path: str, rule_keep_path: str | None) -> str:
@@ -204,13 +228,18 @@ def _join_review_reasons(*reasons: str | None) -> str | None:
     return _REVIEW_REASON_SEPARATOR.join(unique) if unique else None
 
 
-def group_key(paths: Iterable[str]) -> str:
+def group_key(paths: Iterable[str], matcher: str | None = None) -> str:
     """
     Stable identity of a duplicate group, independent of the order in which its members were found.
+    Groups with the same members found by different matchers are different groups.
+
     :param paths: file paths of all group members
+    :param matcher: the matcher that found the group (image-match if None, its keys have no prefix)
     :return: hex digest
     """
     joined = "\n".join(sorted(set(str(p) for p in paths)))
+    if matcher is not None and matcher != _LEGACY_KEY_MATCHER:
+        joined = f"{matcher}\0{joined}"
     return hashlib.sha1(joined.encode("utf-8")).hexdigest()
 
 
@@ -226,11 +255,14 @@ class StateStore:
     All methods are thread safe (a single connection guarded by a lock).
     """
 
-    def __init__(self, database_path: str | Path):
+    def __init__(self, database_path: str | Path, actionable_matchers: Iterable[str] | None = None):
         """
         :param database_path: path of the SQLite file (parent directories are created), or ":memory:"
+        :param actionable_matchers: matchers whose groups may be acted on (rules, user decisions), groups of
+                                    other matchers are record-only (see GroupNotActionableError). None: all
         """
         self.database_path = str(database_path)
+        self.actionable_matchers = set(actionable_matchers) if actionable_matchers is not None else None
         if self.database_path != ":memory:":
             Path(self.database_path).parent.mkdir(parents=True, exist_ok=True)
 
@@ -359,7 +391,8 @@ class StateStore:
 
     def record_group(self, run_id: int | None, matcher: str, candidates: List[dict], keep_paths: List[str],
                      decided_by: str | None, decision_reason: str | None,
-                     needs_review: bool = False, review_reason: str | None = None) -> dict:
+                     needs_review: bool = False, review_reason: str | None = None,
+                     match_confidence: float | None = None, match_review_reasons: List[str] | None = None) -> dict:
         """
         Records (or updates) a duplicate group and the decision the prioritization rules made for it.
         User decisions (ignore, chosen keeper) of an already known group are preserved.
@@ -373,10 +406,13 @@ class StateStore:
         :param decision_reason: human readable explanation of the decision
         :param needs_review: whether the decision is weak and should be reviewed by a human
         :param review_reason: why a review is needed
+        :param match_confidence: confidence of the matcher that the files are copies of each other (hash pipeline)
+        :param match_review_reasons: why the matcher does not allow automatic action (hash pipeline)
         :return: the stored group (without candidates)
         """
         paths = [str(c["path"]) for c in candidates]
-        key = group_key(paths)
+        key = group_key(paths, matcher)
+        match_review_reasons_json = json.dumps(match_review_reasons) if match_review_reasons is not None else None
         now = time.time()
         rule_keep_path = str(keep_paths[0]) if keep_paths else None
 
@@ -387,9 +423,11 @@ class StateStore:
                 cursor = self._conn.execute(
                     "INSERT INTO groups (key, matcher, status, needs_review, review_reason, decision_source, "
                     "keep_path, rule_keep_path, decided_by, decision_reason, candidate_count, first_seen_run_id, "
-                    "last_seen_run_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "last_seen_run_id, created_at, updated_at, match_confidence, match_review_reasons) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (key, matcher, status, int(needs_review), review_reason, DecisionSource.RULES, rule_keep_path,
-                     rule_keep_path, decided_by, decision_reason, len(paths), run_id, run_id, now, now))
+                     rule_keep_path, decided_by, decision_reason, len(paths), run_id, run_id, now, now,
+                     match_confidence, match_review_reasons_json))
                 group_id = cursor.lastrowid
             else:
                 existing = dict(existing)
@@ -417,9 +455,11 @@ class StateStore:
                 self._conn.execute(
                     "UPDATE groups SET matcher = ?, status = ?, needs_review = ?, review_reason = ?, "
                     "decision_source = ?, keep_path = ?, rule_keep_path = ?, decided_by = ?, decision_reason = ?, "
-                    "candidate_count = ?, last_seen_run_id = ?, updated_at = ?, resolved_at = NULL WHERE id = ?",
+                    "candidate_count = ?, last_seen_run_id = ?, updated_at = ?, resolved_at = NULL, "
+                    "match_confidence = ?, match_review_reasons = ? WHERE id = ?",
                     (matcher, status, int(needs_review), review_reason, decision_source, keep_path, rule_keep_path,
-                     decided_by, decision_reason, len(paths), run_id, now, group_id))
+                     decided_by, decision_reason, len(paths), run_id, now, match_confidence,
+                     match_review_reasons_json, group_id))
 
             # upsert, so candidate ids (used in URLs, e.g. thumbnails) stay stable across runs
             keep_paths = [str(p) for p in keep_paths]
@@ -427,13 +467,12 @@ class StateStore:
                 path = str(candidate["path"])
                 role = candidate.get("role") or ("keep" if path in keep_paths else "duplicate")
                 self._conn.execute(
-                    "INSERT INTO candidates (group_id, path, rank, role, keep_reason, distance, score, file_size, "
-                    "pixel_count, modified_at, exif_tag_count, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                    f"INSERT INTO candidates (group_id, path, rank, role, keep_reason, {', '.join(CANDIDATE_FIELDS)}, "
+                    f"metadata) VALUES ({', '.join('?' * (len(CANDIDATE_FIELDS) + 6))}) "
                     "ON CONFLICT(group_id, path) DO UPDATE SET rank = excluded.rank, role = excluded.role, "
-                    "keep_reason = excluded.keep_reason, distance = excluded.distance, score = excluded.score, "
-                    "file_size = excluded.file_size, pixel_count = excluded.pixel_count, "
-                    "modified_at = excluded.modified_at, exif_tag_count = excluded.exif_tag_count, "
-                    "metadata = excluded.metadata",
+                    "keep_reason = excluded.keep_reason, "
+                    + "".join(f"{f} = excluded.{f}, " for f in CANDIDATE_FIELDS)
+                    + "metadata = excluded.metadata",
                     (group_id, path, rank, role, candidate.get("keep_reason"),
                      *[candidate.get(f) for f in CANDIDATE_FIELDS],
                      json.dumps(candidate.get("metadata") or {}, default=str)))
@@ -466,16 +505,18 @@ class StateStore:
 
     def list_groups(self, status: str | None = None, needs_review: bool | None = None, search: str | None = None,
                     decided_by: str | None = None, keeps_smaller_copy: bool | None = None,
-                    has_suggestion: bool | None = None, limit: int = 50, offset: int = 0) -> dict:
+                    has_suggestion: bool | None = None, matcher: str | None = None,
+                    limit: int = 50, offset: int = 0) -> dict:
         """
         Lists groups, groups that need a human decision first, then most recently updated first.
         :param keeps_smaller_copy: only groups where a duplicate has a higher resolution or a bigger file
         :param has_suggestion: only groups with a keeper suggested by another tool (see import_discarded_paths)
+        :param matcher: only groups found by this matcher
         :return: {"total": int, "items": [group, ...]}
         """
         where_sql, params = self._group_filter(status=status, needs_review=needs_review, search=search,
                                                decided_by=decided_by, keeps_smaller_copy=keeps_smaller_copy,
-                                               has_suggestion=has_suggestion)
+                                               has_suggestion=has_suggestion, matcher=matcher)
 
         total = self._query_one(f"SELECT COUNT(*) AS n FROM groups g {where_sql}", params)["n"]
         rows = self._query(
@@ -484,39 +525,50 @@ class StateStore:
             "g.execute_requested DESC, g.updated_at DESC, g.id DESC LIMIT ? OFFSET ?",
             params + [limit, offset])
         items = [self._group_row(r) for r in rows]
-        if items:
-            # attach a light-weight preview of the members (for thumbnails in list views)
-            ids = [g["id"] for g in items]
-            placeholders = ",".join("?" * len(ids))
+        self._attach_members(items)
+        return {"total": total, "items": items}
+
+    def _attach_members(self, groups: List[dict]):
+        """
+        Attaches a light-weight preview of the members (for thumbnails in list views) as "members".
+        """
+        if not groups:
+            return
+        ids = [g["id"] for g in groups]
+        by_group = {}
+        for start in range(0, len(ids), 500):
+            chunk = ids[start:start + 500]
+            placeholders = ",".join("?" * len(chunk))
             members = self._query(
-                f"SELECT id, group_id, path, role, rank FROM candidates WHERE group_id IN ({placeholders}) "
-                "ORDER BY group_id, rank", ids)
-            by_group = {}
+                f"SELECT id, group_id, path, role, rank, variant_kind FROM candidates "
+                f"WHERE group_id IN ({placeholders}) ORDER BY group_id, rank", chunk)
             for m in members:
                 by_group.setdefault(m["group_id"], []).append(m)
-            for g in items:
-                g["members"] = by_group.get(g["id"], [])
-        return {"total": total, "items": items}
+        for g in groups:
+            g["members"] = by_group.get(g["id"], [])
 
     def list_group_ids(self, status: str | None = None, needs_review: bool | None = None, search: str | None = None,
                        decided_by: str | None = None, keeps_smaller_copy: bool | None = None,
-                       has_suggestion: bool | None = None) -> List[int]:
+                       has_suggestion: bool | None = None, matcher: str | None = None) -> List[int]:
         """
         :return: ids of all groups matching the given filter (same filter as list_groups)
         """
         where_sql, params = self._group_filter(status=status, needs_review=needs_review, search=search,
                                                decided_by=decided_by, keeps_smaller_copy=keeps_smaller_copy,
-                                               has_suggestion=has_suggestion)
+                                               has_suggestion=has_suggestion, matcher=matcher)
         return [row["id"] for row in self._query(f"SELECT g.id FROM groups g {where_sql} ORDER BY g.id", params)]
 
     @staticmethod
     def _group_filter(status: str | None = None, needs_review: bool | None = None, search: str | None = None,
                       decided_by: str | None = None, keeps_smaller_copy: bool | None = None,
-                      has_suggestion: bool | None = None) -> tuple:
+                      has_suggestion: bool | None = None, matcher: str | None = None) -> tuple:
         """
         :return: (WHERE clause for the groups table aliased as "g", parameters)
         """
         where, params = [], []
+        if matcher:
+            where.append("g.matcher = ?")
+            params.append(matcher)
         if keeps_smaller_copy:
             where.append(_KEEPS_SMALLER_COPY_SQL)
         if has_suggestion:
@@ -543,7 +595,7 @@ class StateStore:
 
         * accept: open/review groups decided by the rules: the rule keeper becomes the user chosen keeper,
           so the daemon executes it (like set_user_keeper). Ignored groups and groups with a decision
-          of the user are not changed (reset them first).
+          of the user are not changed (reset them first), record-only groups (see is_actionable) never.
         * ignore: open/review groups
         * reset: open/review/ignored groups with a user decision or the ignored status
 
@@ -569,7 +621,9 @@ class StateStore:
                 elif group["status"] == GroupStatus.RESOLVED:
                     skip("resolved")
                 elif action == BulkAction.ACCEPT:
-                    if group["status"] == GroupStatus.IGNORED:
+                    if not group["actionable"]:
+                        skip("record_only")
+                    elif group["status"] == GroupStatus.IGNORED:
                         skip("ignored")
                     elif group["decision_source"] == DecisionSource.USER:
                         skip("decided_by_user")
@@ -597,10 +651,16 @@ class StateStore:
         (see pending_executions()), respecting dry_run.
         :raises KeyError: unknown group
         :raises ValueError: keep_path is not a member of the group
+        :raises GroupNotActionableError: the group is record-only (see is_actionable)
         """
         group = self.get_group(group_id)
         if group is None:
             raise KeyError(group_id)
+        if not group["actionable"]:
+            raise GroupNotActionableError(
+                f"Group {group_id} was found by the '{group['matcher']}' matcher, which only records its groups "
+                f"for comparison (acting matcher: {', '.join(sorted(self.actionable_matchers))}). "
+                f"Set matching.backend accordingly to decide on it.")
         if keep_path not in [c["path"] for c in group["candidates"]]:
             raise ValueError(f"'{keep_path}' is not a member of group {group_id}")
         with self._lock, self._conn:
@@ -648,7 +708,8 @@ class StateStore:
           with set_user_keeper. Importing again only refreshes the suggestion.
 
         Groups with an existing user decision (or ignored/resolved ones), without discarded members,
-        with all members discarded or with more than one remaining member are left alone.
+        with all members discarded or with more than one remaining member are left alone,
+        record-only groups (see is_actionable) are skipped entirely.
 
         :param discarded_paths: paths of the files that were discarded (as seen by this application)
         :param apply: False only reports what would be decided
@@ -664,6 +725,8 @@ class StateStore:
         rows = self._query("SELECT * FROM groups WHERE status IN (?, ?) ORDER BY id",
                            (GroupStatus.OPEN, GroupStatus.REVIEW))
         for row in rows:
+            if not self.is_actionable(row["matcher"]):
+                continue
             candidates = self.get_candidates(row["id"])
             paths = [c["path"] for c in candidates]
             remaining = [p for p in paths if p not in discarded]
@@ -738,6 +801,9 @@ class StateStore:
         result = []
         for row in rows:
             group = self._group_row(row)
+            if not group["actionable"]:
+                # defense in depth, set_user_keeper refuses these groups
+                continue
             group["candidates"] = self.get_candidates(group["id"])
             result.append(group)
         return result
@@ -762,21 +828,28 @@ class StateStore:
                     "UPDATE groups SET status = ?, resolved_at = ?, updated_at = ? WHERE id = ? AND status != ?",
                     (GroupStatus.RESOLVED, now, now, group_id, GroupStatus.IGNORED))
 
-    def resolve_unseen_groups(self, run_id: int) -> int:
+    def resolve_unseen_groups(self, run_id: int, matchers: Iterable[str] | None = None) -> int:
         """
         Marks open groups that were not found again by the given (full) run as resolved,
         f.ex. because some of their files have been removed by another tool in the meantime.
         Only call this after a full run, which sees every file in the source directories.
 
         :param run_id: the full run
+        :param matchers: only groups of these matchers (the ones that ran completely), None: all
         :return: number of resolved groups
         """
         now = time.time()
+        sql = "UPDATE groups SET status = ?, resolved_at = ?, updated_at = ? " \
+              "WHERE status IN (?, ?) AND (last_seen_run_id IS NULL OR last_seen_run_id != ?)"
+        params = [GroupStatus.RESOLVED, now, now, GroupStatus.OPEN, GroupStatus.REVIEW, run_id]
+        if matchers is not None:
+            matchers = list(matchers)
+            if not matchers:
+                return 0
+            sql += f" AND matcher IN ({','.join('?' * len(matchers))})"
+            params += matchers
         with self._lock, self._conn:
-            cursor = self._conn.execute(
-                "UPDATE groups SET status = ?, resolved_at = ?, updated_at = ? "
-                "WHERE status IN (?, ?) AND (last_seen_run_id IS NULL OR last_seen_run_id != ?)",
-                (GroupStatus.RESOLVED, now, now, GroupStatus.OPEN, GroupStatus.REVIEW, run_id))
+            cursor = self._conn.execute(sql, params)
             return cursor.rowcount
 
     def mark_restored(self, group_id: int):
@@ -806,11 +879,20 @@ class StateStore:
             "UPDATE candidates SET role = CASE WHEN path = ? THEN 'keep' ELSE 'duplicate' END WHERE group_id = ?",
             (keep_path, group_id))
 
-    @staticmethod
-    def _group_row(row: dict) -> dict:
+    def is_actionable(self, matcher: str) -> bool:
+        """
+        :return: True if groups of this matcher may be acted on (rules, user decisions), False if they are
+                 only recorded (f.ex. for a comparison of two matchers)
+        """
+        return self.actionable_matchers is None or matcher in self.actionable_matchers
+
+    def _group_row(self, row: dict) -> dict:
         row = dict(row)
         row["needs_review"] = bool(row["needs_review"])
         row["execute_requested"] = bool(row["execute_requested"])
+        reasons = row.get("match_review_reasons")
+        row["match_review_reasons"] = json.loads(reasons) if reasons else []
+        row["actionable"] = self.is_actionable(row["matcher"])
         return row
 
     # ---------------------------------------------------------------- actions
@@ -938,11 +1020,14 @@ class StateStore:
             self._conn.execute("DELETE FROM failures WHERE path = ?", (path,))
             self._failure_paths.discard(path)
 
-    def failure_paths(self) -> List[str]:
+    def failure_paths(self, phase: str | None = None) -> List[str]:
         """
+        :param phase: only failures of this phase
         :return: paths of all files with a recorded failure
         """
-        return [row["path"] for row in self._query("SELECT path FROM failures")]
+        if phase is None:
+            return [row["path"] for row in self._query("SELECT path FROM failures")]
+        return [row["path"] for row in self._query("SELECT path FROM failures WHERE phase = ?", (phase,))]
 
     def list_failures(self, limit: int = 100, offset: int = 0) -> dict:
         total = self._query_one("SELECT COUNT(*) AS n FROM failures")["n"]
@@ -982,4 +1067,113 @@ class StateStore:
             "keeps_smaller_copy": self._query_one(
                 f"SELECT COUNT(*) AS n FROM groups g WHERE g.status IN (?, ?) AND {_KEEPS_SMALLER_COPY_SQL}",
                 (GroupStatus.OPEN, GroupStatus.REVIEW))["n"],
+            "groups_by_matcher": {
+                row["matcher"]: row["n"] for row in
+                self._query("SELECT matcher, COUNT(*) AS n FROM groups GROUP BY matcher ORDER BY matcher")
+            },
         }
+
+    # ---------------------------------------------------------------- comparison of two matchers
+
+    def compare_matchers(self, left: str, right: str, statuses: Iterable[str] | None = None,
+                         category: str | None = None, limit: int = 50, offset: int = 0) -> dict:
+        """
+        Compares the groups found by two matchers by their members. Groups of both matchers that share a file
+        form a cluster (connected components), every cluster falls into one category:
+
+        * same: exactly one group of each matcher, with the same members
+        * different: groups of both matchers, but grouped differently (other members, split or merged groups)
+        * only_<left> / only_<right>: no group of the other matcher contains any of the files
+
+        :param left: first matcher (f.ex. "image-match")
+        :param right: second matcher (f.ex. "hashes")
+        :param statuses: only groups with one of these statuses, default: open and review (the current findings)
+        :param category: only list clusters of this category (the counts always cover all categories)
+        :param limit: maximum number of listed clusters
+        :param offset: number of clusters to skip
+        :return: {"left", "right", "counts": {category: clusters}, "files": {category: files}, "total", "items":
+                 [{"category", "left": [group], "right": [group], "only_left_paths", "only_right_paths"}]}
+        """
+        statuses = list(statuses) if statuses is not None else [GroupStatus.OPEN, GroupStatus.REVIEW]
+        categories = ["same", "different", f"only_{left}", f"only_{right}"]
+        if category is not None and category not in categories:
+            raise ValueError(f"category must be one of {categories}")
+        placeholders = ",".join("?" * len(statuses))
+        rows = self._query(f"SELECT * FROM groups WHERE matcher IN (?, ?) AND status IN ({placeholders}) "
+                           "ORDER BY id", [left, right] + statuses) if statuses else []
+        groups = {row["id"]: self._group_row(row) for row in rows}
+        paths_of = {group_id: set() for group_id in groups}
+        if groups:
+            ids = list(groups)
+            for start in range(0, len(ids), 500):
+                chunk = ids[start:start + 500]
+                for row in self._query(f"SELECT group_id, path FROM candidates WHERE group_id IN "
+                                       f"({','.join('?' * len(chunk))})", chunk):
+                    paths_of[row["group_id"]].add(row["path"])
+
+        # union-find over groups that share a file
+        parent = {group_id: group_id for group_id in groups}
+
+        def find(x: int) -> int:
+            while parent[x] != x:
+                parent[x] = parent[parent[x]]
+                x = parent[x]
+            return x
+
+        group_of_path = {}
+        for group_id, paths in paths_of.items():
+            for path in paths:
+                other = group_of_path.setdefault(path, group_id)
+                if other != group_id:
+                    parent[find(group_id)] = find(other)
+        clusters = {}
+        for group_id in groups:
+            clusters.setdefault(find(group_id), []).append(group_id)
+
+        result_clusters = []
+        for members in clusters.values():
+            left_ids = [g for g in members if groups[g]["matcher"] == left]
+            right_ids = [g for g in members if groups[g]["matcher"] == right]
+            left_paths = set().union(*(paths_of[g] for g in left_ids))
+            right_paths = set().union(*(paths_of[g] for g in right_ids))
+            if not right_ids:
+                kind = f"only_{left}"
+            elif not left_ids:
+                kind = f"only_{right}"
+            elif len(left_ids) == 1 and len(right_ids) == 1 and left_paths == right_paths:
+                kind = "same"
+            else:
+                kind = "different"
+            result_clusters.append({
+                "category": kind,
+                "left_ids": left_ids,
+                "right_ids": right_ids,
+                "only_left_paths": sorted(left_paths - right_paths) if left_ids and right_ids else [],
+                "only_right_paths": sorted(right_paths - left_paths) if left_ids and right_ids else [],
+                "files": len(left_paths | right_paths),
+                "sort": max(groups[g]["updated_at"] for g in members),
+            })
+
+        counts = {c: 0 for c in categories}
+        files = {c: 0 for c in categories}
+        for cluster in result_clusters:
+            counts[cluster["category"]] += 1
+            files[cluster["category"]] += cluster["files"]
+
+        # most relevant first: differences, then the groups only one matcher found, then agreements
+        order = {"different": 0, f"only_{right}": 1, f"only_{left}": 2, "same": 3}
+        selected = [c for c in result_clusters if category is None or c["category"] == category]
+        selected.sort(key=lambda c: (order[c["category"]], -c["sort"], min(c["left_ids"] + c["right_ids"])))
+        page = selected[offset:offset + limit]
+
+        listed = [groups[g] for c in page for g in c["left_ids"] + c["right_ids"]]
+        self._attach_members(listed)
+        items = [{
+            "category": c["category"],
+            "left": [groups[g] for g in c["left_ids"]],
+            "right": [groups[g] for g in c["right_ids"]],
+            "only_left_paths": c["only_left_paths"],
+            "only_right_paths": c["only_right_paths"],
+        } for c in page]
+        return {"left": left, "right": right, "statuses": statuses, "categories": categories,
+                "counts": counts, "files": files, "total": len(selected), "items": items}

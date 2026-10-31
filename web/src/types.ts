@@ -25,6 +25,13 @@ export interface RunSummary {
   moved: number
   deleted: number
   removed_folders: number
+  // hash pipeline (matching.backend "hashes" or "both")
+  hashes_analysed?: number
+  hashes_failed?: number
+  hashes_groups?: number
+  hashes_review_groups?: number
+  hashes_record_only?: boolean
+  hashes_error?: string
 }
 
 export interface Phase {
@@ -63,6 +70,17 @@ export interface Statistics {
   decided_by: Record<string, number>
   runs: number
   keeps_smaller_copy: number
+  groups_by_matcher: Record<string, number>
+}
+
+export type MatchingBackend = 'image-match' | 'hashes' | 'both'
+
+export interface MatchingStatus {
+  backend: MatchingBackend
+  // groups of other matchers are record-only (never acted on)
+  acting_matcher: string
+  matchers: string[]
+  embeddings: boolean
 }
 
 export interface Status {
@@ -72,6 +90,7 @@ export interface Status {
   user_decisions_dry_run: boolean
   duplicates_target_directory: string | null
   hold_ambiguous_groups: boolean
+  matching: MatchingStatus
   live: LiveStatus
   statistics: Statistics
   last_run: Run | null
@@ -84,7 +103,20 @@ export interface GroupMember {
   path: string
   role: 'keep' | 'duplicate'
   rank: number
+  variant_kind: VariantKind | null
 }
+
+// how a member relates to its group (hash pipeline), see py_image_dedup/matching/models.py VariantKind
+export type VariantKind =
+  | 'exact'
+  | 'pixel-identical'
+  | 'copy'
+  | 'rotated'
+  | 'grayscale'
+  | 'colour-edited'
+  | 'crop'
+  | 'burst'
+export type MatchReason = 'exact' | 'pixel-identical' | 'near-duplicate' | 'embedding'
 
 export interface Group {
   id: number
@@ -108,6 +140,11 @@ export interface Group {
   // keeper suggested by another tool (f.ex. Immich) that differs from the rules, see the decision import
   suggested_keep_path: string | null
   suggestion_source: 'immich' | 'import' | null
+  // hash pipeline: confidence of the weakest match, why automatic action is not allowed
+  match_confidence: number | null
+  match_review_reasons: string[]
+  // false: found by a matcher that only records its groups (matching.backend "both"), never acted on
+  actionable: boolean
   members?: GroupMember[]
 }
 
@@ -129,9 +166,16 @@ export interface Candidate {
   pixel_count: number | null
   modified_at: number | null
   exif_tag_count: number | null
+  // hash pipeline only
+  variant_kind: VariantKind | null
+  // transform that turns the matched partner into this file, null if upright
+  orientation: string | null
+  match_confidence: number | null
+  match_reason: MatchReason | null
   metadata: {
     criteria?: Criterion[]
     exif?: Record<string, unknown> | null
+    match?: { notes: string[]; partner: string | null }
   }
   exists: boolean
   moved_to: string | null
@@ -180,6 +224,7 @@ export interface GroupFilter {
   q?: string
   keeps_smaller_copy?: boolean
   has_suggestion?: boolean
+  matcher?: string
 }
 
 export interface BulkResult {
@@ -187,6 +232,28 @@ export interface BulkResult {
   changed: number[]
   skipped: Record<string, number>
   dry_run: boolean
+}
+
+export interface CompareCluster {
+  category: string
+  left: Group[]
+  right: Group[]
+  // files only grouped by one of the matchers (only for clusters with groups of both)
+  only_left_paths: string[]
+  only_right_paths: string[]
+}
+
+export interface CompareResult {
+  left: string
+  right: string
+  statuses: GroupStatus[]
+  // same, different, only_<left>, only_<right>
+  categories: string[]
+  // clusters per category
+  counts: Record<string, number>
+  files: Record<string, number>
+  total: number
+  items: CompareCluster[]
 }
 
 export interface Page<T> {

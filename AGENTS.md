@@ -62,7 +62,8 @@ py_image_dedup/
   integrations/
     immich.py                  # ImmichClient: trashed assets via the Immich API (requests), path mappings
   library/
-    deduplicator.py            # ImageMatchDeduplicator: the 6 phases, candidate selection & prioritization
+    deduplicator.py            # ImageMatchDeduplicator: the 6 (8 with backend both) phases, candidate selection & prioritization
+    hash_matcher.py            # HashMatcher: runs the matching pipeline over the source dirs (matching.backend hashes/both)
     processing_manager.py      # daemon: file watchers + debounced processing queue
     file_watch.py              # watchdog event handler
     deduplication_result.py    # result model + console output
@@ -71,8 +72,8 @@ py_image_dedup/
     __init__.py                # ImageSignatureStore base class (metadata, EXIF, datamodel version)
     elasticsearchstorebackend.py  # Elasticsearch + image-match implementation
     metadata_key.py            # keys of stored documents
-  matching/                    # EXPERIMENTAL prototype (not wired in): SQLite signatures (SHA-256, pixel hash,
-                               # pHash/dHash), staged grouping + confidence, burst veto, union-find clustering
+  matching/                    # hash pipeline (matching.backend hashes/both): SQLite signatures (SHA-256, pixel hash,
+                               # pHash/dHash), staged grouping + confidence, burst factor, union-find clustering
                                # (see docs/matching-prototype.md), benchmark.py: `python -m py_image_dedup.matching.benchmark`
     store.py                   # SignatureStore interface, SqliteSignatureStore (default, own DB file, separate from
                                # the state store), open_signature_store(url): sqlite:///... | postgresql://...
@@ -83,7 +84,7 @@ py_image_dedup/
   util/                        # file + image helpers, echo()
 web/                           # Vue 3 + Vite + TypeScript single page app (no component library)
   src/api.ts, src/types.ts     # typed client for the JSON API (keep in sync with py_image_dedup/web/app.py)
-  src/views/                   # Dashboard, Groups, GroupDetail, Run, Actions, Config
+  src/views/                   # Dashboard, Groups, GroupDetail, Compare (image-match vs. hashes), Run, Actions, Config
   src/polling.ts               # polling composable (status: 1s while busy, 3s idle; paused in hidden tabs)
 tests/                         # pytest/unittest tests, test config + sample images
 tools/export_sscd_onnx.py      # exports the SSCD model to ONNX (needs PyTorch in a separate virtualenv)
@@ -106,6 +107,24 @@ py_image_dedup_reference.yaml  # documented reference configuration
   implementation. Its constructor blocks (retry loop) until Elasticsearch answers. Bump
   `ImageSignatureStore.DATAMODEL_VERSION` when the stored document format changes — entries with another
   version are re-analysed.
+- **Matching backends** (`matching.backend`, `config.uses_image_match` / `uses_hashes` / `acting_matcher`):
+  `image-match` (default, ES), `hashes` (`library/hash_matcher.py` + `matching/`, no ES: `_persistence` is `None`,
+  guard every use) or `both`. With `both` a full run has 8 phases: image-match analyse/find, then the hash pipeline
+  analyse/find over the same files, then move/delete. Hash groups are recorded with `matcher="hashes"` and are
+  **record-only**: `_record_group(record_only=True)` returns `None` and never touches `_group_of_path`;
+  `StateStore(actionable_matchers=...)` (set by the daemon/deduplicator to `{acting_matcher}`) makes
+  `set_user_keeper` raise `GroupNotActionableError`, `bulk_decision` skip them (`record_only`),
+  `pending_executions`/`import_discarded_paths` ignore them and the API return 409. A failing hash pipeline never
+  breaks the image-match run (`summary.hashes_error`). Incremental daemon runs only use image-match; with `hashes`
+  a batch of file changes triggers a full run. Hash groups are ranked with the same prioritization rules
+  (metadata via `ImageSignatureStore._create_metadata_dict`, `distance` = 1 - match confidence, `score` = 0);
+  groups with pipeline `review_reasons` (variants, bursts, low confidence) are held for review regardless of
+  `hold_ambiguous_groups`. Group keys include the matcher for all matchers except image-match (legacy keys stay
+  valid), so the same members found by both are two groups; `resolve_unseen_groups` only resolves groups of the
+  matchers that completed the run. Per candidate the store keeps `variant_kind`, `orientation`, `match_confidence`,
+  `match_reason` (+ notes/partner in `metadata.match`), per group `match_confidence` and `match_review_reasons`
+  (schema version 3). `StateStore.compare_matchers` / `GET /api/compare` cluster groups of two matchers by shared
+  files into same / different / only_<matcher>.
 - **image-match** is consumed from a fork (`markusressel/image-match`, PEP 508 git reference with a tag in `pyproject.toml`).
   Upstream is unmaintained. Changes to signature generation or the ES driver need a new tag in that fork.
 - **Daemon**: `ProcessingManager` collects watchdog events into a queue and processes the affected

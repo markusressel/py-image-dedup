@@ -116,7 +116,7 @@ class ProtectedPathsTest(_ConfigTestBase):
         self.config.DEDUPLICATOR_DUPLICATES_TARGET_DIRECTORY.value = tmp / "duplicates"
         self.config.PROTECTED_PATHS.value = ["/Familie/"]
 
-        group = self.store.record_group(run_id=None, matcher="test", candidates=[{"path": str(album)},
+        group = self.store.record_group(run_id=None, matcher="image-match", candidates=[{"path": str(album)},
                                                                                  {"path": str(camera)}],
                                         keep_paths=[str(album)], decided_by="x", decision_reason="test")
         self.store.set_user_keeper(group["id"], str(camera))

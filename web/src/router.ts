@@ -19,6 +19,12 @@ export const router = createRouter({
       meta: { title: 'Duplicate group' },
     },
     {
+      path: '/compare',
+      name: 'compare',
+      component: () => import('./views/CompareView.vue'),
+      meta: { title: 'Compare matchers' },
+    },
+    {
       path: '/runs/:id(\\d+)',
       name: 'run',
       component: () => import('./views/RunView.vue'),
