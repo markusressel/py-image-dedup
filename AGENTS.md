@@ -147,8 +147,10 @@ py_image_dedup_reference.yaml  # documented reference configuration
 
 GitHub Actions (`.github/workflows/`):
 
-- `dockerimage-test.yml`: builds the Docker image on PRs (this is the main "does it still install" check).
-- `dockerimage-latest.yml` / `dockerimage-release.yml`: build and push `markusressel/py-image-dedup` on master / tags.
+- `dockerimage-test.yml`: builds the Docker image on PRs, natively on amd64 and arm64 runners (this is the main "does it still install" check).
+- `dockerimage-latest.yml` / `dockerimage-release.yml`: build (buildx + QEMU, `linux/amd64` + `linux/arm64`) and push
+  `markusressel/py-image-dedup` on master / tags. Every binary dependency needs a cp314 `manylinux` aarch64 wheel,
+  otherwise the emulated arm64 build compiles it from source.
 - `tests.yml`: unit tests, web UI lint + type-check + build, and integration tests (Elasticsearch service container)
   on PRs and pushes to master.
 - `codespell.yml`: spelling (config in `pyproject.toml`, ignores in `.codespellignore`).

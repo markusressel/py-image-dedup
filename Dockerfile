@@ -1,5 +1,6 @@
-# build the web UI (Vue single page app), only its static files end up in the final image
-FROM node:24-bookworm-slim AS web
+# build the web UI (Vue single page app), only its static files end up in the final image.
+# The output is platform independent, so it is always built natively on the build host (no emulation in multi-platform builds)
+FROM --platform=$BUILDPLATFORM node:24-bookworm-slim AS web
 WORKDIR /web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci --no-audit --no-fund
