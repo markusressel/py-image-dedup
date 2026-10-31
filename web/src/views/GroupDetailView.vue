@@ -13,7 +13,7 @@ const props = defineProps<{ id: number }>()
 
 const group = usePolling<GroupDetail>(
   () => api.group(props.id),
-  (g) => (g?.execute_requested ? 1500 : 10000),
+  (g) => (g?.execute_requested || g?.restore_requested ? 1500 : 10000),
 )
 watch(() => props.id, () => group.refresh())
 
@@ -69,6 +69,20 @@ function keep(candidate: Candidate) {
   run(() => api.keep(props.id, candidate.id))
 }
 
+function undoMoves() {
+  const current = g.value
+  if (!current) return
+  const question =
+    `Move the ${current.undoable_moves} moved file(s) of this group back to their original location?\n\n` +
+    'A file is only restored if nothing exists at its original location. The group is set to ignored, ' +
+    'so its files are not moved again until you reset it.' +
+    (status.value?.user_decisions_dry_run ?? true
+      ? '\n\nDry run is enabled for your decisions: this is only simulated.'
+      : '')
+  if (!window.confirm(question)) return
+  run(() => api.undoGroup(current.id))
+}
+
 function plannedFor(candidate: Candidate) {
   return g.value?.planned_actions.find((a) => a.path === candidate.path)
 }
@@ -86,6 +100,7 @@ function plannedFor(candidate: Candidate) {
             Group #{{ g.id }}
             <StatusBadge :value="g.status" />
             <span v-if="g.execute_requested" class="tag tag-info">your decision is queued</span>
+            <span v-if="g.restore_requested" class="tag tag-info">restore queued</span>
           </h2>
           <span class="muted small">{{ g.candidate_count }} files · matched by {{ g.matcher }}</span>
         </div>
@@ -137,6 +152,14 @@ function plannedFor(candidate: Candidate) {
             @click="run(() => api.reset(g!.id))"
           >
             Reset to rule decision
+          </button>
+          <button
+            v-if="g.undoable_moves > g.restore_requested"
+            :disabled="busy"
+            title="Move the moved files of this group back to their original location"
+            @click="undoMoves"
+          >
+            Undo moves ({{ g.undoable_moves - g.restore_requested }})
           </button>
           <span v-if="!canDecide" class="muted small">
             Choosing a different copy requires <code>duplicates_target_directory</code>: the web UI only moves files.
@@ -224,7 +247,7 @@ function plannedFor(candidate: Candidate) {
         <div class="card-head">
           <h2>Actions</h2>
         </div>
-        <ActionTable :actions="g.actions" />
+        <ActionTable :actions="g.actions" @changed="group.refresh()" />
       </section>
     </template>
     <div v-else-if="!group.error.value" class="muted">Loading…</div>

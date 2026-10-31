@@ -1,9 +1,12 @@
 import type {
   Action,
+  BulkAction,
+  BulkResult,
   ConfigResponse,
   Failure,
   Group,
   GroupDetail,
+  GroupFilter,
   GroupImmichAssets,
   ImmichImportResult,
   ImmichStatus,
@@ -62,6 +65,10 @@ export const api = {
     request<GroupDetail>('POST', `/api/groups/${groupId}/keep`, { candidate_id: candidateId }),
   ignore: (groupId: number) => request<GroupDetail>('POST', `/api/groups/${groupId}/ignore`),
   reset: (groupId: number) => request<GroupDetail>('POST', `/api/groups/${groupId}/reset`),
+  bulk: (action: BulkAction, target: { group_ids: number[] } | { filter: GroupFilter }) =>
+    request<BulkResult>('POST', '/api/groups/bulk', { action, ...target }),
+  undoGroup: (groupId: number) => request<GroupDetail>('POST', `/api/groups/${groupId}/undo`),
+  undoAction: (actionId: number) => request<Action>('POST', `/api/actions/${actionId}/undo`),
   actions: (params?: Params) => request<Page<Action>>('GET', `/api/actions${query(params)}`),
   failures: (params?: Params) => request<Page<Failure>>('GET', `/api/failures${query(params)}`),
   config: () => request<ConfigResponse>('GET', '/api/config'),

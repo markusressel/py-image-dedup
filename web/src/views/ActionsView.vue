@@ -62,7 +62,7 @@ const FILTERS = [
     </div>
     <div v-if="actions.error.value" class="error-box">{{ actions.error.value }}</div>
     <section class="card">
-      <ActionTable :actions="actions.data.value?.items ?? []" show-group />
+      <ActionTable :actions="actions.data.value?.items ?? []" show-group @changed="actions.refresh()" />
     </section>
     <PagerNav
       v-if="actions.data.value && actions.data.value.total > LIMIT"

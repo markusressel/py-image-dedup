@@ -188,6 +188,18 @@ finished). Decisions from the web UI only ever **move** duplicates to `duplicate
 never delete files, so they require `duplicates_target_directory` to be set. `dry_run` applies to them too:
 while it is enabled, nothing on disk is touched and the action log shows what would have happened.
 Set `dry_run_user_decisions: false` to execute your decisions while the prioritization rules stay in dry run.
+The group list and the banner show whether your decisions are executed or only simulated.
+
+The group list supports bulk actions: select groups (or all groups matching the current filter) and
+**accept the rule decision** (the daemon executes the decision of the prioritization rules like a decision of
+yours, requires `duplicates_target_directory`), **ignore** or **reset** them (`POST /api/groups/bulk`).
+Resolved groups are never changed, accepting skips ignored groups and groups you already decided.
+
+Moves can be undone from the action log or the group detail page (`POST /api/actions/{id}/undo`,
+`POST /api/groups/{id}/undo`): the daemon moves the file back to its original location, but only if nothing
+exists there (it never overwrites a file), logs it as a `restore` action and respects the dry run setting for
+your decisions. The group of a restored file is set to **ignored**, so neither the rules nor a pending decision
+move it again. Reset the group to let the rules act on it again.
 
 Decisions made in another tool can be imported with `POST /api/decisions/import-discarded`
 (`{"discarded_paths": [...], "apply": false}`, see `/api/docs`): every open group where all but one member

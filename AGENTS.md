@@ -116,6 +116,11 @@ py_image_dedup_reference.yaml  # documented reference configuration
   and abort if the file to keep is missing. `POST /api/decisions/import-discarded` turns decisions made in
   another tool into such user decisions; `POST /api/integrations/immich/import-trash` does the same with the
   Immich trash fetched via the Immich API (`immich.*` config, dashboard card).
+  `POST /api/groups/bulk` applies accept (rule keeper becomes the user keeper)/ignore/reset to many groups
+  (`StateStore.bulk_decision`, never changes resolved groups). Undo of a move: `request_restore` queues the
+  last successful move of a file (`restore_requests` table), `execute_restore_requests` (same main loop,
+  `work_lock`) moves it back only if the original path is free (hard link + unlink, never overwrites), logs a
+  `restore` action and sets the group to ignored so it is not moved again.
 
 ## Testing
 

@@ -106,6 +106,7 @@ def c_daemon(dry_run: bool):
             # decisions made in the web UI
             try:
                 deduplicator.execute_user_decisions()
+                deduplicator.execute_restore_requests()
             except Exception as ex:
                 logging.exception(ex)
     except KeyboardInterrupt:
