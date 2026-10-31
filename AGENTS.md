@@ -14,7 +14,8 @@ that watches the source directories, exposes Prometheus metrics and serves a web
 (FastAPI JSON API + single page app, internal use, no authentication).
 
 - Language: Python `^3.14` (see `pyproject.toml`)
-- Packaging/deps: Poetry 2.x (`poetry.lock` is committed)
+- Packaging/deps: Poetry 2.x, metadata and runtime dependencies in the PEP 621 `[project]` table,
+  dev dependencies in `[tool.poetry.group.dev.dependencies]` (`poetry.lock` is committed)
 - Runtime dependency: Elasticsearch 7.x (see `docker-compose.yml`)
 - License: AGPLv3+
 
@@ -93,7 +94,7 @@ py_image_dedup_reference.yaml  # documented reference configuration
   implementation. Its constructor blocks (retry loop) until Elasticsearch answers. Bump
   `ImageSignatureStore.DATAMODEL_VERSION` when the stored document format changes — entries with another
   version are re-analysed.
-- **image-match** is consumed from a fork (`markusressel/image-match`, git tag in `pyproject.toml`).
+- **image-match** is consumed from a fork (`markusressel/image-match`, PEP 508 git reference with a tag in `pyproject.toml`).
   Upstream is unmaintained. Changes to signature generation or the ES driver need a new tag in that fork.
 - **Daemon**: `ProcessingManager` collects watchdog events into a queue and processes the affected
   *directories* after `processing_timeout` without new events (file-level processing is a TODO).
