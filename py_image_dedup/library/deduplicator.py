@@ -503,6 +503,7 @@ class ImageMatchDeduplicator:
             return
 
         duplicate_candidates = self._persistence.find_similar(str(reference_file_path))
+        duplicate_candidates = self._without_missing_files(duplicate_candidates, root_directories)
 
         if self._config.SEARCH_ACROSS_ROOT_DIRS.value:
             # filter by files in at least one of the specified root directories
@@ -542,6 +543,12 @@ class ImageMatchDeduplicator:
         sorted_duplicate_candidates = self._sort_by_quality_descending(duplicate_candidates)
         new_reference_file_path = sorted_duplicate_candidates[0][MetadataKey.PATH.value]
         duplicate_candidates = self._persistence.find_similar(new_reference_file_path)
+        duplicate_candidates = self._without_missing_files(duplicate_candidates, root_directories)
+        if len(duplicate_candidates) <= 1:
+            # the other copies disappeared in the meantime
+            for candidate in duplicate_candidates:
+                self._processed_files[Path(candidate[MetadataKey.PATH.value])] = True
+            return
 
         candidates_to_keep, candidates_to_delete = self._select_images_to_delete(duplicate_candidates)
         if self._state is not None:
@@ -551,6 +558,36 @@ class ImageMatchDeduplicator:
                 return
             candidates_to_keep, candidates_to_delete = decision
         self._save_duplicates_for_result(candidates_to_keep, candidates_to_delete)
+
+    def _without_missing_files(self, candidates: List[dict], root_directories: List[Path]) -> List[dict]:
+        """
+        Removes candidates whose file does not exist (anymore). The database still holds files
+        that were deleted after the database cleanup (f.ex. during a long running analysis),
+        those must neither end up in a duplicate group nor be chosen as the file to keep.
+        Their database entries are removed, if they are located in one of the root directories
+        (other paths might have been added on other machines, see cleanup_database).
+
+        :param candidates: duplicate candidates as returned by the persistence backend
+        :param root_directories: valid root directories
+        :return: candidates whose file exists
+        """
+        existing = []
+        for candidate in candidates:
+            candidate_path = Path(candidate[MetadataKey.PATH.value])
+            if candidate_path.exists():
+                existing.append(candidate)
+                continue
+
+            if any(root_dir in candidate_path.parents for root_dir in root_directories):
+                echo(f"Removing db entry of missing file: {candidate_path}", color='yellow')
+                try:
+                    self._persistence.remove(str(candidate_path))
+                except Exception as ex:
+                    LOGGER.warning(f"Could not remove db entry of missing file '{candidate_path}': {ex}")
+            else:
+                LOGGER.debug(f"Ignoring duplicate candidate outside of root directories that does not exist: "
+                             f"{candidate_path}")
+        return existing
 
     def _record_group(self, files_to_keep: List[dict], duplicates: List[dict]) -> tuple | None:
         """

@@ -46,6 +46,7 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
         self.host = host
         self.port = port
         self._connections_per_node = connections_per_node
+        self._last_connection_error: Exception | None = None
 
         detected_version = self._wait_for_db_version(connection_timeout)
 
@@ -110,21 +111,42 @@ class ElasticSearchStoreBackend(ImageSignatureStore):
             if remaining <= 0:
                 raise ConnectionError(
                     f"Elasticsearch at {self.host}:{self.port} is not reachable "
-                    f"after {attempt} attempt(s) within {timeout}, giving up")
+                    f"after {attempt} attempt(s) within {timeout}, giving up. "
+                    f"Last error: {self._describe_connection_error(short=False)}"
+                ) from self._last_connection_error
 
             delay = min(self.CONNECTION_RETRY_INTERVAL_SECONDS, remaining)
+            # a single line per attempt, a traceback for every retry while elasticsearch boots is just noise
             LOGGER.warning(
-                f"Elasticsearch at {self.host}:{self.port} is not reachable (attempt {attempt}), "
+                f"Elasticsearch at {self.host}:{self.port} is not reachable (attempt {attempt}, "
+                f"{self._describe_connection_error(short=True)}), "
                 f"retrying in {delay:.0f}s ({remaining:.0f}s left)")
             time.sleep(delay)
 
-    def _detect_db_version(self) -> int or None:
+    def _describe_connection_error(self, short: bool) -> str:
+        """
+        :param short: only the exception type, the message of connection errors spans several lines
+        :return: a description of the last error of _detect_db_version
+        """
+        ex = self._last_connection_error
+        if ex is None:
+            return "unknown error"
+        if short:
+            return type(ex).__name__
+        return f"{type(ex).__name__}: {ex}"
+
+    def _detect_db_version(self) -> int | None:
+        """
+        :return: the major version of the elasticsearch server, or None if it is not reachable (yet).
+                 The error is remembered in self._last_connection_error.
+        """
         try:
             response = requests.get('http://{}:{}'.format(self.host, self.port))
             response.raise_for_status()
+            self._last_connection_error = None
             return int(str(response.json()["version"]['number']).split(".")[0])
         except Exception as ex:
-            logging.exception(ex)
+            self._last_connection_error = ex
             return None
 
     def _setup_database(self):
