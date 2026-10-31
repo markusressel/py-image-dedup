@@ -364,6 +364,11 @@ main {
   font-weight: 500;
 }
 
+.action-restore {
+  color: var(--info);
+  font-weight: 500;
+}
+
 /* dashboard */
 
 .phase-line {
@@ -579,6 +584,28 @@ main {
   border-left: 4px solid var(--border);
   border-radius: var(--radius);
   color: var(--text);
+}
+
+.group-select-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.group-select-row > .group-row {
+  flex: 1;
+  min-width: 0;
+}
+
+.bulk-bar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.bulk-bar .buttons {
+  margin-top: 0;
 }
 
 .group-row:hover {

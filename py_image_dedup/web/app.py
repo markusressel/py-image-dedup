@@ -16,7 +16,7 @@ from pydantic import BaseModel
 
 from py_image_dedup.config import DeduplicatorConfig
 from py_image_dedup.integrations.immich import ImmichClient, ImmichError
-from py_image_dedup.state.store import StateStore, GroupStatus, DecisionSource
+from py_image_dedup.state.store import StateStore, GroupStatus, DecisionSource, BulkAction
 from py_image_dedup.web.thumbnails import ThumbnailCache
 
 LOGGER = logging.getLogger(__name__)
@@ -51,6 +51,24 @@ class ImportDiscardedRequest(BaseModel):
 
 class ImportRequest(BaseModel):
     apply: bool = False
+
+
+class GroupFilter(BaseModel):
+    """
+    Same filter as GET /api/groups
+    """
+    status: str | None = None
+    needs_review: bool | None = None
+    decided_by: str | None = None
+    q: str | None = None
+    keeps_smaller_copy: bool | None = None
+
+
+class BulkRequest(BaseModel):
+    action: str
+    group_ids: List[int] | None = None
+    # alternatively to group_ids: all groups matching this filter
+    filter: GroupFilter | None = None
 
 
 def _version() -> str:
@@ -171,6 +189,9 @@ def create_app(store: StateStore, config: DeduplicatorConfig, static_directory: 
         group["planned_actions"] = planned
         group["dry_run"] = dry_run
         group["actions"] = store.list_actions(limit=50, group_id=group["id"])["items"]
+        undoable = store.undoable_moves_of_group(group["id"])
+        group["undoable_moves"] = len(undoable)
+        group["restore_requested"] = sum(1 for a in undoable if a["restore_requested"])
         return group
 
     # ------------------------------------------------------------------ status
@@ -343,6 +364,44 @@ def create_app(store: StateStore, config: DeduplicatorConfig, static_directory: 
         store.reset_group(group_id)
         return with_details(store.get_group(group_id))
 
+    @app.post("/api/groups/bulk")
+    def bulk(request: BulkRequest):
+        """
+        Applies a decision to many groups: "accept" (execute the decision of the prioritization rules,
+        requires duplicates_target_directory), "ignore" or "reset". Pass either group_ids or a filter
+        (same as GET /api/groups). Groups the decision does not apply to are skipped, see StateStore.bulk_decision.
+        """
+        if request.action not in BulkAction.ALL:
+            raise HTTPException(status_code=400, detail=f"action must be one of {BulkAction.ALL}")
+        if (request.group_ids is None) == (request.filter is None):
+            raise HTTPException(status_code=400, detail="Pass either group_ids or filter")
+        if request.action == BulkAction.ACCEPT:
+            require_target_directory()
+        if request.filter is not None:
+            f = request.filter
+            if f.status is not None and f.status not in GroupStatus.ALL:
+                raise HTTPException(status_code=400, detail=f"status must be one of {GroupStatus.ALL}")
+            group_ids = store.list_group_ids(status=f.status, needs_review=f.needs_review, decided_by=f.decided_by,
+                                             search=f.q, keeps_smaller_copy=f.keeps_smaller_copy)
+        else:
+            group_ids = request.group_ids
+        result = store.bulk_decision(group_ids, request.action)
+        result["dry_run"] = config.user_decisions_dry_run
+        return result
+
+    @app.post("/api/groups/{group_id}/undo")
+    def undo_group(group_id: int):
+        """
+        Requests to move all moved files of this group back to their original location (see /api/actions/{id}/undo).
+        """
+        group_or_404(group_id)
+        undoable = store.undoable_moves_of_group(group_id)
+        if not undoable:
+            raise HTTPException(status_code=409, detail="No moved file of this group can be restored")
+        for action in undoable:
+            store.request_restore(action["id"])
+        return with_details(store.get_group(group_id))
+
     # ------------------------------------------------------------------ files
 
     @app.get("/api/candidates/{candidate_id}/thumbnail")
@@ -372,6 +431,20 @@ def create_app(store: StateStore, config: DeduplicatorConfig, static_directory: 
                      q: str | None = None):
         return store.list_actions(limit=limit, offset=offset, group_id=group_id, run_id=run_id, status=status,
                                   search=q)
+
+    @app.post("/api/actions/{action_id}/undo")
+    def undo_action(action_id: int):
+        """
+        Requests to move a moved file back to its original location. The daemon executes it within a few seconds,
+        only if the original location is free (never overwrites a file), and only simulates it in a dry run.
+        Its group is set to ignored, so the file is not moved again.
+        """
+        try:
+            return store.request_restore(action_id)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="Unknown action")
+        except ValueError as ex:
+            raise HTTPException(status_code=409, detail=str(ex))
 
     @app.get("/api/failures")
     def list_failures(limit: int = Query(100, ge=1, le=1000), offset: int = Query(0, ge=0)):

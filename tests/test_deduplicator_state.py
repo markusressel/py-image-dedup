@@ -364,3 +364,87 @@ class ExecuteUserDecisionTest(TestBase):
         rescan.assert_called_once()
         self.assertIn("down", "".join(logs.output))
         self.assertEqual(GroupStatus.RESOLVED, self.store.get_group(self.group_id)["status"])
+
+    def _move_and_request_restore(self) -> int:
+        self.config.DRY_RUN.value = False
+        self.store.set_user_keeper(self.group_id, str(self.files[1]))
+        self.dedup.execute_user_decisions()
+        self.assertEqual(GroupStatus.RESOLVED, self.store.get_group(self.group_id)["status"])
+        move = next(a for a in self.store.list_actions()["items"] if a["path"] == str(self.files[0]))
+        self.store.request_restore(move["id"])
+        return move["id"]
+
+    def test_restore_moved_file(self):
+        move_id = self._move_and_request_restore()
+
+        self.assertEqual(1, self.dedup.execute_restore_requests())
+
+        self.assertTrue(self.files[0].exists())
+        self.assertFalse(self._target_of(self.files[0]).exists())
+        # the other moved file is untouched
+        self.assertFalse(self.files[2].exists())
+        restore = self.store.list_actions()["items"][0]
+        self.assertEqual(("restore", ActionStatus.DONE, str(self.files[0]), str(self._target_of(self.files[0]))),
+                         (restore["action"], restore["status"], restore["path"], restore["target"]))
+        self.assertEqual(self.group_id, restore["group_id"])
+        self.assertEqual(DecisionSource.USER, restore["source"])
+        group = self.store.get_group(self.group_id)
+        # ignored, so the daemon does not move the file again
+        self.assertEqual(GroupStatus.IGNORED, group["status"])
+        self.assertFalse(group["execute_requested"])
+        self.assertFalse(self.store.get_action(move_id)["undoable"])
+        self.assertEqual(0, self.dedup.execute_restore_requests())
+
+    def test_restore_never_overwrites(self):
+        self._move_and_request_restore()
+        self.files[0].write_bytes(b"new file at the original location")
+
+        self.dedup.execute_restore_requests()
+
+        self.assertEqual(b"new file at the original location", self.files[0].read_bytes())
+        self.assertTrue(self._target_of(self.files[0]).exists())
+        restore = self.store.list_actions()["items"][0]
+        self.assertEqual(("restore", ActionStatus.SKIPPED), (restore["action"], restore["status"]))
+        self.assertEqual(GroupStatus.RESOLVED, self.store.get_group(self.group_id)["status"])
+        self.assertEqual([], self.store.pending_restores())
+
+    def test_restore_of_missing_moved_file_is_skipped(self):
+        self._move_and_request_restore()
+        self._target_of(self.files[0]).unlink()
+
+        self.dedup.execute_restore_requests()
+
+        self.assertFalse(self.files[0].exists())
+        self.assertEqual(ActionStatus.SKIPPED, self.store.list_actions()["items"][0]["status"])
+
+    def test_restore_respects_dry_run(self):
+        move_id = self._move_and_request_restore()
+        self.config.DRY_RUN.value = True
+
+        self.dedup.execute_restore_requests()
+
+        self.assertFalse(self.files[0].exists())
+        self.assertTrue(self._target_of(self.files[0]).exists())
+        self.assertEqual(ActionStatus.SIMULATED, self.store.list_actions()["items"][0]["status"])
+        self.assertEqual(GroupStatus.RESOLVED, self.store.get_group(self.group_id)["status"])
+        # a simulated restore does not count, the move can still be undone
+        self.assertTrue(self.store.get_action(move_id)["undoable"])
+
+    def test_restore_copies_if_hard_links_are_not_possible(self):
+        self._move_and_request_restore()
+        content = self._target_of(self.files[0]).read_bytes()
+
+        with mock.patch("os.link", side_effect=OSError(18, "Invalid cross-device link")):
+            self.dedup.execute_restore_requests()
+
+        self.assertEqual(content, self.files[0].read_bytes())
+        self.assertFalse(self._target_of(self.files[0]).exists())
+
+    def test_immich_rescan_after_restore(self):
+        self._move_and_request_restore()
+        rescan = self._enable_immich_rescan()
+
+        self.dedup.execute_restore_requests()
+
+        rescan.assert_called_once()
+        self.assertEqual([f"/immich/{self.files[0].name}"], list(rescan.call_args.args[0]))

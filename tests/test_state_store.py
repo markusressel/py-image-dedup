@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from py_image_dedup.state import StateStore, GroupStatus, DecisionSource, ActionStatus, group_key
+from py_image_dedup.state import StateStore, GroupStatus, DecisionSource, ActionStatus, BulkAction, group_key
 
 
 def _candidates(*paths):
@@ -259,6 +259,106 @@ class StateStoreTest(unittest.TestCase):
         self.assertEqual({"simulated": 1}, stats["actions"]["move"])
         self.assertEqual(1, stats["failures"])
         self.assertEqual({"longer-file-name": 1, "bigger-file-size": 1}, stats["decided_by"])
+
+    def test_bulk_accept(self):
+        rules = self._record()
+        user = self._record(paths=("/b/1.jpg", "/b/2.jpg"))
+        self.store.set_user_keeper(user["id"], "/b/2.jpg")
+        self.store.mark_executed(user["id"], resolved=False)
+        ignored = self._record(paths=("/c/1.jpg", "/c/2.jpg"))
+        self.store.ignore_group(ignored["id"])
+        resolved = self._record(paths=("/d/1.jpg", "/d/2.jpg"))
+        self.store.mark_resolved([resolved["id"]])
+
+        result = self.store.bulk_decision([rules["id"], user["id"], ignored["id"], resolved["id"], 999, rules["id"]],
+                                          BulkAction.ACCEPT)
+
+        self.assertEqual([rules["id"]], result["changed"])
+        self.assertEqual({"decided_by_user": 1, "ignored": 1, "resolved": 1, "unknown": 1}, result["skipped"])
+        group = self.store.get_group(rules["id"])
+        self.assertEqual((DecisionSource.USER, "/a/1.jpg", True),
+                         (group["decision_source"], group["keep_path"], group["execute_requested"]))
+        # the user's own choice is not replaced by the rule decision
+        self.assertEqual("/b/2.jpg", self.store.get_group(user["id"])["keep_path"])
+        self.assertFalse(self.store.get_group(user["id"])["execute_requested"])
+        self.assertEqual(GroupStatus.IGNORED, self.store.get_group(ignored["id"])["status"])
+        self.assertEqual(GroupStatus.RESOLVED, self.store.get_group(resolved["id"])["status"])
+
+    def test_bulk_ignore_and_reset(self):
+        review = self._record(needs_review=True)
+        open_group = self._record(paths=("/b/1.jpg", "/b/2.jpg"))
+        resolved = self._record(paths=("/d/1.jpg", "/d/2.jpg"))
+        self.store.mark_resolved([resolved["id"]])
+        ids = [review["id"], open_group["id"], resolved["id"]]
+
+        result = self.store.bulk_decision(ids, BulkAction.IGNORE)
+        self.assertEqual([review["id"], open_group["id"]], result["changed"])
+        self.assertEqual({"resolved": 1}, result["skipped"])
+        self.assertEqual(GroupStatus.IGNORED, self.store.get_group(review["id"])["status"])
+
+        self.assertEqual({"already_ignored": 2, "resolved": 1},
+                         self.store.bulk_decision(ids, BulkAction.IGNORE)["skipped"])
+
+        result = self.store.bulk_decision(ids, BulkAction.RESET)
+        self.assertEqual([review["id"], open_group["id"]], result["changed"])
+        self.assertEqual(GroupStatus.REVIEW, self.store.get_group(review["id"])["status"])
+        self.assertEqual(GroupStatus.OPEN, self.store.get_group(open_group["id"])["status"])
+        self.assertEqual({"nothing_to_reset": 2, "resolved": 1},
+                         self.store.bulk_decision(ids, BulkAction.RESET)["skipped"])
+
+        with self.assertRaises(ValueError):
+            self.store.bulk_decision(ids, "delete")
+
+    def test_list_group_ids(self):
+        review = self._record(needs_review=True)
+        self._record(paths=("/b/1.jpg", "/b/2.jpg"))
+        self.assertEqual([review["id"]], self.store.list_group_ids(status=GroupStatus.REVIEW))
+        self.assertEqual(2, len(self.store.list_group_ids()))
+        self.assertEqual(1, len(self.store.list_group_ids(search="/b/")))
+
+    def test_undo_move(self):
+        group = self._record()
+        simulated = self.store.record_action("/a/2.jpg", "move", DecisionSource.RULES, dry_run=True,
+                                             status=ActionStatus.SIMULATED, target="/t/a/2.jpg",
+                                             group_id=group["id"])
+        first = self.store.record_action("/a/3.jpg", "move", DecisionSource.RULES, dry_run=False,
+                                         status=ActionStatus.DONE, target="/t/a/3.jpg", group_id=group["id"])
+        move = self.store.record_action("/a/2.jpg", "move", DecisionSource.RULES, dry_run=False,
+                                        status=ActionStatus.DONE, target="/t/a/2.jpg", group_id=group["id"])
+
+        actions = {a["id"]: a for a in self.store.list_actions()["items"]}
+        self.assertFalse(actions[simulated]["undoable"])
+        self.assertTrue(actions[move]["undoable"])
+        self.assertEqual({first, move}, {a["id"] for a in self.store.undoable_moves_of_group(group["id"])})
+        with self.assertRaises(ValueError):
+            self.store.request_restore(simulated)
+        with self.assertRaises(KeyError):
+            self.store.request_restore(999)
+
+        self.assertTrue(self.store.request_restore(move)["restore_requested"])
+        self.store.request_restore(move)  # requesting twice is harmless
+        self.assertEqual([move], [a["id"] for a in self.store.pending_restores()])
+        self.assertEqual(1, self.store.statistics()["restore_requested"])
+        self.store.finish_restore(move)
+        self.assertEqual([], self.store.pending_restores())
+
+        # once the file is restored, the move can not be undone again and the file is not "moved" anymore
+        self.assertEqual("/t/a/2.jpg", self.store.last_move_target("/a/2.jpg"))
+        self.store.record_action("/a/2.jpg", "restore", DecisionSource.USER, dry_run=False,
+                                 status=ActionStatus.DONE, target="/t/a/2.jpg", group_id=group["id"])
+        self.assertIsNone(self.store.last_move_target("/a/2.jpg"))
+        self.assertFalse(self.store.get_action(move)["undoable"])
+        self.assertEqual([first], [a["id"] for a in self.store.undoable_moves_of_group(group["id"])])
+
+    def test_mark_restored_ignores_group(self):
+        group = self._record()
+        self.store.set_user_keeper(group["id"], "/a/2.jpg")
+        self.store.mark_resolved([group["id"]])
+        self.store.mark_restored(group["id"])
+        group = self.store.get_group(group["id"])
+        self.assertEqual((GroupStatus.IGNORED, False, None),
+                         (group["status"], group["execute_requested"], group["resolved_at"]))
+        self.assertEqual([group["id"]], self.store.group_ids_of_path("/a/2.jpg"))
 
 
 if __name__ == '__main__':

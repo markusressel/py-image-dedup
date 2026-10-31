@@ -56,6 +56,7 @@ export interface Statistics {
   groups_total: number
   needs_review: number
   execute_requested: number
+  restore_requested: number
   duplicate_files_open: number
   actions: Record<string, Record<string, number>>
   failures: number
@@ -145,12 +146,16 @@ export interface Action {
   run_id: number | null
   group_id: number | null
   path: string
-  action: 'move' | 'delete' | 'remove_folder'
+  // restore: the file was moved back from target to its original location (path)
+  action: 'move' | 'delete' | 'remove_folder' | 'restore'
   target: string | null
   source: 'rules' | 'user'
   dry_run: boolean
   status: ActionStatus
   message: string | null
+  // the last successful (non dry run) move of the file, can be undone
+  undoable: boolean
+  restore_requested: boolean
 }
 
 export interface GroupDetail extends Group {
@@ -158,6 +163,26 @@ export interface GroupDetail extends Group {
   planned_actions: PlannedAction[]
   dry_run: boolean
   actions: Action[]
+  // moved files of this group that can be moved back, and how many of them are requested to be
+  undoable_moves: number
+  restore_requested: number
+}
+
+export type BulkAction = 'accept' | 'ignore' | 'reset'
+
+export interface GroupFilter {
+  status?: GroupStatus
+  needs_review?: boolean
+  decided_by?: string
+  q?: string
+  keeps_smaller_copy?: boolean
+}
+
+export interface BulkResult {
+  action: BulkAction
+  changed: number[]
+  skipped: Record<string, number>
+  dry_run: boolean
 }
 
 export interface Page<T> {

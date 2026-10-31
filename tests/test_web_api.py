@@ -211,6 +211,58 @@ class WebApiTest(TestBase):
         self.assertEqual("review", reset["status"])
         self.assertEqual(str(IMAGE), reset["keep_path"])
 
+    def test_bulk(self):
+        other = self.store.record_group(run_id=None, matcher="test", candidates=[{"path": "/x/1.jpg"},
+                                                                                 {"path": "/x/2.jpg"}],
+                                        keep_paths=["/x/1.jpg"], decided_by="bigger-file-size", decision_reason="t")
+        ids = [self.group_id, other["id"]]
+
+        # accepting the rule decision moves files, so it requires the target directory
+        response = self.client.post("/api/groups/bulk", json={"action": "accept", "group_ids": ids})
+        self.assertEqual(409, response.status_code)
+        self.assertEqual(400, self.client.post("/api/groups/bulk", json={"action": "delete",
+                                                                         "group_ids": ids}).status_code)
+        self.assertEqual(400, self.client.post("/api/groups/bulk", json={"action": "ignore"}).status_code)
+
+        self.config.DEDUPLICATOR_DUPLICATES_TARGET_DIRECTORY.value = self.tmp
+        result = self.client.post("/api/groups/bulk", json={"action": "accept", "group_ids": ids}).json()
+        self.assertEqual(ids, result["changed"])
+        self.assertTrue(result["dry_run"])
+        group = self.store.get_group(self.group_id)
+        self.assertEqual((DecisionSource.USER, str(IMAGE), True),
+                         (group["decision_source"], group["keep_path"], group["execute_requested"]))
+
+        result = self.client.post("/api/groups/bulk",
+                                  json={"action": "reset", "filter": {"q": "/x/"}}).json()
+        self.assertEqual([other["id"]], result["changed"])
+        result = self.client.post("/api/groups/bulk",
+                                  json={"action": "ignore", "filter": {"status": "open"}}).json()
+        self.assertEqual({self.group_id, other["id"]}, set(result["changed"]))
+        self.assertEqual(400, self.client.post("/api/groups/bulk", json={"action": "ignore",
+                                                                         "filter": {"status": "x"}}).status_code)
+
+    def test_undo(self):
+        simulated = self.store.record_action(str(IMAGE_2), "move", DecisionSource.RULES, dry_run=True,
+                                             status=ActionStatus.SIMULATED, target="/t/2.jpg", group_id=self.group_id)
+        self.assertEqual(409, self.client.post(f"/api/actions/{simulated}/undo").status_code)
+        self.assertEqual(404, self.client.post("/api/actions/9999/undo").status_code)
+        self.assertEqual(409, self.client.post(f"/api/groups/{self.group_id}/undo").status_code)
+        self.assertEqual(0, self.client.get(f"/api/groups/{self.group_id}").json()["undoable_moves"])
+
+        move = self.store.record_action(str(IMAGE_2), "move", DecisionSource.RULES, dry_run=False,
+                                        status=ActionStatus.DONE, target="/t/2.jpg", group_id=self.group_id)
+        listed = self.client.get("/api/actions").json()["items"][0]
+        self.assertTrue(listed["undoable"])
+        self.assertFalse(listed["restore_requested"])
+
+        response = self.client.post(f"/api/actions/{move}/undo")
+        self.assertEqual(200, response.status_code)
+        self.assertTrue(response.json()["restore_requested"])
+
+        group = self.client.post(f"/api/groups/{self.group_id}/undo").json()
+        self.assertEqual((1, 1), (group["undoable_moves"], group["restore_requested"]))
+        self.assertEqual([move], [a["id"] for a in self.store.pending_restores()])
+
     def test_thumbnail(self):
         response = self.client.get(f"/api/candidates/{self.candidates[0]['id']}/thumbnail", params={"size": 100})
         self.assertEqual(200, response.status_code)

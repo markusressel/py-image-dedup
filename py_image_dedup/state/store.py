@@ -35,6 +35,14 @@ class ActionStatus:
     FAILED = "failed"
 
 
+class BulkAction:
+    ACCEPT = "accept"  # execute the decision of the prioritization rules (as a user decision)
+    IGNORE = "ignore"
+    RESET = "reset"
+
+    ALL = [ACCEPT, IGNORE, RESET]
+
+
 class RunStatus:
     RUNNING = "running"
     FINISHED = "finished"
@@ -139,7 +147,24 @@ CREATE TABLE IF NOT EXISTS failures (
     first_seen_at REAL NOT NULL,
     last_seen_at REAL NOT NULL
 );
+CREATE TABLE IF NOT EXISTS restore_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    action_id INTEGER NOT NULL UNIQUE REFERENCES actions(id) ON DELETE CASCADE,
+    requested_at REAL NOT NULL
+);
 """
+
+# a successful (non dry run) move of a file that was not moved again or restored since
+_UNDOABLE_MOVE_SQL = (
+    "(a.action = 'move' AND a.status = 'done' AND a.dry_run = 0 AND a.target IS NOT NULL "
+    "AND NOT EXISTS (SELECT 1 FROM actions b WHERE b.path = a.path AND b.id > a.id AND b.status = 'done' "
+    "AND b.dry_run = 0 AND b.action IN ('move', 'restore')))"
+)
+
+_ACTION_COLUMNS_SQL = (
+    f"a.*, {_UNDOABLE_MOVE_SQL} AS undoable, "
+    "EXISTS (SELECT 1 FROM restore_requests r WHERE r.action_id = a.id) AS restore_requested"
+)
 
 CANDIDATE_FIELDS = ["distance", "score", "file_size", "pixel_count", "modified_at", "exif_tag_count"]
 
@@ -393,23 +418,8 @@ class StateStore:
         :param keeps_smaller_copy: only groups where a duplicate has a higher resolution or a bigger file
         :return: {"total": int, "items": [group, ...]}
         """
-        where, params = [], []
-        if keeps_smaller_copy:
-            where.append(_KEEPS_SMALLER_COPY_SQL)
-        if status:
-            where.append("g.status = ?")
-            params.append(status)
-        if needs_review is not None:
-            where.append("g.needs_review = ?")
-            params.append(int(needs_review))
-        if decided_by:
-            where.append("g.decided_by = ?")
-            params.append(decided_by)
-        if search:
-            where.append("EXISTS (SELECT 1 FROM candidates c WHERE c.group_id = g.id AND c.path LIKE ? ESCAPE '\\')")
-            escaped = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-            params.append(f"%{escaped}%")
-        where_sql = ("WHERE " + " AND ".join(where)) if where else ""
+        where_sql, params = self._group_filter(status=status, needs_review=needs_review, search=search,
+                                               decided_by=decided_by, keeps_smaller_copy=keeps_smaller_copy)
 
         total = self._query_one(f"SELECT COUNT(*) AS n FROM groups g {where_sql}", params)["n"]
         rows = self._query(
@@ -431,6 +441,94 @@ class StateStore:
             for g in items:
                 g["members"] = by_group.get(g["id"], [])
         return {"total": total, "items": items}
+
+    def list_group_ids(self, status: str | None = None, needs_review: bool | None = None, search: str | None = None,
+                       decided_by: str | None = None, keeps_smaller_copy: bool | None = None) -> List[int]:
+        """
+        :return: ids of all groups matching the given filter (same filter as list_groups)
+        """
+        where_sql, params = self._group_filter(status=status, needs_review=needs_review, search=search,
+                                               decided_by=decided_by, keeps_smaller_copy=keeps_smaller_copy)
+        return [row["id"] for row in self._query(f"SELECT g.id FROM groups g {where_sql} ORDER BY g.id", params)]
+
+    @staticmethod
+    def _group_filter(status: str | None = None, needs_review: bool | None = None, search: str | None = None,
+                      decided_by: str | None = None, keeps_smaller_copy: bool | None = None) -> tuple:
+        """
+        :return: (WHERE clause for the groups table aliased as "g", parameters)
+        """
+        where, params = [], []
+        if keeps_smaller_copy:
+            where.append(_KEEPS_SMALLER_COPY_SQL)
+        if status:
+            where.append("g.status = ?")
+            params.append(status)
+        if needs_review is not None:
+            where.append("g.needs_review = ?")
+            params.append(int(needs_review))
+        if decided_by:
+            where.append("g.decided_by = ?")
+            params.append(decided_by)
+        if search:
+            where.append("EXISTS (SELECT 1 FROM candidates c WHERE c.group_id = g.id AND c.path LIKE ? ESCAPE '\\')")
+            escaped = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            params.append(f"%{escaped}%")
+        where_sql = ("WHERE " + " AND ".join(where)) if where else ""
+        return where_sql, params
+
+    def bulk_decision(self, group_ids: Iterable[int], action: str) -> dict:
+        """
+        Applies the same decision to many groups. Only groups the decision makes sense for are changed:
+
+        * accept: open/review groups decided by the rules: the rule keeper becomes the user chosen keeper,
+          so the daemon executes it (like set_user_keeper). Ignored groups and groups with a decision
+          of the user are not changed (reset them first).
+        * ignore: open/review groups
+        * reset: open/review/ignored groups with a user decision or the ignored status
+
+        Resolved groups are never changed.
+
+        :param group_ids: the groups to change
+        :param action: one of BulkAction.ALL
+        :return: {"action": str, "changed": [group id, ...], "skipped": {reason: count}}
+        :raises ValueError: unknown action
+        """
+        if action not in BulkAction.ALL:
+            raise ValueError(f"action must be one of {BulkAction.ALL}")
+        changed, skipped = [], {}
+
+        def skip(reason: str):
+            skipped[reason] = skipped.get(reason, 0) + 1
+
+        with self._lock:
+            for group_id in dict.fromkeys(group_ids):
+                group = self.get_group(group_id, with_candidates=False)
+                if group is None:
+                    skip("unknown")
+                elif group["status"] == GroupStatus.RESOLVED:
+                    skip("resolved")
+                elif action == BulkAction.ACCEPT:
+                    if group["status"] == GroupStatus.IGNORED:
+                        skip("ignored")
+                    elif group["decision_source"] == DecisionSource.USER:
+                        skip("decided_by_user")
+                    elif not group["rule_keep_path"]:
+                        skip("no_rule_decision")
+                    else:
+                        self.set_user_keeper(group_id, group["rule_keep_path"])
+                        changed.append(group_id)
+                elif action == BulkAction.IGNORE:
+                    if group["status"] == GroupStatus.IGNORED:
+                        skip("already_ignored")
+                    else:
+                        self.ignore_group(group_id)
+                        changed.append(group_id)
+                elif group["status"] != GroupStatus.IGNORED and group["decision_source"] != DecisionSource.USER:
+                    skip("nothing_to_reset")
+                else:
+                    self.reset_group(group_id)
+                    changed.append(group_id)
+        return {"action": action, "changed": changed, "skipped": skipped}
 
     def set_user_keeper(self, group_id: int, keep_path: str) -> dict:
         """
@@ -564,6 +662,22 @@ class StateStore:
                 (GroupStatus.RESOLVED, now, now, GroupStatus.OPEN, GroupStatus.REVIEW, run_id))
             return cursor.rowcount
 
+    def mark_restored(self, group_id: int):
+        """
+        A moved file of this group was moved back to its original location, so the group is not resolved anymore.
+        It is ignored: neither the prioritization rules nor a pending user decision move the file again
+        (until the user resets the group).
+        """
+        self._execute("UPDATE groups SET status = ?, execute_requested = 0, resolved_at = NULL, updated_at = ? "
+                      "WHERE id = ?", (GroupStatus.IGNORED, time.time(), group_id))
+
+    def group_ids_of_path(self, path: str) -> List[int]:
+        """
+        :return: ids of all groups the given file is a member of
+        """
+        return [row["group_id"] for row in
+                self._query("SELECT DISTINCT group_id FROM candidates WHERE path = ?", (str(path),))]
+
     def _require_group(self, group_id: int) -> dict:
         group = self.get_group(group_id, with_candidates=False)
         if group is None:
@@ -596,36 +710,92 @@ class StateStore:
 
     def list_actions(self, limit: int = 100, offset: int = 0, group_id: int | None = None,
                      run_id: int | None = None, status: str | None = None, search: str | None = None) -> dict:
+        """
+        :return: {"total": int, "items": [action, ...]}, newest first. Every action has "undoable"
+                 (see request_restore) and "restore_requested".
+        """
         where, params = [], []
         if group_id is not None:
-            where.append("group_id = ?")
+            where.append("a.group_id = ?")
             params.append(group_id)
         if run_id is not None:
-            where.append("run_id = ?")
+            where.append("a.run_id = ?")
             params.append(run_id)
         if status:
-            where.append("status = ?")
+            where.append("a.status = ?")
             params.append(status)
         if search:
-            where.append("path LIKE ? ESCAPE '\\'")
+            where.append("a.path LIKE ? ESCAPE '\\'")
             escaped = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
             params.append(f"%{escaped}%")
         where_sql = ("WHERE " + " AND ".join(where)) if where else ""
-        total = self._query_one(f"SELECT COUNT(*) AS n FROM actions {where_sql}", params)["n"]
-        rows = self._query(f"SELECT * FROM actions {where_sql} ORDER BY id DESC LIMIT ? OFFSET ?",
-                           params + [limit, offset])
-        for row in rows:
-            row["dry_run"] = bool(row["dry_run"])
-        return {"total": total, "items": rows}
+        total = self._query_one(f"SELECT COUNT(*) AS n FROM actions a {where_sql}", params)["n"]
+        rows = self._query(f"SELECT {_ACTION_COLUMNS_SQL} FROM actions a {where_sql} ORDER BY a.id DESC "
+                           "LIMIT ? OFFSET ?", params + [limit, offset])
+        return {"total": total, "items": [self._action_row(r) for r in rows]}
+
+    def get_action(self, action_id: int) -> dict | None:
+        row = self._query_one(f"SELECT {_ACTION_COLUMNS_SQL} FROM actions a WHERE a.id = ?", (action_id,))
+        return self._action_row(row) if row is not None else None
+
+    @staticmethod
+    def _action_row(row: dict) -> dict:
+        for key in ["dry_run", "undoable", "restore_requested"]:
+            row[key] = bool(row[key])
+        return row
+
+    def undoable_moves_of_group(self, group_id: int) -> List[dict]:
+        """
+        :return: the moves of the files of this group that can be undone (see request_restore)
+        """
+        rows = self._query(
+            f"SELECT {_ACTION_COLUMNS_SQL} FROM actions a "
+            f"WHERE a.path IN (SELECT path FROM candidates WHERE group_id = ?) AND {_UNDOABLE_MOVE_SQL} ORDER BY a.id",
+            (group_id,))
+        return [self._action_row(r) for r in rows]
+
+    def request_restore(self, action_id: int) -> dict:
+        """
+        Requests to move a moved file back to its original location. The daemon executes it
+        (see pending_restores()), respecting dry_run.
+
+        :param action_id: the last successful (non dry run) move of a file
+        :return: the action
+        :raises KeyError: unknown action
+        :raises ValueError: the action can not be undone
+        """
+        action = self.get_action(action_id)
+        if action is None:
+            raise KeyError(action_id)
+        if not action["undoable"]:
+            raise ValueError("Only the last successful move of a file (not a dry run) can be undone")
+        self._execute("INSERT OR IGNORE INTO restore_requests (action_id, requested_at) VALUES (?, ?)",
+                      (action_id, time.time()))
+        return self.get_action(action_id)
+
+    def pending_restores(self) -> List[dict]:
+        """
+        :return: the move actions the daemon has to undo, oldest request first
+        """
+        rows = self._query(f"SELECT {_ACTION_COLUMNS_SQL} FROM restore_requests r0 "
+                           "JOIN actions a ON a.id = r0.action_id ORDER BY r0.id")
+        return [self._action_row(r) for r in rows]
+
+    def finish_restore(self, action_id: int):
+        """
+        Removes the restore request of a move action (after it was executed, skipped or failed).
+        """
+        self._execute("DELETE FROM restore_requests WHERE action_id = ?", (action_id,))
 
     def last_move_target(self, path: str) -> str | None:
         """
         :return: where a file was moved to by a successful (non dry run) move action, if any
+                 and the file was not restored to its original location since
         """
         row = self._query_one(
-            "SELECT target FROM actions WHERE path = ? AND action = 'move' AND status = ? AND dry_run = 0 "
-            "ORDER BY id DESC LIMIT 1", (str(path), ActionStatus.DONE))
-        return row["target"] if row else None
+            "SELECT action, target FROM actions WHERE path = ? AND action IN ('move', 'restore') AND status = ? "
+            "AND dry_run = 0 ORDER BY id DESC LIMIT 1", (str(path), ActionStatus.DONE))
+        return row["target"] if row is not None and row["action"] == "move" else None
 
     # ---------------------------------------------------------------- failures
 
@@ -684,6 +854,7 @@ class StateStore:
                 (GroupStatus.REVIEW, GroupStatus.OPEN))["n"],
             "execute_requested": self._query_one(
                 "SELECT COUNT(*) AS n FROM groups WHERE execute_requested = 1")["n"],
+            "restore_requested": self._query_one("SELECT COUNT(*) AS n FROM restore_requests")["n"],
             "duplicate_files_open": self._query_one(
                 "SELECT COUNT(*) AS n FROM candidates c JOIN groups g ON g.id = c.group_id "
                 "WHERE c.role != 'keep' AND g.status IN (?, ?)", (GroupStatus.OPEN, GroupStatus.REVIEW))["n"],

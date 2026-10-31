@@ -90,6 +90,28 @@ def _edit_marker(candidate: dict, rule: dict) -> str | None:
     return None
 
 
+def _move_without_overwrite(source: Path, destination: Path):
+    """
+    Moves a file, failing with FileExistsError instead of replacing an existing destination file.
+    """
+    try:
+        # hard link + unlink: atomically fails if the destination exists
+        os.link(source, destination)
+    except FileExistsError:
+        raise
+    except OSError:
+        # other file system, or no hard link support: copy into a newly created file
+        with open(source, "rb") as source_file, open(destination, "xb") as destination_file:
+            try:
+                shutil.copyfileobj(source_file, destination_file)
+            except BaseException:
+                destination_file.close()
+                os.unlink(destination)
+                raise
+        shutil.copystat(source, destination)
+    os.unlink(source)
+
+
 def _format_timestamp(timestamp: float) -> str:
     try:
         return datetime.datetime.fromtimestamp(timestamp).isoformat(sep=" ", timespec="seconds")
@@ -1041,6 +1063,75 @@ class ImageMatchDeduplicator:
         finally:
             self._progress_manager.clear()
         self._state.mark_executed(group_id, resolved=not dry_run and group_id not in self._failed_groups)
+
+    def execute_restore_requests(self) -> int:
+        """
+        Undoes moves requested in the web UI: moves a moved file back to its original location.
+        A file is only restored if the original location is free (never overwrites anything), and nothing
+        is touched when dry_run (or dry_run_user_decisions, if set) is enabled.
+        The groups of a restored file are set to ignored, so the file is not moved again.
+
+        :return: number of handled requests
+        """
+        if self._state is None:
+            return 0
+        with self.work_lock:
+            requests = self._state.pending_restores()
+            for move in requests:
+                try:
+                    self._execute_restore(move)
+                except Exception as ex:
+                    LOGGER.exception(ex)
+                    self._record_restore(move, ActionStatus.FAILED, message=f"{type(ex).__name__}: {ex}")
+                finally:
+                    self._state.finish_restore(move["id"])
+            self._trigger_immich_rescan()
+            return len(requests)
+
+    def _execute_restore(self, move: dict):
+        """
+        :param move: the move action to undo
+        """
+        dry_run = self._config.user_decisions_dry_run
+        original = Path(move["path"])
+        moved = Path(move["target"])
+
+        reason = None
+        if not move["undoable"]:
+            reason = "the file was moved again or restored in the meantime"
+        elif not moved.is_file():
+            reason = f"the moved file does not exist (anymore): {moved}"
+        elif original.exists() or original.is_symlink():
+            reason = "the original location is not free, never overwriting a file"
+        if reason is not None:
+            self._record_restore(move, ActionStatus.SKIPPED, message=reason)
+            return
+
+        if dry_run:
+            self._record_restore(move, ActionStatus.SIMULATED)
+            return
+
+        echo(f"Restoring '{moved}' to '{original}'")
+        original.parent.mkdir(parents=True, exist_ok=True)
+        _move_without_overwrite(moved, original)
+        self._record_restore(move, ActionStatus.DONE)
+        group_ids = [move["group_id"]] if move["group_id"] is not None else self._state.group_ids_of_path(original)
+        for group_id in group_ids:
+            self._state.mark_restored(group_id)
+
+    def _record_restore(self, move: dict, status: str, message: str | None = None):
+        """
+        Writes the undo of a move to the action log: path is the original location, target the location
+        the file was moved back from.
+        """
+        if status == ActionStatus.DONE and not self._config.user_decisions_dry_run:
+            self._changed_paths.append(str(move["path"]))
+        try:
+            self._state.record_action(path=move["path"], action="restore", source=DecisionSource.USER,
+                                      dry_run=self._config.user_decisions_dry_run, status=status,
+                                      target=move["target"], message=message, group_id=move["group_id"])
+        except Exception as ex:
+            LOGGER.exception(ex)
 
     def _record_action(self, path: Path, action: str, status: str, dry_run: bool, source: str = DecisionSource.RULES,
                        target: Path | None = None, message: str | None = None):
