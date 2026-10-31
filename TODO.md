@@ -32,9 +32,13 @@ configurable prioritization rules pick the best one.
 - [ ] Introduce a `SignatureBackend` interface so image-match and the hash pipeline can be swapped and compared
 - [ ] Side-by-side comparison: `matching.backend: image-match|hashes|both`, compare the groups on the owner's
       dataset in the web UI (`matcher` column)
-- [ ] Rotation/mirror matching: hash the 4 rotations (or 8 dihedral transforms) for copies without orientation tag
-- [ ] Variants (grayscale, edited) and crops: keep as matches, but always route to review instead of auto-acting
-- [ ] Burst window as a decision factor (confidence/review) instead of a hard veto
+- [x] Rotation/mirror matching: hashes of all 8 dihedral orientations for copies without orientation tag,
+      option `match_rotations` (prototype, ~7x search time)
+- [x] Variants (grayscale, colour-edited) and crops: keep as matches, but always route to review instead of
+      auto-acting: variant kind per match/member, `auto_act_allowed` + `review_reasons` per group (prototype)
+- [x] Burst window as a decision factor (confidence penalty + note, group goes to review) instead of a hard veto
+      (prototype, `burst_window_seconds`, `burst_confidence_penalty`)
+- [ ] Expose variant kind, orientation and review reasons in the state store / web UI once the pipeline is wired in
 - [ ] Crop detection with embeddings (SSCD via onnxruntime, opt-in); crops usually, but not always, win (review)
 - [ ] SQLite store for hashes, metadata, groups, decisions and the action log (single file on a PVC)
   - [x] Groups, candidates, decisions (deciding rule), user overrides, runs and the action log:
@@ -54,8 +58,7 @@ configurable prioritization rules pick the best one.
   - [ ] Embeddings: wire into config/daemon (enable flag, model path, cache dir, min similarity), model volume
         in Docker/k3s, calibrate the similarity threshold on a real library sample
   - [ ] Embeddings: ANN index (`sqlite-vec` / FAISS) above ~100k images or for incremental daemon runs
-- [ ] Metadata veto/boost: burst shots (same camera, capture time seconds apart) are never duplicates;
-      same capture time / unique ID boosts confidence
+- [x] Metadata boost: same capture time / unique ID boosts confidence (prototype)
 - [ ] Cluster groups (connected components) instead of per-reference-file candidate lists
       (current matching is not transitive and depends on processing order)
 - [ ] Additional quality signals for prioritization rules: format tier (RAW > lossless > HEIC > JPEG),

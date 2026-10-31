@@ -18,7 +18,9 @@ from typing import Dict, List, Sequence
 import numpy as np
 from PIL import Image
 
-from py_image_dedup.matching import ImageMetadata, ImageSignature, Match, MatchReason, MatchingThresholds, cluster, find_matches
+from py_image_dedup.matching import (
+    ImageMetadata, ImageSignature, Match, MatchReason, MatchingThresholds, VariantKind, cluster, find_matches,
+)
 from py_image_dedup.matching.embeddings import (
     CONFIDENCE_EMBEDDING_MAX, EmbeddingStage, EmbeddingStore, ModelNotAvailableError, ModelSource, annotate_crops,
     ensure_model, find_similar_pairs, normalize_rows, rank_crops_first,
@@ -134,11 +136,10 @@ class EmbeddingStageTest(unittest.TestCase):
         stage, _ = _stage(colours, min_similarity=0.9)
         thresholds = MatchingThresholds()
 
-        hash_matches, _ = find_matches(signatures, thresholds)
+        hash_matches = find_matches(signatures, thresholds)
         self.assertEqual({("/photo-telegram.jpg", "/photo.jpg")}, {(m.a, m.b) for m in hash_matches})
 
-        embedding_matches, vetoes = stage.find_matches(signatures, hash_matches, thresholds)
-        self.assertEqual([], vetoes)
+        embedding_matches = stage.find_matches(signatures, hash_matches, thresholds)
         pairs = {(m.a, m.b): m for m in embedding_matches}
         # already matched by the hashes: not reported again
         self.assertEqual({("/photo-crop.jpg", "/photo-telegram.jpg"), ("/photo-crop.jpg", "/photo.jpg")}, set(pairs))
@@ -147,6 +148,7 @@ class EmbeddingStageTest(unittest.TestCase):
         self.assertLessEqual(match.confidence, CONFIDENCE_EMBEDDING_MAX)
         self.assertRegex(match.notes[0], r"^crop/embedding similarity (0\.9\d|1\.00)$")
         self.assertGreaterEqual(match.embedding_similarity, 0.9)
+        self.assertEqual(VariantKind.CROP, match.kind)
 
         groups = cluster(signatures, hash_matches + embedding_matches, thresholds)
         annotate_crops(groups, signatures, thresholds)
@@ -158,25 +160,48 @@ class EmbeddingStageTest(unittest.TestCase):
         self.assertEqual([("/photo-crop.jpg", "/photo.jpg")], [(r.crop, r.source) for r in group.crops])
         self.assertEqual("/photo-crop.jpg", rank_crops_first(["/photo.jpg", "/photo-telegram.jpg",
                                                                "/photo-crop.jpg"], group.crops)[0])
+        # a crop is a variant: never acted on automatically
+        self.assertFalse(group.auto_act_allowed)
+        self.assertEqual(VariantKind.CROP, group.member_kinds["/photo-crop.jpg"])
+        self.assertEqual(VariantKind.COPY, group.member_kinds["/photo.jpg"])
+        self.assertIn("crop variant: photo-crop.jpg", group.review_reasons)
 
     def test_hash_only_groups_without_crops(self):
         signatures = [_signature("/a.jpg", 4000, 3000), _signature("/b.jpg", 2000, 1500, phash=1)]
-        matches, _ = find_matches(signatures)
+        matches = find_matches(signatures)
         groups = cluster(signatures, matches)
         annotate_crops(groups, signatures)
         self.assertFalse(groups[0].has_crops)
+        self.assertTrue(groups[0].auto_act_allowed)
 
-    def test_burst_is_vetoed(self):
+    def test_crop_found_by_hashes_goes_to_review(self):
+        """
+        A light crop can still match by hashes (different aspect ratio): the group goes to review.
+        """
+        signatures = [_signature("/a.jpg", 4000, 3000), _signature("/b.jpg", 3000, 3000, phash=1)]
+        groups = cluster(signatures, find_matches(signatures))
+        annotate_crops(groups, signatures)
+        group = groups[0]
+        self.assertTrue(group.has_crops)
+        self.assertEqual(VariantKind.CROP, group.member_kinds["/b.jpg"])
+        self.assertEqual(1, sum(r.startswith("crop variant") for r in group.review_reasons))
+        self.assertIn("crop variant: b.jpg", group.review_reasons)
+
+    def test_burst_is_not_a_crop(self):
         time = datetime(2020, 1, 1, 12, 0, 0)
         first = ImageMetadata(camera_make="X", camera_model="Y", capture_time=time)
         second = ImageMetadata(camera_make="X", camera_model="Y", capture_time=time + timedelta(seconds=2))
         signatures = [_signature("/a.jpg", metadata=first, phash=0),
                       _signature("/b.jpg", 3000, 3000, metadata=second, phash=0xFFFF_FFFF)]
         stage, _ = _stage({"/a.jpg": (200, 0, 0), "/b.jpg": (200, 0, 0)})
-        matches, vetoes = stage.find_matches(signatures, [])
-        self.assertEqual([], matches)
-        self.assertEqual(1, len(vetoes))
-        self.assertTrue(vetoes[0].reason.startswith("burst"))
+        matches = stage.find_matches(signatures, [])
+        self.assertEqual(1, len(matches))
+        self.assertEqual(VariantKind.BURST, matches[0].kind)
+        self.assertEqual("burst: same camera (X Y), 2 s apart", matches[0].notes[-1])
+        groups = cluster(signatures, matches)
+        annotate_crops(groups, signatures)
+        self.assertFalse(groups[0].auto_act_allowed)
+        self.assertEqual(VariantKind.BURST, groups[0].member_kinds["/b.jpg"])
 
     def test_embeddings_are_cached_and_failures_reported(self):
         colours = {"/a.jpg": (200, 0, 0), "/b.jpg": (0, 200, 0)}

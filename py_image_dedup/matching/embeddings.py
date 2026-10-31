@@ -28,9 +28,9 @@ import numpy as np
 from PIL import Image
 
 from py_image_dedup.matching.decoding import decode_preview
-from py_image_dedup.matching.grouping import burst_veto
+from py_image_dedup.matching.grouping import burst_note, variant_reason
 from py_image_dedup.matching.models import (
-    CropRelation, DuplicateGroup, ImageSignature, Match, MatchReason, MatchingThresholds, Veto,
+    CropRelation, DuplicateGroup, ImageSignature, Match, MatchReason, MatchingThresholds, VariantKind,
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -396,7 +396,7 @@ def _pair(a: str, b: str) -> Tuple[str, str]:
 class EmbeddingStage:
     """
     Extra matching stage after the hash stages: pairs with a high embedding similarity that are not already
-    matched become `MatchReason.EMBEDDING` matches (subject to the burst veto).
+    matched become `MatchReason.EMBEDDING` matches of kind CROP (BURST with a confidence penalty for burst shots).
     """
 
     def __init__(self,
@@ -461,42 +461,46 @@ class EmbeddingStage:
         return known
 
     def find_matches(self, signatures: Sequence[ImageSignature], existing: Iterable[Match],
-                     thresholds: MatchingThresholds = None) -> Tuple[List[Match], List[Veto]]:
+                     thresholds: MatchingThresholds = None) -> List[Match]:
         """
         :param signatures: all files
         :param existing: matches of the hash stages, these pairs are skipped
-        :param thresholds: burst window and aspect ratio tolerance, defaults if None
-        :return: (new embedding matches, vetoed pairs)
+        :param thresholds: burst window and penalty, defaults if None
+        :return: new embedding matches
         """
         thresholds = thresholds or MatchingThresholds()
         embeddings = self.update(signatures)
         indexed = [s for s in signatures if s.path in embeddings]
         if len(indexed) < 2:
-            return [], []
+            return []
         matched = {_pair(m.a, m.b) for m in existing}
         vectors = normalize_rows(np.stack([embeddings[s.path] for s in indexed]))
 
-        matches, vetoes = [], []
+        matches = []
         for i, j, similarity in find_similar_pairs(vectors, self.min_similarity):
             a, b = indexed[i], indexed[j]
             pair = _pair(a.path, b.path)
             if pair in matched or a.sha256 == b.sha256:
                 continue
-            veto_reason = burst_veto(a.metadata, b.metadata, thresholds.burst_window_seconds)
-            if veto_reason is not None:
-                vetoes.append(Veto(*pair, reason=veto_reason))
-                continue
-            matches.append(Match(*pair, reason=MatchReason.EMBEDDING,
-                                 confidence=embedding_confidence(similarity, self.min_similarity),
-                                 embedding_similarity=similarity,
-                                 notes=(NOTE_EMBEDDING.format(similarity=similarity),)))
-        return matches, vetoes
+            confidence = embedding_confidence(similarity, self.min_similarity)
+            notes = [NOTE_EMBEDDING.format(similarity=similarity)]
+            kind = VariantKind.CROP
+            burst = burst_note(a.metadata, b.metadata, thresholds.burst_window_seconds)
+            if burst is not None:
+                # another shot of a series, not a crop: still grouped, but only for review
+                confidence = max(0.0, confidence - thresholds.burst_confidence_penalty)
+                notes.append(burst)
+                kind = VariantKind.BURST
+            matches.append(Match(*pair, reason=MatchReason.EMBEDDING, confidence=confidence,
+                                 embedding_similarity=similarity, notes=tuple(notes), kind=kind))
+        return matches
 
 
 def annotate_crops(groups: Iterable[DuplicateGroup], signatures: Sequence[ImageSignature],
                    thresholds: MatchingThresholds = None):
     """
-    Sets `DuplicateGroup.crops` (see `find_crops`). Groups with crops must go to review.
+    Sets `DuplicateGroup.crops` (see `find_crops`). Groups with crops go to review: the crops become
+    `VariantKind.CROP` members (unless they are burst shots) and the group gets a "crop variant" review reason.
 
     :param groups: groups to annotate (modified in place)
     :param signatures: signatures of all group members
@@ -505,6 +509,18 @@ def annotate_crops(groups: Iterable[DuplicateGroup], signatures: Sequence[ImageS
     by_path = {s.path: s for s in signatures}
     for group in groups:
         group.crops = find_crops(group, by_path, thresholds)
+        if not group.crops:
+            continue
+        for relation in group.crops:
+            if group.member_kinds.get(relation.crop) is not VariantKind.BURST:
+                group.member_kinds[relation.crop] = VariantKind.CROP
+        reason = variant_reason(VariantKind.CROP, sorted({relation.crop for relation in group.crops}))
+        existing = [i for i, r in enumerate(group.review_reasons) if r.startswith(f"{VariantKind.CROP.value} ")]
+        if existing:
+            group.review_reasons[existing[0]] = reason
+        else:
+            bursts = sum(1 for r in group.review_reasons if r.startswith("burst:"))
+            group.review_reasons.insert(bursts, reason)
 
 
 def rank_crops_first(paths: Sequence[str], crops: Iterable[CropRelation]) -> List[str]:

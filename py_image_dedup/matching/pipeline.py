@@ -14,7 +14,7 @@ from typing import Callable, Dict, Iterable, List, Optional, Tuple
 from py_image_dedup.matching.decoding import DEFAULT_PREVIEW_SIZE
 from py_image_dedup.matching.embeddings import EmbeddingStage, annotate_crops
 from py_image_dedup.matching.grouping import cluster, find_matches
-from py_image_dedup.matching.models import DuplicateGroup, ImageSignature, Match, MatchingThresholds, Veto
+from py_image_dedup.matching.models import DuplicateGroup, ImageSignature, Match, MatchingThresholds
 from py_image_dedup.matching.signatures import compute_full_pixel_hash, compute_signature
 from py_image_dedup.matching.store import SignatureStore
 
@@ -42,7 +42,6 @@ class MatchingResult:
     """
     groups: List[DuplicateGroup]
     matches: List[Match]
-    vetoes: List[Veto]
     # stage name -> seconds
     timings: Dict[str, float] = field(default_factory=dict)
 
@@ -72,7 +71,7 @@ class MatchingPipeline:
                  embedding_stage: EmbeddingStage = None):
         """
         :param store: signature store
-        :param thresholds: matching thresholds, defaults if None
+        :param thresholds: matching thresholds (incl. options like `match_rotations`), defaults if None
         :param workers: number of analysis threads (Pillow releases the GIL while decoding), default: CPU count
         :param preview_size: minimum edge length of the JPEG draft preview
         :param verify_pixel_identical: verify preview pixel hash collisions with a full resolution decode
@@ -114,7 +113,7 @@ class MatchingPipeline:
 
         def analyse_one(path: Path) -> Tuple[Path, Optional[ImageSignature], Optional[str]]:
             try:
-                return path, compute_signature(path, self.preview_size), None
+                return path, compute_signature(path, self.preview_size, self.thresholds.match_rotations), None
             except Exception as ex:
                 LOGGER.warning(f"Could not analyse {path}: {ex}")
                 return path, None, f"{type(ex).__name__}: {ex}"
@@ -150,7 +149,7 @@ class MatchingPipeline:
         """
         Groups all files of the store.
 
-        :return: groups, matches and vetoes
+        :return: groups and matches
         """
         timings = {}
         start = time.perf_counter()
@@ -159,18 +158,16 @@ class MatchingPipeline:
 
         start = time.perf_counter()
         resolver = self._resolve_full_pixel_hash if self.verify_pixel_identical else None
-        matches, vetoes = find_matches(signatures, self.thresholds, resolver)
+        matches = find_matches(signatures, self.thresholds, resolver)
         timings["match"] = time.perf_counter() - start
 
         if self.embedding_stage is not None:
             start = time.perf_counter()
-            embedding_matches, embedding_vetoes = self.embedding_stage.find_matches(signatures, matches,
-                                                                                    self.thresholds)
-            matches, vetoes = matches + embedding_matches, vetoes + embedding_vetoes
+            matches = matches + self.embedding_stage.find_matches(signatures, matches, self.thresholds)
             timings["embeddings"] = time.perf_counter() - start
 
         start = time.perf_counter()
         groups = cluster(signatures, matches, self.thresholds)
         annotate_crops(groups, signatures, self.thresholds)
         timings["cluster"] = time.perf_counter() - start
-        return MatchingResult(groups=groups, matches=matches, vetoes=vetoes, timings=timings)
+        return MatchingResult(groups=groups, matches=matches, timings=timings)

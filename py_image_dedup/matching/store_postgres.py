@@ -41,6 +41,8 @@ CREATE TABLE IF NOT EXISTS {FILES_TABLE} (
     image_unique_id TEXT,
     software TEXT,
     signature_version INTEGER NOT NULL,
+    orientation_hashes BYTEA,
+    colour_moments TEXT,
     analysed_at BIGINT NOT NULL DEFAULT (extract(epoch FROM now())::BIGINT)
 );
 CREATE INDEX IF NOT EXISTS {FILES_TABLE}_sha256 ON {FILES_TABLE} (sha256);

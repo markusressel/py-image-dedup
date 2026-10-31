@@ -12,11 +12,12 @@ Package `py_image_dedup/matching/`:
 |-----------------|--------------------------------------------------------------------------------------------------------------------------------------------------|
 | `decoding.py`   | Pillow decode, JPEG draft mode (DCT scaling to >= 512 px), EXIF orientation applied (`ImageOps.exif_transpose`), conversion to RGB               |
 | `metadata.py`   | `DateTimeOriginal` + `SubSecTimeOriginal`, camera make/model, `ImageUniqueID`, `Software`                                                        |
-| `signatures.py` | SHA-256 of the file, SHA-256 of the decoded preview pixels, pHash + dHash (`imagehash`, 64 bit), grayscale flag, lazy full resolution pixel hash |
+| `signatures.py` | SHA-256 of the file, SHA-256 of the decoded preview pixels, pHash + dHash (`imagehash`, 64 bit), grayscale flag, colour moments, lazy full resolution pixel hash |
+| `orientation.py` | pHash + dHash of all 8 dihedral orientations (4 rotations, each optionally mirrored) from the same small resized arrays                         |
 | `store.py`      | `SignatureStore` interface + `SqliteSignatureStore` (stdlib `sqlite3`, default), one row per file, incremental (size + mtime + `SIGNATURE_VERSION`), `open_signature_store(url)` factory |
 | `store_postgres.py` | `PostgresSignatureStore` (psycopg 3, optional `postgres` extra), same record semantics                                                     |
 | `search.py`     | All-pairs Hamming distance search, numpy (`bitwise_count` over `uint64`), block-wise to bound memory                                             |
-| `grouping.py`   | Staged matching with reason + confidence, burst veto, constrained union-find clustering                                                          |
+| `grouping.py`   | Staged matching with reason, confidence and variant kind, rotation/mirror search, burst factor, union-find clustering, auto-act/review decision |
 | `pipeline.py`   | `MatchingPipeline`: analyse (thread pool) into the store, match, cluster                                                                         |
 | `evaluation.py` | Pairwise precision/recall against a ground truth                                                                                                 |
 | `benchmark.py`  | Benchmark + comparison with image-match (`python -m py_image_dedup.matching.benchmark`)                                                          |
@@ -39,7 +40,7 @@ Every accepted pair gets the strongest reason that applies:
 |-------|-------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------|
 | 1     | `exact`           | same SHA-256 of the file                                                                                                                                                                                                                                                                                        | 1.00                                          |
 | 2     | `pixel-identical` | same hash of the decoded pixels after applying the EXIF orientation. The cheap preview (draft) pixel hash is only a pre-filter, collisions are verified with a full decode. Near-duplicate candidates with hash distance 0 and the same dimensions are verified the same way (catches e.g. a lossless PNG of a JPEG) | 0.99                                          |
-| 3     | `near-duplicate`  | pHash distance <= 10 **and** dHash distance <= 12, not vetoed                                                                                                                                                                                                                                                   | 0.50 .. 0.90 by distance, then adjusted, max 0.98 |
+| 3     | `near-duplicate`  | pHash distance <= 10 **and** dHash distance <= 12, upright or (option `match_rotations`, default on) between a rotated/mirrored orientation of one file and the other file                                                                                                                                      | 0.50 .. 0.90 by distance, then adjusted, max 0.98 |
 
 Near-duplicate confidence adjustments (notes are stored on the match, so the UI can explain them):
 
@@ -47,17 +48,32 @@ Near-duplicate confidence adjustments (notes are stored on the match, so the UI 
 - `-0.10` different `ImageUniqueID`
 - `-0.15` aspect ratio differs by more than 2 % (crop)
 - `-0.05` one copy is grayscale, the other is not
+- `-0.30` (`burst_confidence_penalty`) burst shots, note `burst: same camera (<make model>), 3 s apart`
+- note only: `rotated 90°`, `mirrored`, ... (rotation/mirror match), `colours differ (edited?)`
 
-**Burst veto**: same camera (make + model) and both capture times present and `0 < |Δt| <= 10 s` means a
-different shot of a series, never a duplicate. Copies keep the capture time (or lose it, e.g. Telegram strips
-EXIF, then there is no veto). If only one file has sub-seconds, times are compared at second precision.
+**Burst factor** (a veto in the first version of the prototype): same camera (make + model) and both capture
+times present and `0 < |Δt| <= burst_window_seconds` (default 10 s) means a different shot of a series. Such
+pairs still match, with a confidence penalty and a note, and every group containing burst shots goes to review.
+Copies keep the capture time (or lose it, e.g. Telegram strips EXIF, then there is no burst relation).
+If only one file has sub-seconds, times are compared at second precision.
 
-**Clustering**: union-find over all accepted matches, strongest first. A union is refused if it would put two
-files into one group that are vetoed against each other, also indirectly (A~B, B~C, but A/C are burst shots:
-B is a messenger copy without metadata that looks like both). Refused matches are kept as `conflicts` on the
-group. Group confidence = the weakest match that was needed to connect the group ("weakest link").
-Unlike the current per-reference-file candidate lists the result is transitive and independent of the
-processing order.
+**Variant kind** of every match (the first that applies): `exact`, `pixel-identical`, `burst`, `crop` (aspect
+ratio differs, placeholder until crops are detected explicitly), `grayscale`, `colour-edited` (a channel mean or
+standard deviation of the preview differs by more than `colour_edit_tolerance` = 5 of 255), `rotated`
+(rotated/mirrored copy), `copy` (recompressed/resized).
+
+**Clustering**: union-find over all accepted matches, strongest first. Group confidence = the weakest match that
+was needed to connect the group ("weakest link"). Unlike the current per-reference-file candidate lists the
+result is transitive and independent of the processing order. Each group gets `member_kinds` (per file: `burst`
+if it is a burst shot of another member, otherwise the least variant kind of its matches, e.g. the original next
+to an edited version stays `copy`) and `review_reasons`; `auto_act_allowed` is true only without review reasons:
+
+- a burst relation between any two members, also indirect ones (A~B, B~C, A/C burst shots, B a messenger copy
+  without metadata that looks like both: the group is formed, but goes to review),
+- a `crop`, `grayscale` or `colour-edited` match (variants to keep, unless a human decides the original goes),
+- group confidence below `auto_act_min_confidence` (default 0.8).
+
+Rotated/mirrored *copies* of the same content are duplicates and may be acted on automatically.
 
 ## Results on `tests/images/`
 
@@ -98,9 +114,9 @@ the original, prototype result, image-match pairwise distance):
 | rotated pixels + compensating orientation tag                    | 0      | 0      | near-duplicate 0.98       | 0.700 .. 0.754 (pairwise without orientation search) |
 | crop 10 %                                                        | 8 .. 12 | 3 .. 14 | no match                | 0.232 .. 0.592       |
 | crop 25 %                                                        | 18 .. 22 | 17 .. 22 | no match              | 0.397 .. 0.673       |
-| rotated 90° (pixels, no tag)                                     | 30 .. 38 | 33 .. 35 | no match              | 0.700 .. 0.754       |
-| mirrored                                                         | 28 .. 32 | 14 .. 38 | no match              | 0.430 .. 0.626       |
-| simulated burst (+1 s, same camera, 0.5° rotation, +2 % brightness) | 2 .. 6 | 2 .. 3 | **vetoed**           | 0.088 .. 0.102 (**false positive** at cutoff 0.1 for 2 of 3) |
+| rotated 90° (pixels, no tag)                                     | 30 .. 38 | 33 .. 35 | no match (now `rotated`, see below) | 0.700 .. 0.754 |
+| mirrored                                                         | 28 .. 32 | 14 .. 38 | no match (now `rotated`, see below) | 0.430 .. 0.626 |
+| simulated burst (+1 s, same camera, 0.5° rotation, +2 % brightness) | 2 .. 6 | 2 .. 3 | **vetoed** (now `burst`, review) | 0.088 .. 0.102 (**false positive** at cutoff 0.1 for 2 of 3) |
 
 Takeaways:
 
@@ -111,7 +127,7 @@ Takeaways:
   finds rotated ones in production because `find_similar` searches all orientations. Hashing the 8 dihedral
   transforms (or only the 4 rotations) of each image would fix it for 8x hash storage and search time;
   real libraries rarely contain such copies since phones and Lightroom write the orientation tag.
-- The burst veto is the main precision gain: near-identical series shots are exactly what image-match
+- Recognising burst shots is the main precision gain (first a veto, now a review factor): near-identical series shots are exactly what image-match
   reports as duplicates today.
 
 ### Speed and memory
@@ -143,11 +159,70 @@ The brute force search is O(n²) but fine for the target size (40k). Memory per 
 O(n) per new file (well below 1 ms for 40k). Above ~100k images a BK-tree or multi-index hashing would be worth it.
 The SQLite store needs roughly 0.5 KB per file including indexes (~20 MB for 40k files).
 
+## Rotation/mirror matching, burst factor and variants
+
+Implements the owner decisions on rotated copies, the burst window and grayscale/edited variants.
+
+**Rotation/mirror invariance.** Each file stores its upright pHash/dHash (the search index) plus the hashes of
+the 7 other dihedral orientations (`orientation_hashes`, 112 bytes per file, only used on the query side). They
+are computed from the same small resized grayscale arrays as the upright hashes (32x32 for pHash, 9x8 and 8x9
+for dHash; resizing commutes with rotating up to rounding), so no extra decode is needed. The upright hashes stay
+bit-identical to `imagehash`; the derived ones are within 2 bits of the hashes of the physically transformed
+image. Search: for each transform T, `T(i)` is compared with the upright `j` for all `i < j` (enough, since
+`T⁻¹` is a transform as well); the upright comparison wins, otherwise the closest orientation.
+`Match.orientation` is the transform that turns `match.a` into `match.b`. Option
+`MatchingThresholds.match_rotations` (default on).
+
+Generated variants of the three originals of `tests/images/` (`benchmark tests/images --robustness`, generated
+into a temporary directory, not committed): distances to the original upright and in the best orientation,
+grouped with the original with rotations off/on, kind and confidence of the direct match:
+
+| Variant                                    | pHash upright | dHash upright | best orientation p/d | off | on  | Match                                   |
+|--------------------------------------------|---------------|---------------|----------------------|-----|-----|-----------------------------------------|
+| exact copy, EXIF stripped, lossless PNG    | 0             | 0             | 0/0                  | 3/3 | 3/3 | exact 1.00 / pixel-identical 0.99, auto |
+| resized 50 % q85, 320 px q70, q40          | 0 .. 2        | 0 .. 3        | 0..2/0..3            | 3/3 | 3/3 | copy 0.85 .. 0.90, auto                 |
+| rotated pixels + orientation tag           | 0             | 0             | 0/0                  | 3/3 | 3/3 | copy 0.98, auto                         |
+| rotated 90° / 180° / 270° (no tag)         | 28 .. 38      | 24 .. 41      | 0..2/0..2            | 0/3 | 3/3 | rotated 0.88 .. 0.90, auto              |
+| mirrored, mirrored + rotated 90/180/270°   | 24 .. 36      | 14 .. 44      | 0..2/0..2            | 0/3 | 3/3 | rotated 0.88 .. 0.90, auto              |
+| brightness +20 %                           | 0 .. 2        | 0 .. 1        | 0..2/0..1            | 3/3 | 3/3 | colour-edited 0.85 .. 0.88, review      |
+| crop 10 % (one side, aspect ratio changes) | 8 .. 14       | 9 .. 22       | 8..14/9..22          | 2/3 | 2/3 | crop 0.42 .. 0.43, review               |
+| crop 25 %                                  | 16 .. 30      | 18 .. 34      | 16..30/18..27        | 0/3 | 0/3 | no match (needs embeddings)             |
+| simulated burst shot (a different photo)   | 2 .. 6        | 0 .. 3        | 2..6/0..3            | 3/3 | 3/3 | burst 0.44 .. 0.56, review              |
+
+Pairwise precision/recall (57 files: 3 originals with 18 variants each; burst shots are not duplicates):
+
+| Set                                           | Rotations | Grouped pairs P / R | Auto-act pairs P / R | Groups (auto-act) |
+|-----------------------------------------------|-----------|---------------------|----------------------|-------------------|
+| all files (459 duplicate pairs)               | off       | 81.3 % / 27.5 %     | 100 % / 0 %          | 3 (0)             |
+| all files                                     | on        | 88.7 % / 85.4 %     | 100 % / 0 %          | 3 (0)             |
+| copies only, no variants or bursts (315 pairs) | off      | 100 % / 26.7 %      | 100 % / 26.7 %       | 3 (3)             |
+| copies only                                   | on        | 100 % / 100 %       | 100 % / 100 %        | 3 (3)             |
+
+The false positives in "all files" are exactly the burst shots, which now join the group of their original
+(also through its EXIF-less copies) instead of being vetoed; every such group goes to review, so no auto-act
+group contains a burst shot or a variant. The remaining misses are the crops. On `tests/images/` itself
+precision/recall stay at 100 %; all three groups go to review (`grayscale variant: ...-grayscale.jpg;
+colour-edited variant: ...-edited.jpg`, two of them also below the confidence threshold), the original and the
+Telegram copy are classified `copy`.
+
+Cost (same AMD Ryzen 7 5800X, measured while other jobs were running, so compare the ratios):
+
+| Step                                                            | Rotations off | Rotations on                |
+|-----------------------------------------------------------------|---------------|-----------------------------|
+| signature per file (12 MP JPEG, single thread)                  | 26.3 ms       | 28.7 ms (+9 %)              |
+| analysis per file incl. pixel verification (57 files, 1 worker) | 48.1 ms       | 49.1 ms                     |
+| find matches + cluster, 40,000 synthetic hashes                 | 4.0 s         | 26.3 s (6.6x)               |
+| storage per file                                                | -             | +112 bytes (+ colour moments) |
+
+Hashing all orientations is cheap; the search costs ~7x (7 additional all-pairs passes), ~26 s for a full run
+over 40k files. An incremental daemon run (new files against the library) stays O(n) per new file. If full runs
+get too slow above ~100k files, a BK-tree / multi-index hashing helps for the rotated passes as well.
+
 ## Recommendations
 
 1. **Replace image-match with this pipeline.** Same or better recall on the realistic cases (messenger copies,
-   light edits, recompression), better precision thanks to the burst veto, 8x faster analysis, no
-   Elasticsearch, deterministic and transitive groups.
+   light edits, recompression, rotated/mirrored copies), burst shots and variants are never acted on
+   automatically, 8x faster analysis, no Elasticsearch, deterministic and transitive groups.
 2. **Thresholds**: start with pHash <= 10 and dHash <= 12 (both must hold), burst window 10 s.
    Before switching, run the benchmark on a sample of the real library (read only, e.g. one year of photos
    plus the Telegram folder) and label the groups in the 0.5..0.75 confidence range: that range decides where
@@ -234,7 +309,7 @@ source always go to review, with the crop ranked first by default.
   caches the vectors in its own SQLite table (`EmbeddingStore`, invalidated by size, mtime and model id),
   searches all pairs by cosine similarity (numpy, block-wise) and adds pairs with similarity >= 0.6 that the
   hash stages did not match as `MatchReason.EMBEDDING` with the note `crop/embedding similarity 0.xx`. The
-  burst veto applies. Confidence 0.50 .. 0.75 by similarity, i.e. never in the auto-act range.
+  match kind is `crop` (`burst` with the burst penalty for burst shots). Confidence 0.50 .. 0.75 by similarity, i.e. never in the auto-act range.
 - **Crop relation (ranking hint)**: after clustering, `annotate_crops` sets `DuplicateGroup.crops`
   (`CropRelation(crop, source, area_ratio, aspect_ratio_differs, embedding_similarity)`) and
   `DuplicateGroup.has_crops`. Pairwise "fewer pixels" cannot tell a crop from a downscaled copy (a 1280 px
@@ -244,7 +319,8 @@ source always go to review, with the crop ranked first by default.
   with another aspect ratio) are crops of the reference. This also runs without the embedding stage (hash
   matched crops with another aspect ratio). `rank_crops_first(paths, group.crops)` moves crops to the front;
   the prioritization should use it as the default, and a group with `has_crops` must never be acted on
-  automatically (review only).
+  automatically: `annotate_crops` sets the crops' `member_kinds` to `crop` and adds a `crop variant: ...`
+  review reason, so `auto_act_allowed` is false.
 
 ### Results (generated crops of `tests/images/`, not committed)
 
@@ -291,7 +367,7 @@ FAISS) is the next step. float16 storage would halve the memory.
 ### Open points
 
 - The threshold 0.6 is calibrated on 3 photos only. Real libraries contain similar but different photos (same
-  scene, other people/cameras, so no burst veto) that may score higher; the low confidence keeps them in review,
+  scene, other people/cameras, so no burst relation) that may score higher; the low confidence keeps them in review,
   but the threshold should be checked on a real sample (read only).
 - The 320x320 squash distorts crops with another aspect ratio; a dynamic size export
   (`tools/export_sscd_onnx.py`) could keep the aspect ratio (resize the short edge) and might raise the
