@@ -64,6 +64,24 @@ be used:
 
 The first candidate in the resulting list is considered to be the best
 available version of all candidates.
+
+Two rules take a list of `patterns` (regular expressions, matched anywhere in the file path)
+in priority order, f.ex. to prefer the original from the camera folder over copies sent via a messenger:
+
+```yaml
+prioritization_rules:
+  - name: "higher-pixel-count"
+  - name: "more-exif-data"
+  - name: "bigger-file-size"
+  # files in an earlier matching folder are better, files matching no pattern come last
+  - name: "preferred-paths"
+    patterns: ["/Familie/", "/Camera/"]
+  # files matching no pattern are better, then in pattern order
+  - name: "avoided-paths"
+    patterns: ["/Immich/", "/Telegram ", "/WhatsApp "]
+  # copies are usually younger than the original
+  - name: "older-file-modification-date"
+```
  
 ### Phase 5 - Moving/Deleting duplicates
 

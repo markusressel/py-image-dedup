@@ -58,6 +58,11 @@ py_image_dedup:
       - name: "shorter-folder-path"
       - name: "higher-score"
       - name: "lower-score"
+      # path patterns (regular expressions) in priority order, see README.md
+      - name: "preferred-paths"
+        patterns: ["/Camera/"]
+      - name: "avoided-paths"
+        patterns: ["/Telegram "]
 
   # Daemon specific configuration options, see README.md
   daemon:

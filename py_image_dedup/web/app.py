@@ -32,6 +32,7 @@ KNOWN_PRIORITIZATION_RULES = {
     "longer-folder-path", "shorter-folder-path",
     "higher-score", "lower-score",
     "higher-pixel-count", "lower-pixel-count",
+    "preferred-paths", "avoided-paths",
 }
 
 
@@ -362,6 +363,16 @@ def create_app(store: StateStore, config: DeduplicatorConfig, static_directory: 
         if unknown:
             hints.append({"level": "warning", "key": "deduplication.prioritization_rules",
                           "message": f"Unknown prioritization rules are ignored: {', '.join(map(str, unknown))}"})
+        invalid = []
+        for rule in config.PRIORITIZATION_RULES.value:
+            for pattern in rule.get("patterns") or []:
+                try:
+                    re.compile(pattern)
+                except re.error:
+                    invalid.append(str(pattern))
+        if invalid:
+            hints.append({"level": "warning", "key": "deduplication.prioritization_rules",
+                          "message": f"Invalid path patterns never match: {', '.join(invalid)}"})
 
         weak = {rule: n for rule, n in statistics["decided_by"].items() if rule in WEAK_PRIORITIZATION_RULES}
         weak_total = sum(weak.values())
