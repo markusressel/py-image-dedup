@@ -79,6 +79,7 @@ class MatchReason(Enum):
     EXACT = "exact"  # identical file content
     PIXEL_IDENTICAL = "pixel-identical"  # identical decoded pixels, e.g. only metadata differs
     NEAR_DUPLICATE = "near-duplicate"  # perceptual hashes are close, e.g. recompressed, resized, slightly edited
+    EMBEDDING = "embedding"  # opt-in: copy detection embeddings are similar, e.g. cropped (always reviewed)
 
 
 @dataclass(frozen=True)
@@ -95,6 +96,23 @@ class Match:
     dhash_distance: int = 0
     # human readable notes that influenced the confidence, e.g. "same capture time", "aspect ratio differs"
     notes: Tuple[str, ...] = ()
+    # cosine similarity of the embeddings, only set for MatchReason.EMBEDDING
+    embedding_similarity: Optional[float] = None
+
+
+@dataclass(frozen=True)
+class CropRelation:
+    """
+    One member of a group is a crop of another (fewer pixels, different aspect ratio or only matched by
+    embeddings). Ranking hint: the crop is preferred by default, but such a group always goes to review.
+    """
+    crop: str
+    source: str
+    # pixels of the crop / pixels of the source
+    area_ratio: float
+    aspect_ratio_differs: bool
+    # cosine similarity if the pair was matched by the embedding stage
+    embedding_similarity: Optional[float] = None
 
 
 @dataclass(frozen=True)
@@ -123,6 +141,15 @@ class DuplicateGroup:
     reason: MatchReason
     # matches that were not used because they would have joined vetoed files into one group
     conflicts: List[Match] = field(default_factory=list)
+    # crop relations between members (see matching/embeddings.py), a group with crops must be reviewed
+    crops: List[CropRelation] = field(default_factory=list)
+
+    @property
+    def has_crops(self) -> bool:
+        """
+        :return: True if a member is a crop of another: never act automatically, rank the crop first
+        """
+        return bool(self.crops)
 
 
 @dataclass

@@ -77,12 +77,16 @@ py_image_dedup/
     store.py                   # SignatureStore interface, SqliteSignatureStore (default, own DB file, separate from
                                # the state store), open_signature_store(url): sqlite:///... | postgresql://...
     store_postgres.py          # PostgresSignatureStore, optional `postgres` extra (psycopg 3, imported lazily)
+    embeddings.py              # opt-in crop detection: SSCD embeddings, optional `embeddings` extra (onnxruntime,
+                               # imported lazily), model downloaded on demand or given by path, never bundled
+    crop_benchmark.py          # crop detection benchmark: `python -m py_image_dedup.matching.crop_benchmark tests/images`
   util/                        # file + image helpers, echo()
 web/                           # Vue 3 + Vite + TypeScript single page app (no component library)
   src/api.ts, src/types.ts     # typed client for the JSON API (keep in sync with py_image_dedup/web/app.py)
   src/views/                   # Dashboard, Groups, GroupDetail, Run, Actions, Config
   src/polling.ts               # polling composable (status: 1s while busy, 3s idle; paused in hidden tabs)
 tests/                         # pytest/unittest tests, test config + sample images
+tools/export_sscd_onnx.py      # exports the SSCD model to ONNX (needs PyTorch in a separate virtualenv)
 docs/                          # design notes (matching-prototype.md: benchmark results, owner decisions, store backends)
 docker/entrypoint.sh           # drops privileges to PUID/PGID
 py_image_dedup_reference.yaml  # documented reference configuration
