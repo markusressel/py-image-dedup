@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Optional, Tuple
 
 from py_image_dedup.matching.decoding import DEFAULT_PREVIEW_SIZE
+from py_image_dedup.matching.embeddings import EmbeddingStage, annotate_crops
 from py_image_dedup.matching.grouping import cluster, find_matches
 from py_image_dedup.matching.models import DuplicateGroup, ImageSignature, Match, MatchingThresholds, Veto
 from py_image_dedup.matching.signatures import compute_full_pixel_hash, compute_signature
@@ -67,19 +68,22 @@ class MatchingPipeline:
                  thresholds: MatchingThresholds = None,
                  workers: int = None,
                  preview_size: int = DEFAULT_PREVIEW_SIZE,
-                 verify_pixel_identical: bool = True):
+                 verify_pixel_identical: bool = True,
+                 embedding_stage: EmbeddingStage = None):
         """
         :param store: signature store
         :param thresholds: matching thresholds, defaults if None
         :param workers: number of analysis threads (Pillow releases the GIL while decoding), default: CPU count
         :param preview_size: minimum edge length of the JPEG draft preview
         :param verify_pixel_identical: verify preview pixel hash collisions with a full resolution decode
+        :param embedding_stage: opt-in crop detection (embeddings), off if None
         """
         self.store = store
         self.thresholds = thresholds or MatchingThresholds()
         self.workers = workers or os.cpu_count() or 1
         self.preview_size = preview_size
         self.verify_pixel_identical = verify_pixel_identical
+        self.embedding_stage = embedding_stage
         # full resolution pixel hashes computed during this matching run (signatures are immutable)
         self._full_pixel_hashes: Dict[str, str] = {}
 
@@ -158,7 +162,15 @@ class MatchingPipeline:
         matches, vetoes = find_matches(signatures, self.thresholds, resolver)
         timings["match"] = time.perf_counter() - start
 
+        if self.embedding_stage is not None:
+            start = time.perf_counter()
+            embedding_matches, embedding_vetoes = self.embedding_stage.find_matches(signatures, matches,
+                                                                                    self.thresholds)
+            matches, vetoes = matches + embedding_matches, vetoes + embedding_vetoes
+            timings["embeddings"] = time.perf_counter() - start
+
         start = time.perf_counter()
         groups = cluster(signatures, matches, self.thresholds)
+        annotate_crops(groups, signatures, self.thresholds)
         timings["cluster"] = time.perf_counter() - start
         return MatchingResult(groups=groups, matches=matches, vetoes=vetoes, timings=timings)

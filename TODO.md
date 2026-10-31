@@ -49,7 +49,11 @@ configurable prioritization rules pick the best one.
   - [ ] Exact: file hash (SHA-256)
   - [ ] Pixel-identical: hash of decoded pixels
   - [ ] Near-duplicate: pHash + dHash (`imagehash`), Hamming distance search via numpy / BK-tree
-  - [ ] Optional, opt-in: embeddings (SSCD via onnxruntime) + `sqlite-vec` / FAISS for edited/cropped variants
+  - [x] Optional, opt-in: embeddings (SSCD via onnxruntime) for cropped variants, crop and source go to
+        review with the crop ranked first (prototype: `matching/embeddings.py`, `matching/crop_benchmark.py`)
+  - [ ] Embeddings: wire into config/daemon (enable flag, model path, cache dir, min similarity), model volume
+        in Docker/k3s, calibrate the similarity threshold on a real library sample
+  - [ ] Embeddings: ANN index (`sqlite-vec` / FAISS) above ~100k images or for incremental daemon runs
 - [ ] Metadata veto/boost: burst shots (same camera, capture time seconds apart) are never duplicates;
       same capture time / unique ID boosts confidence
 - [ ] Cluster groups (connected components) instead of per-reference-file candidate lists

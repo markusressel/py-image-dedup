@@ -41,6 +41,10 @@ dependencies = [
 postgres = [
     "psycopg[binary]>=3.2,<4.0",
 ]
+# opt-in crop detection of the experimental matching pipeline (py_image_dedup/matching/embeddings.py)
+embeddings = [
+    "onnxruntime>=1.23.0,<2.0.0",
+]
 
 [project.urls]
 homepage = "https://github.com/markusressel/py-image-dedup"

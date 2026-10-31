@@ -20,6 +20,8 @@ Package `py_image_dedup/matching/`:
 | `pipeline.py`   | `MatchingPipeline`: analyse (thread pool) into the store, match, cluster                                                                         |
 | `evaluation.py` | Pairwise precision/recall against a ground truth                                                                                                 |
 | `benchmark.py`  | Benchmark + comparison with image-match (`python -m py_image_dedup.matching.benchmark`)                                                          |
+| `embeddings.py` | Opt-in crop detection: SSCD embeddings (onnxruntime), cosine similarity search, crop relations on groups, see "Crop detection" below           |
+| `crop_benchmark.py` | Benchmark of the crop detection with generated crops (`python -m py_image_dedup.matching.crop_benchmark`)                                    |
 
 The benchmark is run as a module (not a CLI command), only on test data:
 
@@ -104,7 +106,7 @@ Takeaways:
 
 - Messenger copies (resize + recompression) are trivially found by both. pHash is even more robust
   (a 320 px thumbnail at q70 is at distance 0..2, image-match is at the 0.1 cutoff).
-- Neither method handles crops; that needs embeddings (SSCD, opt-in, see TODO).
+- Neither method handles crops; the opt-in embedding stage does, see "Crop detection" below.
 - Physically rotated/mirrored copies without an orientation tag are not found by the prototype. image-match
   finds rotated ones in production because `find_similar` searches all orientations. Hashing the 8 dihedral
   transforms (or only the 4 rotations) of each image would fix it for 8x hash storage and search time;
@@ -202,6 +204,103 @@ signatures and runs in numpy (`search.py`), so no database specific similarity s
 6. **Migration**: run both backends side by side if easily possible and compare the results on the owner's dataset.
 7. **Signature store**: a separate SQLite file for the hashes (not the state store database); if feasible also
    support Postgres (the owner runs a cluster instance). Done, see "Signature store backends".
+
+## Crop detection (embeddings, opt-in)
+
+Owner decision: catch crops with AI embeddings. Crops should win in most cases, but not all, so a crop and its
+source always go to review, with the crop ranked first by default.
+
+### How it works
+
+- **Model**: [SSCD](https://github.com/facebookresearch/sscd-copy-detection) `sscd_disc_mixup` (Meta, MIT
+  license, ResNet-50, 512 dimensional L2-normalised embeddings), a self-supervised model trained for copy
+  detection (crops, rescaling, colour changes, overlays), run with `onnxruntime` on the CPU.
+- **Optional dependency**: `poetry install -E embeddings` / `pip install 'py-image-dedup[embeddings]'`
+  (`onnxruntime`, cp314 wheels for amd64 and arm64). `onnxruntime` is only imported when an
+  `OnnxEmbeddingExtractor` is created; the matching package works without it. Not installed in the Docker image.
+- **Model file**: not bundled in the repo or the image. Either
+  - downloaded on demand by `ensure_model()` into `$PY_IMAGE_DEDUP_MODEL_CACHE` (default
+    `~/.cache/py-image-dedup/models`), SHA-256 verified after the download and on every load. Default source: an
+    ONNX export of the official TorchScript release, published on Hugging Face by a third party
+    (`nutszebra/sscd_onnx`, pinned to revision `0f03b67`, sha256 `e65e2a5b...6f8`, 98 MB, fixed input
+    1x3x320x320). Its embeddings were verified to be identical (max abs difference 1e-7) to an own export of
+    the official file. That repository has no license tag; the weights themselves are MIT. Or
+  - exported locally with `tools/export_sscd_onnx.py` (needs PyTorch in a throw-away virtualenv; downloads the
+    official TorchScript file from `dl.fbaipublicfiles.com`, verifies its SHA-256, exports with dynamic batch
+    and image size, checks onnxruntime against PyTorch) and passed by path. Recommended for production: no
+    third-party binary.
+- **Stage**: `EmbeddingStage` runs after the hash stages (`MatchingPipeline(..., embedding_stage=...)`, default
+  off). It embeds every file (EXIF oriented JPEG draft decode, squashed to 320x320, ImageNet normalisation),
+  caches the vectors in its own SQLite table (`EmbeddingStore`, invalidated by size, mtime and model id),
+  searches all pairs by cosine similarity (numpy, block-wise) and adds pairs with similarity >= 0.6 that the
+  hash stages did not match as `MatchReason.EMBEDDING` with the note `crop/embedding similarity 0.xx`. The
+  burst veto applies. Confidence 0.50 .. 0.75 by similarity, i.e. never in the auto-act range.
+- **Crop relation (ranking hint)**: after clustering, `annotate_crops` sets `DuplicateGroup.crops`
+  (`CropRelation(crop, source, area_ratio, aspect_ratio_differs, embedding_similarity)`) and
+  `DuplicateGroup.has_crops`. Pairwise "fewer pixels" cannot tell a crop from a downscaled copy (a 1280 px
+  messenger copy has fewer pixels than a 10 % crop), so it is decided per group: the member with the most pixels
+  is the reference; members connected to it by hash matches between images with the same (orientation free)
+  aspect ratio show the full frame; all others (only connected through embedding matches or hash matches
+  with another aspect ratio) are crops of the reference. This also runs without the embedding stage (hash
+  matched crops with another aspect ratio). `rank_crops_first(paths, group.crops)` moves crops to the front;
+  the prioritization should use it as the default, and a group with `has_crops` must never be acted on
+  automatically (review only).
+
+### Results (generated crops of `tests/images/`, not committed)
+
+`python -m py_image_dedup.matching.crop_benchmark tests/images` copies the test images to a temporary
+directory and adds 7 crops of every original: 10 %, 25 %, 40 % (of each edge, same aspect ratio), square, 16:9,
+portrait (40 % of the width) and a 75 % corner crop resized to 1280 px without EXIF (messenger copy of a crop).
+33 files, 165 duplicate pairs (147 involve a crop), 363 negative pairs.
+
+| Method                         | Precision | Recall | Crop pair recall |
+|--------------------------------|-----------|--------|------------------|
+| hashes only                    | 100 %     | 21.8 % | 12.2 %           |
+| hashes + embeddings (>= 0.6)   | 100 %     | 100 %  | 100 %            |
+
+Cosine similarity:
+
+| Pairs                                                         | min    | p10   | median | max   |
+|---------------------------------------------------------------|--------|-------|--------|-------|
+| with a crop (any two members of the same photo)               | 0.396  | 0.601 | 0.780  | 0.956 |
+| other duplicates (edited, grayscale, telegram)                | 0.660  | 0.699 | 0.903  | 0.998 |
+| negatives (different photos, same place, 29 s apart at most)  | -0.037 | 0.002 | 0.049  | 0.129 |
+
+The best embedding match of every crop is between 0.73 (portrait crop) and 0.94. The lowest pairs (portrait
+crop ~ edited copy, 0.40) are still grouped transitively. 19 of 21 crops were flagged as crops of the original
+(`group.crops`); the 10 % crops of two photos were already matched by pHash/dHash with the same aspect ratio and
+are therefore treated like a resized copy (the group is still found, but not flagged as containing a crop).
+
+Cost (AMD Ryzen 7 5800X, 12 MP JPEGs):
+
+| Item                                          | Value                                                                    |
+|-----------------------------------------------|--------------------------------------------------------------------------|
+| model file                                    | 98 MB (fp32)                                                             |
+| model load                                    | 0.3 s, +240 MB RSS                                                       |
+| embedding incl. decode, 1 onnxruntime thread  | 156 ms/file                                                              |
+| embedding incl. decode, 16 threads            | 40 ms/file wall                                                          |
+| peak RSS while embedding (batch 16)           | 560 .. 590 MB (default model, fixed batch 1), 1.3 GB (own export, dynamic batch) |
+| embedding storage                             | 2 KB/file (512 x float32), 82 MB for 40k                                 |
+| similarity search, brute force (numpy/BLAS)   | 40k: 6.6 s, 100k: 44 s; extra memory per block 256 x n x 4 bytes        |
+
+A 40k library needs ~1.7 h of single core CPU time for the embeddings (once, cached afterwards), about 5x the
+prototype hashes and less than image-match today. Brute force search is fine up to ~100k; beyond that, or for
+incremental daemon runs (one new file against the library is O(n), ~1 ms for 40k), an ANN index (`sqlite-vec`,
+FAISS) is the next step. float16 storage would halve the memory.
+
+### Open points
+
+- The threshold 0.6 is calibrated on 3 photos only. Real libraries contain similar but different photos (same
+  scene, other people/cameras, so no burst veto) that may score higher; the low confidence keeps them in review,
+  but the threshold should be checked on a real sample (read only).
+- The 320x320 squash distorts crops with another aspect ratio; a dynamic size export
+  (`tools/export_sscd_onnx.py`) could keep the aspect ratio (resize the short edge) and might raise the
+  similarity of strong crops.
+- Not wired into the deduplicator/daemon/config yet (options needed: enable flag, model path or URL + sha256,
+  cache dir, min similarity); the Docker image would need the extra and a model volume.
+- Light crops (~10 %) that are hash matched with the same aspect ratio are not flagged as crops.
+- The embedding cache (`EmbeddingStore`) is a plain SQLite table (own file or in memory); it is not part of the
+  `SignatureStore` interface, so there is no Postgres variant yet.
 
 ## Not done (intentionally)
 
