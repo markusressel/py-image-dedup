@@ -7,8 +7,15 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # native runners for both published platforms, no emulation needed
+        runner: [ ubuntu-latest, ubuntu-24.04-arm ]
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v7
       - name: Build the Docker image
         run: docker build . --file Dockerfile --tag markusressel/py-image-dedup:latest
+      - name: Smoke test the Docker image
+        run: docker run --rm --entrypoint py-image-dedup markusressel/py-image-dedup:latest --help

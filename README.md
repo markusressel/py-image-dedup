@@ -281,7 +281,7 @@ me:\
 ## Docker
 
 To run **py-image-dedup** using docker you can use the [markusressel/py-image-dedup](https://hub.docker.com/r/markusressel/py-image-dedup) 
-image from DockerHub:
+image from DockerHub (`linux/amd64` and `linux/arm64`):
 
 ```
 docker run -t \
