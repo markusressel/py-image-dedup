@@ -403,12 +403,30 @@ class ImageMatchDeduplicator:
             self.analyze_files_with_hashes(directories)
 
         echo(next_phase("Finding duplicates (hashes)") + " ...", color='cyan')
-        self._progress_manager.start("Finding duplicates (hashes)", 1, "Steps", self.interactive)
+        from py_image_dedup.matching.pipeline import STAGE_CLUSTER, STAGE_EMBEDDINGS, STAGE_HASHES
+        stage_tasks = {
+            STAGE_HASHES: ("Finding duplicates (hashes)", "Steps"),
+            STAGE_EMBEDDINGS: ("Computing embeddings (crop detection)", "Files"),
+            STAGE_CLUSTER: ("Grouping duplicates (hashes)", "Steps"),
+        }
+        current = {"stage": None, "done": 0}
+
+        def progress(stage: str, done: int, total: int):
+            if stage != current["stage"]:
+                if current["stage"] is not None:
+                    self._progress_manager.clear()
+                task, unit = stage_tasks.get(stage, (stage, "Steps"))
+                self._progress_manager.start(task, total, unit, self.interactive)
+                current.update(stage=stage, done=0)
+            if done > current["done"]:
+                self._progress_manager.inc(done - current["done"])
+                current["done"] = done
+
         try:
-            groups = self.hash_matcher.match(directories)
-            self._progress_manager.inc()
+            groups = self.hash_matcher.match(directories, progress)
         finally:
-            self._progress_manager.clear()
+            if current["stage"] is not None:
+                self._progress_manager.clear()
 
         self._progress_manager.start("Recording duplicate groups (hashes)", len(groups), "Groups", self.interactive)
         try:

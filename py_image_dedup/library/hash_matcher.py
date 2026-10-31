@@ -118,9 +118,11 @@ class HashMatcher:
         """
         return self.pipeline.analyse(files, progress)
 
-    def match(self, directories: List[Path]) -> List[DuplicateGroup]:
+    def match(self, directories: List[Path],
+              progress: Callable[[str, int, int], None] = None) -> List[DuplicateGroup]:
         """
         :param directories: source directories (without across_dirs, only files of the same one are grouped)
+        :param progress: optional callback (stage, done, total), see MatchingPipeline.match
         :return: duplicate groups
         """
         match_filter = None
@@ -135,7 +137,7 @@ class HashMatcher:
                 root = root_of(match.a)
                 return root is not None and root == root_of(match.b)
 
-        result = self.pipeline.match(match_filter)
+        result = self.pipeline.match(match_filter, progress)
         LOGGER.info(f"Hash matching: {len(result.groups)} groups, timings {result.timings}")
         return result.groups
 

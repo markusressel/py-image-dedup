@@ -577,7 +577,9 @@ class PipelineTest(TempDirTestCase):
         analysis = pipeline.analyse(files)
         self.assertEqual((12, 0, {}), (analysis.analysed, analysis.skipped_unchanged, analysis.failed))
 
-        result = pipeline.match()
+        stages = []
+        result = pipeline.match(progress=lambda stage, done, total: stages.append((stage, done, total)))
+        self.assertEqual([("hashes", 0, 1), ("hashes", 1, 1), ("cluster", 0, 1), ("cluster", 1, 1)], stages)
         self.assertEqual(3, len(result.groups))
         expected = pairs_of_groups(ground_truth_by_folder([str(f) for f in files]))
         metrics = evaluate_pairs(pairs_of_groups(g.paths for g in result.groups), expected)

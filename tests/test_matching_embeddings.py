@@ -139,7 +139,11 @@ class EmbeddingStageTest(unittest.TestCase):
         hash_matches = find_matches(signatures, thresholds)
         self.assertEqual({("/photo-telegram.jpg", "/photo.jpg")}, {(m.a, m.b) for m in hash_matches})
 
-        embedding_matches = stage.find_matches(signatures, hash_matches, thresholds)
+        reported = []
+        embedding_matches = stage.find_matches(signatures, hash_matches, thresholds,
+                                               lambda done, total: reported.append((done, total)))
+        # all 4 files are missing an embedding, one batch
+        self.assertEqual([(4, 4)], reported)
         pairs = {(m.a, m.b): m for m in embedding_matches}
         # already matched by the hashes: not reported again
         self.assertEqual({("/photo-crop.jpg", "/photo-telegram.jpg"), ("/photo-crop.jpg", "/photo.jpg")}, set(pairs))

@@ -426,11 +426,13 @@ class EmbeddingStage:
         # path -> error message of the last update
         self.failed: Dict[str, str] = {}
 
-    def update(self, signatures: Sequence[ImageSignature]) -> Dict[str, np.ndarray]:
+    def update(self, signatures: Sequence[ImageSignature],
+               progress: Callable[[int, int], None] = None) -> Dict[str, np.ndarray]:
         """
         Computes missing embeddings.
 
         :param signatures: all files
+        :param progress: optional callback (done, total) after each batch, total is the number of missing embeddings
         :return: path -> embedding for all files that could be embedded
         """
         model_id = self.extractor.model_id
@@ -448,6 +450,8 @@ class EmbeddingStage:
         with ThreadPoolExecutor(max_workers=self.workers) as executor:
             for start in range(0, len(todo), self.batch_size):
                 decoded = list(executor.map(decode, todo[start:start + self.batch_size]))
+                if progress is not None:
+                    progress(min(start + self.batch_size, len(todo)), len(todo))
                 for signature, _, error in decoded:
                     if error is not None:
                         self.failed[signature.path] = error
@@ -461,15 +465,17 @@ class EmbeddingStage:
         return known
 
     def find_matches(self, signatures: Sequence[ImageSignature], existing: Iterable[Match],
-                     thresholds: MatchingThresholds = None) -> List[Match]:
+                     thresholds: MatchingThresholds = None,
+                     progress: Callable[[int, int], None] = None) -> List[Match]:
         """
         :param signatures: all files
         :param existing: matches of the hash stages, these pairs are skipped
         :param thresholds: burst window and penalty, defaults if None
+        :param progress: optional callback (done, total) while missing embeddings are computed
         :return: new embedding matches
         """
         thresholds = thresholds or MatchingThresholds()
-        embeddings = self.update(signatures)
+        embeddings = self.update(signatures, progress)
         indexed = [s for s in signatures if s.path in embeddings]
         if len(indexed) < 2:
             return []

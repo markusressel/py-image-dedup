@@ -20,6 +20,11 @@ from py_image_dedup.matching.store import SignatureStore
 
 LOGGER = logging.getLogger(__name__)
 
+# stages reported by MatchingPipeline.match
+STAGE_HASHES = "hashes"
+STAGE_EMBEDDINGS = "embeddings"
+STAGE_CLUSTER = "cluster"
+
 DEFAULT_FILE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp", ".tif", ".tiff", ".bmp", ".gif")
 
 
@@ -145,34 +150,47 @@ class MatchingPipeline:
             self._full_pixel_hashes[signature.path] = full_pixel_hash
         return full_pixel_hash
 
-    def match(self, match_filter: Callable[[Match], bool] = None) -> MatchingResult:
+    def match(self, match_filter: Callable[[Match], bool] = None,
+              progress: Callable[[str, int, int], None] = None) -> MatchingResult:
         """
         Groups all files of the store.
 
         :param match_filter: optional, only matches for which it returns True are clustered
                              (f.ex. only pairs within the same source directory)
+        :param progress: optional callback (stage, done, total), stages: STAGE_HASHES, STAGE_EMBEDDINGS
+                         (only with an embedding stage, total = number of missing embeddings), STAGE_CLUSTER
         :return: groups and matches
         """
+        def report(stage: str, done: int, total: int):
+            if progress is not None:
+                progress(stage, done, total)
+
         timings = {}
         start = time.perf_counter()
         signatures = self.store.get_all()
         timings["load"] = time.perf_counter() - start
 
         start = time.perf_counter()
+        report(STAGE_HASHES, 0, 1)
         resolver = self._resolve_full_pixel_hash if self.verify_pixel_identical else None
         matches = find_matches(signatures, self.thresholds, resolver)
+        report(STAGE_HASHES, 1, 1)
         timings["match"] = time.perf_counter() - start
 
         if self.embedding_stage is not None:
             start = time.perf_counter()
-            matches = matches + self.embedding_stage.find_matches(signatures, matches, self.thresholds)
+            matches = matches + self.embedding_stage.find_matches(
+                signatures, matches, self.thresholds,
+                lambda done, total: report(STAGE_EMBEDDINGS, done, total))
             timings["embeddings"] = time.perf_counter() - start
 
         if match_filter is not None:
             matches = [m for m in matches if match_filter(m)]
 
         start = time.perf_counter()
+        report(STAGE_CLUSTER, 0, 1)
         groups = cluster(signatures, matches, self.thresholds)
         annotate_crops(groups, signatures, self.thresholds)
         timings["cluster"] = time.perf_counter() - start
+        report(STAGE_CLUSTER, 1, 1)
         return MatchingResult(groups=groups, matches=matches, timings=timings)
