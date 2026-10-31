@@ -4,7 +4,7 @@ import { api, imageUrl } from '../api'
 import { usePolling } from '../polling'
 import { status } from '../status'
 import { fileName, folder, formatBytes, formatPixels, formatTime } from '../format'
-import type { Candidate, GroupDetail } from '../types'
+import type { Candidate, GroupDetail, GroupImmichAssets } from '../types'
 import StatusBadge from '../components/StatusBadge.vue'
 import ThumbImage from '../components/ThumbImage.vue'
 import ActionTable from '../components/ActionTable.vue'
@@ -16,6 +16,26 @@ const group = usePolling<GroupDetail>(
   (g) => (g?.execute_requested ? 1500 : 10000),
 )
 watch(() => props.id, () => group.refresh())
+
+// "open in Immich" links, loaded once per group: a failing Immich never breaks this page
+const immich = ref<GroupImmichAssets | null>(null)
+watch(
+  () => props.id,
+  async (id) => {
+    immich.value = null
+    try {
+      const result = await api.groupImmich(id)
+      if (id === props.id) immich.value = result
+    } catch {
+      // Immich links are optional
+    }
+  },
+  { immediate: true },
+)
+
+function immichUrl(candidate: Candidate): string | null {
+  return immich.value?.candidates.find((a) => a.candidate_id === candidate.id)?.url ?? null
+}
 
 const busy = ref(false)
 const actionError = ref<string | null>(null)
@@ -126,6 +146,7 @@ function plannedFor(candidate: Candidate) {
           </span>
         </div>
         <div v-if="actionError" class="error-box">{{ actionError }}</div>
+        <div v-if="immich?.error" class="muted small">Immich links unavailable: {{ immich.error }}</div>
       </section>
 
       <section class="candidates">
@@ -148,6 +169,9 @@ function plannedFor(candidate: Candidate) {
           <div class="candidate-name path" :title="c.path">{{ fileName(c.path) }}</div>
           <div class="muted small path" :title="c.path">{{ folder(c.path) }}</div>
           <div v-if="c.moved_to" class="muted small path">→ {{ c.moved_to }}</div>
+          <a v-if="immichUrl(c)" :href="immichUrl(c)!" target="_blank" rel="noopener" class="small">
+            open in Immich ↗
+          </a>
           <div v-if="c.role === 'keep' && g.decision_source === 'user'" class="small">chosen by you</div>
           <div v-else-if="c.role === 'keep' && c.keep_reason" class="small">{{ c.keep_reason }}</div>
           <div v-else-if="plannedFor(c)" class="small">

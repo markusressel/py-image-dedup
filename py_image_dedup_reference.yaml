@@ -132,13 +132,22 @@ py_image_dedup:
     # static_directory: /app/web/dist
 
   # Optional Immich integration: import the files trashed in Immich (f.ex. by
-  # its duplicate review) as decisions for the duplicate groups (web UI dashboard).
+  # its duplicate review) as decisions for the duplicate groups (web UI dashboard),
+  # "open in Immich" links in the group detail and library rescans after changes.
   immich:
     # Base URL of the Immich server.
     # url: http://immich-server:2283
     # API key with the asset.read permission of the user who owns the trashed
     # assets. Better set via env: PY_IMAGE_DEDUP_IMMICH_API_KEY
     # api_key: ...
+    # URL of Immich as reachable from the browser, for the "open in Immich" links
+    # in the web UI. Falls back to url.
+    # public_url: https://immich.example.com
+    # Queue a scan of the Immich external libraries after files were really
+    # moved or deleted (at most once per run / batch of executed decisions).
+    # Needs an API key of an Immich admin with the library.read and
+    # library.update permissions.
+    rescan_after_changes: false
     # Maps the paths Immich reports to the paths this application sees,
     # f.ex. when Immich mounts the library at a different location.
     # Only paths matching a mapping are imported (if any mapping is set).

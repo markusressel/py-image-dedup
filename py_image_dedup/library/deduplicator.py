@@ -15,6 +15,7 @@ from ordered_set import OrderedSet
 
 from py_image_dedup import util
 from py_image_dedup.config import DeduplicatorConfig
+from py_image_dedup.integrations.immich import ImmichClient
 from py_image_dedup.library import ActionEnum
 from py_image_dedup.library.deduplication_result import DeduplicationResult
 from py_image_dedup.library.progress_manager import ProgressManager
@@ -114,6 +115,8 @@ class ImageMatchDeduplicator:
         self._run_id = None
         # held while a run is in progress, so user decisions from the web UI are executed in between runs
         self.work_lock = threading.RLock()
+        # files really moved/deleted since the last Immich library rescan was triggered
+        self._changed_paths = []
         self.reset_result()
 
         listener = StateProgressListener(state_store, lambda: self._run_id) if state_store is not None else None
@@ -904,6 +907,42 @@ class ImageMatchDeduplicator:
             except Exception as ex:
                 LOGGER.exception(ex)
 
+        self._trigger_immich_rescan()
+
+    def _trigger_immich_rescan(self):
+        """
+        Queues a scan of the Immich external libraries (if enabled) when files were really moved or deleted
+        since the last call. Runs in the background and never raises: Immich being unreachable must not
+        affect deduplication.
+        """
+        changed_paths, self._changed_paths = self._changed_paths, []
+        if not changed_paths or not self._config.IMMICH_RESCAN_AFTER_CHANGES.value:
+            return
+        url = self._config.IMMICH_URL.value
+        api_key = self._config.IMMICH_API_KEY.value
+        if not (url and api_key):
+            LOGGER.warning("immich.rescan_after_changes is enabled, but immich.url or immich.api_key is missing")
+            return
+        try:
+            client = ImmichClient(url, api_key, path_mappings=self._config.IMMICH_PATH_MAPPINGS.value, timeout=10)
+        except Exception as ex:
+            LOGGER.warning(f"Could not trigger an Immich library rescan: {ex}")
+            return
+        immich_paths = [p for p in (client.to_immich_path(p) for p in changed_paths) if p is not None]
+        self._run_in_background(lambda: self._rescan_immich_libraries(client, immich_paths))
+
+    @staticmethod
+    def _rescan_immich_libraries(client: ImmichClient, immich_paths: List[str]):
+        try:
+            library_ids = client.rescan_libraries(immich_paths)
+            LOGGER.info(f"Queued a scan of {len(library_ids)} Immich external library(ies)")
+        except Exception as ex:
+            LOGGER.warning(f"Could not trigger an Immich library rescan: {ex}")
+
+    @staticmethod
+    def _run_in_background(function):
+        threading.Thread(target=function, name="immich-rescan").start()
+
     def execute_user_decisions(self) -> int:
         """
         Executes the decisions users made in the web UI (chosen keeper of a duplicate group).
@@ -926,6 +965,7 @@ class ImageMatchDeduplicator:
                                               status=ActionStatus.FAILED, message=f"{type(ex).__name__}: {ex}",
                                               group_id=group["id"])
                     self._state.mark_executed(group["id"], resolved=False)
+            self._trigger_immich_rescan()
             return len(groups)
 
     def _execute_user_decision(self, group: dict):
@@ -970,6 +1010,8 @@ class ImageMatchDeduplicator:
         """
         Writes a file action to the action log of the state store (if any). Never raises.
         """
+        if status == ActionStatus.DONE and not dry_run and action in ("move", "delete"):
+            self._changed_paths.append(str(path))
         group_id = self._group_of_path.get(str(path))
         if status == ActionStatus.FAILED and group_id is not None:
             self._failed_groups.add(group_id)
