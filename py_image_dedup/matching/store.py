@@ -16,11 +16,12 @@ from threading import RLock
 from typing import Dict, Iterable, Iterator, List, Mapping, Optional
 
 from py_image_dedup.matching.models import ImageMetadata, ImageSignature, SIGNATURE_VERSION
+from py_image_dedup.matching.orientation import decode_orientation_hashes, encode_orientation_hashes
 
 LOGGER = logging.getLogger(__name__)
 
 # bump when the table layout changes; signatures are a cache, so a store with another version is rebuilt
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS files (
@@ -42,6 +43,8 @@ CREATE TABLE IF NOT EXISTS files (
     image_unique_id TEXT,
     software TEXT,
     signature_version INTEGER NOT NULL,
+    orientation_hashes BLOB,
+    colour_moments TEXT,
     analysed_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
 );
 CREATE INDEX IF NOT EXISTS files_sha256 ON files (sha256);
@@ -51,7 +54,7 @@ CREATE INDEX IF NOT EXISTS files_preview_pixel_hash ON files (preview_pixel_hash
 _COLUMNS = (
     "path", "file_size", "mtime_ns", "sha256", "preview_pixel_hash", "full_pixel_hash", "phash", "dhash",
     "width", "height", "is_grayscale", "capture_time", "capture_time_has_subsec", "camera_make", "camera_model",
-    "image_unique_id", "software", "signature_version",
+    "image_unique_id", "software", "signature_version", "orientation_hashes", "colour_moments",
 )
 
 
@@ -198,6 +201,8 @@ class SignatureStore(ABC):
             metadata.capture_time.isoformat() if metadata.capture_time else None,
             bool(metadata.capture_time_has_subsec), metadata.camera_make, metadata.camera_model,
             metadata.image_unique_id, metadata.software, signature.signature_version,
+            encode_orientation_hashes(signature.orientation_hashes) if signature.orientation_hashes else None,
+            ",".join(str(v) for v in signature.colour_moments) if signature.colour_moments else None,
         )
 
     @staticmethod
@@ -227,6 +232,10 @@ class SignatureStore(ABC):
                 software=row["software"],
             ),
             signature_version=row["signature_version"],
+            orientation_hashes=decode_orientation_hashes(bytes(row["orientation_hashes"]))
+            if row["orientation_hashes"] else None,
+            colour_moments=tuple(float(v) for v in row["colour_moments"].split(","))
+            if row["colour_moments"] else None,
         )
 
 

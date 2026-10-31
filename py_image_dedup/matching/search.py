@@ -40,7 +40,9 @@ def find_candidate_pairs(phashes: np.ndarray,
                          dhashes: np.ndarray,
                          max_phash_distance: int,
                          max_dhash_distance: int,
-                         block_size: int = DEFAULT_BLOCK_SIZE) -> List[CandidatePair]:
+                         block_size: int = DEFAULT_BLOCK_SIZE,
+                         query_phashes: np.ndarray = None,
+                         query_dhashes: np.ndarray = None) -> List[CandidatePair]:
     """
     Brute force all-pairs Hamming distance search, vectorised with numpy.
 
@@ -52,10 +54,17 @@ def find_candidate_pairs(phashes: np.ndarray,
     :param max_phash_distance: maximum pHash Hamming distance (inclusive)
     :param max_dhash_distance: maximum dHash Hamming distance (inclusive)
     :param block_size: rows per block
+    :param query_phashes: optional hashes compared in place of phashes[i] (e.g. of the rotated image i),
+                          same shape as phashes; the pair (i, j) then means "transformed i ~ j"
+    :param query_dhashes: like query_phashes, for the dHashes (required if query_phashes is given)
     :return: all pairs (i < j) within both limits
     """
     if phashes.shape != dhashes.shape:
         raise ValueError("phashes and dhashes must have the same shape")
+    if query_phashes is None:
+        query_phashes, query_dhashes = phashes, dhashes
+    elif query_dhashes is None or query_phashes.shape != phashes.shape or query_dhashes.shape != phashes.shape:
+        raise ValueError("query_phashes and query_dhashes must both be given, with the shape of phashes")
     n = phashes.shape[0]
     result = []
     for start in range(0, n, block_size):
@@ -64,7 +73,7 @@ def find_candidate_pairs(phashes: np.ndarray,
         column_offset = start + 1
         if column_offset >= n:
             break
-        block = np.bitwise_xor(phashes[start:end, None], phashes[None, column_offset:])
+        block = np.bitwise_xor(query_phashes[start:end, None], phashes[None, column_offset:])
         phash_distances = np.bitwise_count(block)
         del block
         # exclude pairs j <= i inside the block: row r (i = start + r) and column c (j = start + 1 + c)
@@ -77,7 +86,7 @@ def find_candidate_pairs(phashes: np.ndarray,
             continue
         i = row_index + start
         j = column_index + column_offset
-        dhash_distances = np.bitwise_count(dhashes[i] ^ dhashes[j])
+        dhash_distances = np.bitwise_count(query_dhashes[i] ^ dhashes[j])
         keep = dhash_distances <= max_dhash_distance
         for ii, jj, dp, dd in zip(i[keep], j[keep], phash_distances[row_index, column_index][keep],
                                   dhash_distances[keep]):
