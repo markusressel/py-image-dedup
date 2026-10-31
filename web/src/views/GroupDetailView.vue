@@ -69,6 +69,17 @@ function keep(candidate: Candidate) {
   run(() => api.keep(props.id, candidate.id))
 }
 
+const SUGGESTION_SOURCES: Record<string, string> = { immich: 'Immich', import: 'The imported decision' }
+
+// keeper suggested by another tool that differs from the current decision
+const suggestion = computed(() => {
+  const current = g.value
+  if (!current?.suggested_keep_path || current.suggested_keep_path === current.keep_path) return null
+  const candidate = current.candidates.find((c) => c.path === current.suggested_keep_path)
+  if (!candidate) return null
+  return { candidate, source: SUGGESTION_SOURCES[current.suggestion_source ?? ''] ?? 'The imported decision' }
+})
+
 function undoMoves() {
   const current = g.value
   if (!current) return
@@ -113,6 +124,22 @@ function plannedFor(candidate: Candidate) {
           <div v-else>
             <strong>Decided by rule</strong> <code>{{ g.decided_by ?? '–' }}</code>:
             {{ g.decision_reason }}
+          </div>
+          <div v-if="suggestion && g.status !== 'ignored' && g.status !== 'resolved'" class="suggestion">
+            <span>
+              <strong>{{ suggestion.source }} keeps</strong>
+              <code :title="suggestion.candidate.path">{{ fileName(suggestion.candidate.path) }}</code>.
+              <span v-if="g.decision_source === 'rules'" class="muted">
+                Nothing is moved until you decide.
+              </span>
+            </span>
+            <button
+              class="primary"
+              :disabled="busy || !canDecide || !suggestion.candidate.exists"
+              @click="keep(suggestion.candidate)"
+            >
+              Accept suggestion
+            </button>
           </div>
           <div v-if="g.needs_review" class="warn-box">
             {{ g.review_reason }}. Please check which copy should be kept.
@@ -195,6 +222,7 @@ function plannedFor(candidate: Candidate) {
           <a v-if="immichUrl(c)" :href="immichUrl(c)!" target="_blank" rel="noopener" class="small">
             open in Immich ↗
           </a>
+          <div v-if="c.path === suggestion?.candidate.path" class="small">kept by {{ suggestion.source }}</div>
           <div v-if="c.role === 'keep' && g.decision_source === 'user'" class="small">chosen by you</div>
           <div v-else-if="c.role === 'keep' && c.keep_reason" class="small">{{ c.keep_reason }}</div>
           <div v-else-if="plannedFor(c)" class="small">

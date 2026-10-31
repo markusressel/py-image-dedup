@@ -105,6 +105,9 @@ export interface Group {
   created_at: number
   updated_at: number
   resolved_at: number | null
+  // keeper suggested by another tool (f.ex. Immich) that differs from the rules, see the decision import
+  suggested_keep_path: string | null
+  suggestion_source: 'immich' | 'import' | null
   members?: GroupMember[]
 }
 
@@ -176,6 +179,7 @@ export interface GroupFilter {
   decided_by?: string
   q?: string
   keeps_smaller_copy?: boolean
+  has_suggestion?: boolean
 }
 
 export interface BulkResult {
@@ -243,17 +247,37 @@ export interface GroupImmichAssets {
 }
 
 export interface ImportOutcomes {
-  decided: number
+  agrees_with_rules: number
+  disagrees_with_rules: number
   no_discarded_member: number
   all_discarded: number
   several_remaining: number
   already_decided_by_user: number
 }
 
+export interface ImportComparison {
+  pixel_count: number | null
+  file_size: number | null
+  exif_tag_count: number | null
+}
+
+export interface ImportDisagreement {
+  group_id: number
+  suggested_keep_path: string
+  rule_keep_path: string | null
+  decided_by: string | null
+  suggested: ImportComparison | null
+  rule: ImportComparison | null
+  // the group already had this suggestion (imported before)
+  already_suggested: boolean
+}
+
 export interface ImmichImportResult {
   applied: boolean
+  source: 'immich' | 'import'
   outcomes: ImportOutcomes
-  decided: { group_id: number; keep_path: string }[]
+  agreeing: { group_id: number; keep_path: string }[]
+  disagreeing: ImportDisagreement[]
   trashed: number
   unmapped: number
   unmapped_examples: string[]

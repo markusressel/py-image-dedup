@@ -202,9 +202,21 @@ your decisions. The group of a restored file is set to **ignored**, so neither t
 move it again. Reset the group to let the rules act on it again.
 
 Decisions made in another tool can be imported with `POST /api/decisions/import-discarded`
-(`{"discarded_paths": [...], "apply": false}`, see `/api/docs`): every open group where all but one member
-are in `discarded_paths` keeps the remaining one, other groups are left alone. Without `"apply": true` it
-only reports what would be decided.
+(`{"discarded_paths": [...], "apply": false}`, see `/api/docs`). Only open groups decided by the rules where
+all but one member are in `discarded_paths` are changed, other groups (decided by you, ignored, resolved) are
+left alone:
+
+* **agrees with the rules**: the remaining file is the one the prioritization rules keep. It becomes your
+  decision and the daemon moves the other files.
+* **disagrees with the rules**: nothing is moved. The group goes to review (also with
+  `hold_ambiguous_groups: false`) with the remaining file as suggestion ("Immich keeps ...") that you can
+  accept with one click on the group page. Disagreements are worth a look: either the other tool picked a
+  worse copy (f.ex. a messenger copy over the camera original) or your rules need tuning. The groups list can
+  be filtered by groups with a suggestion.
+
+Without `"apply": true` it only reports what would be decided, including a list of the disagreeing groups with
+resolution, file size and EXIF tag count of both files and the rule that decided the group. Importing again
+is safe: it only refreshes the suggestions.
 
 ### Immich
 
@@ -212,7 +224,8 @@ If your library is also an external library in [Immich](https://immich.app), you
 review and let py-image-dedup move the copies you trashed there: configure `immich.url`, `immich.api_key`
 (an API key with the `asset.read` permission of the user owning the library) and, if Immich sees the files
 under another path, `immich.path_mappings`. The dashboard then shows an "Immich" card to preview and apply the
-import of the Immich trash (`POST /api/integrations/immich/import-trash`). Offline assets (files missing on
+import of the Immich trash (`POST /api/integrations/immich/import-trash`, same rules as the import above:
+only groups where Immich agrees with your prioritization rules are executed). Offline assets (files missing on
 disk) are skipped. Exclude `duplicates_target_directory` from the Immich library, so moved files are not imported
 again.
 

@@ -1,8 +1,10 @@
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
 
-from py_image_dedup.state import StateStore, GroupStatus, DecisionSource, ActionStatus, BulkAction, group_key
+from py_image_dedup.state import StateStore, GroupStatus, DecisionSource, ActionStatus, BulkAction, group_key, \
+    SuggestionSource
 
 
 def _candidates(*paths):
@@ -166,27 +168,110 @@ class StateStoreTest(unittest.TestCase):
         self.assertEqual(GroupStatus.OPEN, self.store.get_group(seen["id"])["status"])
 
     def test_import_discarded_paths(self):
-        decided = self._record(paths=("/a/1.jpg", "/a/2.jpg", "/a/3.jpg"))
+        agrees = self._record(paths=("/a/1.jpg", "/a/2.jpg", "/a/3.jpg"), keep=["/a/2.jpg"])
+        disagrees = self._record(paths=("/f/1.jpg", "/f/2.jpg"), decided_by="bigger-file-size")
         several = self._record(paths=("/b/1.jpg", "/b/2.jpg", "/b/3.jpg"))
         all_discarded = self._record(paths=("/c/1.jpg", "/c/2.jpg"))
         untouched = self._record(paths=("/d/1.jpg", "/d/2.jpg"))
         by_user = self._record(paths=("/e/1.jpg", "/e/2.jpg"))
         self.store.set_user_keeper(by_user["id"], "/e/1.jpg")
-        discarded = ["/a/1.jpg", "/a/3.jpg", "/b/1.jpg", "/c/1.jpg", "/c/2.jpg", "/e/1.jpg"]
+        discarded = ["/a/1.jpg", "/a/3.jpg", "/f/1.jpg", "/b/1.jpg", "/c/1.jpg", "/c/2.jpg", "/e/1.jpg"]
 
         preview = self.store.import_discarded_paths(discarded)
-        self.assertEqual({"decided": 1, "no_discarded_member": 1, "all_discarded": 1, "several_remaining": 1,
-                          "already_decided_by_user": 1}, preview["outcomes"])
-        self.assertEqual([{"group_id": decided["id"], "keep_path": "/a/2.jpg"}], preview["decided"])
-        self.assertEqual(DecisionSource.RULES, self.store.get_group(decided["id"])["decision_source"])
+        self.assertEqual({"agrees_with_rules": 1, "disagrees_with_rules": 1, "no_discarded_member": 1,
+                          "all_discarded": 1, "several_remaining": 1, "already_decided_by_user": 1},
+                         preview["outcomes"])
+        self.assertEqual([{"group_id": agrees["id"], "keep_path": "/a/2.jpg"}], preview["agreeing"])
+        self.assertEqual([{"group_id": disagrees["id"], "suggested_keep_path": "/f/2.jpg",
+                           "rule_keep_path": "/f/1.jpg", "decided_by": "bigger-file-size",
+                           "suggested": {"pixel_count": 10, "file_size": 99, "exif_tag_count": None},
+                           "rule": {"pixel_count": 10, "file_size": 100, "exif_tag_count": None},
+                           "already_suggested": False}], preview["disagreeing"])
+        # a preview does not change anything
+        for group in (agrees, disagrees):
+            stored = self.store.get_group(group["id"])
+            self.assertEqual((DecisionSource.RULES, GroupStatus.OPEN, None),
+                             (stored["decision_source"], stored["status"], stored["suggested_keep_path"]))
 
-        self.store.import_discarded_paths(discarded, apply=True)
-        group = self.store.get_group(decided["id"])
+        self.store.import_discarded_paths(discarded, apply=True, source=SuggestionSource.IMMICH)
+        group = self.store.get_group(agrees["id"])
         self.assertEqual((DecisionSource.USER, "/a/2.jpg"), (group["decision_source"], group["keep_path"]))
         self.assertTrue(group["execute_requested"])
         for other in (several, all_discarded, untouched):
             self.assertEqual(DecisionSource.RULES, self.store.get_group(other["id"])["decision_source"])
         self.assertEqual("/e/1.jpg", self.store.get_group(by_user["id"])["keep_path"])
+
+        # the disagreeing group goes to review, nothing is executed
+        group = self.store.get_group(disagrees["id"])
+        self.assertEqual((DecisionSource.RULES, "/f/1.jpg", False),
+                         (group["decision_source"], group["keep_path"], group["execute_requested"]))
+        self.assertEqual((GroupStatus.REVIEW, True), (group["status"], group["needs_review"]))
+        self.assertEqual(("/f/2.jpg", SuggestionSource.IMMICH),
+                         (group["suggested_keep_path"], group["suggestion_source"]))
+        self.assertEqual("Immich kept /f/2.jpg, the rules keep /f/1.jpg", group["review_reason"])
+        self.assertNotIn(disagrees["id"], [g["id"] for g in self.store.pending_executions()])
+        self.assertEqual([disagrees["id"]], [g["id"] for g in self.store.list_groups(has_suggestion=True)["items"]])
+
+        # accepting the suggestion is a normal user decision
+        self.store.set_user_keeper(disagrees["id"], "/f/2.jpg")
+        group = self.store.get_group(disagrees["id"])
+        self.assertEqual((DecisionSource.USER, "/f/2.jpg", True),
+                         (group["decision_source"], group["keep_path"], group["execute_requested"]))
+
+    def test_import_discarded_paths_is_idempotent(self):
+        weak = self._record(paths=("/f/1.jpg", "/f/2.jpg"), needs_review=True)
+        discarded = ["/f/1.jpg"]
+        self.store.import_discarded_paths(discarded, apply=True, source=SuggestionSource.IMMICH)
+        expected = "Immich kept /f/2.jpg, the rules keep /f/1.jpg; weak"
+        self.assertEqual(expected, self.store.get_group(weak["id"])["review_reason"])
+
+        again = self.store.import_discarded_paths(discarded, apply=True, source=SuggestionSource.IMMICH)
+        self.assertTrue(again["disagreeing"][0]["already_suggested"])
+        group = self.store.get_group(weak["id"])
+        self.assertEqual((expected, GroupStatus.REVIEW), (group["review_reason"], group["status"]))
+
+        # a new run of the rules keeps the suggestion and the review
+        self._record(paths=("/f/1.jpg", "/f/2.jpg"), needs_review=True)
+        group = self.store.get_group(weak["id"])
+        self.assertEqual((expected, GroupStatus.REVIEW, "/f/2.jpg"),
+                         (group["review_reason"], group["status"], group["suggested_keep_path"]))
+        self._record(paths=("/f/1.jpg", "/f/2.jpg"))
+        group = self.store.get_group(weak["id"])
+        self.assertEqual(("Immich kept /f/2.jpg, the rules keep /f/1.jpg", GroupStatus.REVIEW, True),
+                         (group["review_reason"], group["status"], group["needs_review"]))
+
+        # once the rules agree, the suggestion does not hold the group anymore
+        self._record(paths=("/f/1.jpg", "/f/2.jpg"), keep=["/f/2.jpg"])
+        group = self.store.get_group(weak["id"])
+        self.assertEqual((None, GroupStatus.OPEN, False),
+                         (group["review_reason"], group["status"], group["needs_review"]))
+
+        # groups decided by the user and ignored groups are not changed
+        self.store.set_user_keeper(weak["id"], "/f/1.jpg")
+        result = self.store.import_discarded_paths(["/f/1.jpg"], apply=True)
+        self.assertEqual(1, result["outcomes"]["already_decided_by_user"])
+        self.assertEqual(("/f/1.jpg", "/f/2.jpg"), (self.store.get_group(weak["id"])["keep_path"],
+                                                   self.store.get_group(weak["id"])["suggested_keep_path"]))
+        self.store.reset_group(weak["id"])
+        self.store.ignore_group(weak["id"])
+        result = self.store.import_discarded_paths(["/f/2.jpg"], apply=True)
+        self.assertEqual(0, sum(result["outcomes"].values()))
+        self.assertEqual(GroupStatus.IGNORED, self.store.get_group(weak["id"])["status"])
+
+    def test_columns_are_added_to_old_databases(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp, "state.db")
+            connection = sqlite3.connect(path)
+            connection.execute("CREATE TABLE groups (id INTEGER PRIMARY KEY AUTOINCREMENT, key TEXT NOT NULL UNIQUE, "
+                               "status TEXT NOT NULL)")
+            connection.commit()
+            connection.close()
+
+            store = StateStore(path)
+            columns = [row["name"] for row in store._query("PRAGMA table_info(groups)")]
+            store.close()
+            self.assertIn("suggested_keep_path", columns)
+            self.assertIn("suggestion_source", columns)
 
     def test_list_groups_review_first_and_filters(self):
         open_group = self._record(paths=("/a/1.jpg", "/a/2.jpg"))

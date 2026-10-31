@@ -704,6 +704,18 @@ main {
   gap: 6px;
 }
 
+.suggestion {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: var(--info-bg);
+  color: var(--info);
+}
+
 .plan {
   margin-top: 12px;
 }

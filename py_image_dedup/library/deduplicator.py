@@ -686,6 +686,9 @@ class ImageMatchDeduplicator:
                 return None
             protected = [c for c in dont_keep if self._protected_pattern(c[MetadataKey.PATH.value]) is not None]
             return keep + protected, [c for c in dont_keep if c not in protected]
+        if group.get("suggested_keep_path") and group["suggested_keep_path"] != group["keep_path"]:
+            # another tool (f.ex. Immich) keeps a different file than the rules: wait for the user to decide
+            return None
         if group["needs_review"] and self._config.DEDUPLICATION_HOLD_AMBIGUOUS_GROUPS.value:
             return None
         return files_to_keep, duplicates
