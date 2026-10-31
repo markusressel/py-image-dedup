@@ -1,6 +1,9 @@
+import logging
 import unittest
 from datetime import timedelta
 from unittest.mock import patch
+
+import requests
 
 from py_image_dedup.persistence.elasticsearchstorebackend import ElasticSearchStoreBackend
 
@@ -83,6 +86,23 @@ class ElasticSearchStoreBackendConnectionTest(unittest.TestCase):
             self._create(timedelta(minutes=2))
 
         self.assertEqual([], self.clock.sleeps)
+
+    def test_retries_log_a_single_line_without_traceback(self):
+        error = requests.exceptions.ConnectionError("Max retries exceeded with url: /\n(Caused by NewConnectionError)")
+        with patch(f"{MODULE}.requests.get", side_effect=error), \
+                self.assertLogs(MODULE, level=logging.DEBUG) as logs:
+            with self.assertRaises(ConnectionError) as context:
+                self._create(timedelta(seconds=4))
+
+        # attempts at t=0, 2 are retried, the one at t=4 gives up
+        self.assertEqual(2, len(logs.records))
+        for record in logs.records:
+            self.assertIsNone(record.exc_info)
+            self.assertNotIn("\n", record.getMessage())
+            self.assertIn("ConnectionError", record.getMessage())
+        # the final error names the last cause
+        self.assertIn("Max retries exceeded", str(context.exception))
+        self.assertIs(error, context.exception.__cause__)
 
 
 if __name__ == '__main__':

@@ -55,8 +55,10 @@ class DeduplicatorStateTest(TestBase):
         self.dedup._persistence.find_similar.return_value = candidates
         self.dedup._progress_manager.start("test", 1, "Files", False)
         self.addCleanup(self.dedup._progress_manager.clear)
-        self.dedup.find_duplicates_of_file(root_directories=[ROOT], root_directory=ROOT,
-                                           reference_file_path=Path(candidates[0][MetadataKey.PATH.value]))
+        # the candidate files don't exist on disk, see MissingCandidatesTest for that filter
+        with mock.patch.object(self.dedup, "_without_missing_files", side_effect=lambda c, _: c):
+            self.dedup.find_duplicates_of_file(root_directories=[ROOT], root_directory=ROOT,
+                                               reference_file_path=Path(candidates[0][MetadataKey.PATH.value]))
         groups = self.store.list_groups()["items"]
         return self.store.get_group(groups[0]["id"]) if groups else None
 

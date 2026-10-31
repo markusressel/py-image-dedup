@@ -73,9 +73,9 @@ class ProcessingManager(RegularIntervalWorker):
             self._update_queue_size()
 
     def remove(self, path: Path):
-        if path in self.queue:
-            self.queue.pop(path)
-        self._update_queue_size()
+        with self.lock:
+            self.queue.pop(path, None)
+            self._update_queue_size()
         self.deduplicator._persistence.remove(str(path))
 
     def _update_queue_size(self):
