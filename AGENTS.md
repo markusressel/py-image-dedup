@@ -23,6 +23,7 @@ that watches the source directories, exposes Prometheus metrics and serves a web
 
 ```shell
 poetry install                     # install incl. dev deps (pytest)
+poetry install --extras postgres   # + optional Postgres signature store (psycopg) for the matching prototype
 poetry run pytest                  # run unit tests (no Elasticsearch needed, < 1s)
 poetry run py-image-dedup --help   # CLI entrypoint (py_image_dedup.cli:cli)
 docker build . -t py-image-dedup:test   # same build CI runs on every PR
@@ -73,13 +74,16 @@ py_image_dedup/
   matching/                    # EXPERIMENTAL prototype (not wired in): SQLite signatures (SHA-256, pixel hash,
                                # pHash/dHash), staged grouping + confidence, burst veto, union-find clustering
                                # (see docs/matching-prototype.md), benchmark.py: `python -m py_image_dedup.matching.benchmark`
+    store.py                   # SignatureStore interface, SqliteSignatureStore (default, own DB file, separate from
+                               # the state store), open_signature_store(url): sqlite:///... | postgresql://...
+    store_postgres.py          # PostgresSignatureStore, optional `postgres` extra (psycopg 3, imported lazily)
   util/                        # file + image helpers, echo()
 web/                           # Vue 3 + Vite + TypeScript single page app (no component library)
   src/api.ts, src/types.ts     # typed client for the JSON API (keep in sync with py_image_dedup/web/app.py)
   src/views/                   # Dashboard, Groups, GroupDetail, Run, Actions, Config
   src/polling.ts               # polling composable (status: 1s while busy, 3s idle; paused in hidden tabs)
 tests/                         # pytest/unittest tests, test config + sample images
-docs/                          # design notes (matching-prototype.md: benchmark results, open questions)
+docs/                          # design notes (matching-prototype.md: benchmark results, owner decisions, store backends)
 docker/entrypoint.sh           # drops privileges to PUID/PGID
 py_image_dedup_reference.yaml  # documented reference configuration
 ```
@@ -139,6 +143,12 @@ py_image_dedup_reference.yaml  # documented reference configuration
   docker run -d -p 9200:9200 -e discovery.type=single-node -e xpack.security.enabled=false elasticsearch:7.17.28
   poetry run pytest -m integration   # host/port via PY_IMAGE_DEDUP_ELASTICSEARCH_HOST / _PORT
   ```
+  The Postgres signature store tests (`tests/test_matching_store.py`) are integration tests too and are skipped
+  unless `PY_IMAGE_DEDUP_TEST_POSTGRES_DSN` is set (needs the `postgres` extra), CI runs them with a Postgres service:
+  ```shell
+  docker run -d -p 5432:5432 -e POSTGRES_PASSWORD=postgres postgres:17-alpine
+  PY_IMAGE_DEDUP_TEST_POSTGRES_DSN=postgresql://postgres:postgres@127.0.0.1:5432/postgres poetry run pytest -m integration
+  ```
   Tested Elasticsearch versions: 7.9.2 and 7.17.28 (both run in CI). Only Elasticsearch 7.x is supported
   (the client is pinned to `elasticsearch = "^7"`, 8.x is untested).
 - Prioritization/selection logic (`_select_images_to_delete`, `_sort_by_quality_descending`, `_quality_criteria`)
@@ -160,7 +170,7 @@ GitHub Actions (`.github/workflows/`):
 - `dockerimage-latest.yml` / `dockerimage-release.yml`: build (buildx + QEMU, `linux/amd64` + `linux/arm64`) and push
   `markusressel/py-image-dedup` on master / tags. Every binary dependency needs a cp314 `manylinux` aarch64 wheel,
   otherwise the emulated arm64 build compiles it from source.
-- `tests.yml`: unit tests, web UI lint + type-check + build, and integration tests (Elasticsearch service container)
+- `tests.yml`: unit tests, web UI lint + type-check + build, and integration tests (Elasticsearch + Postgres service containers)
   on PRs and pushes to master.
 - `codespell.yml`: spelling (config in `pyproject.toml`, ignores in `.codespellignore`).
 - `codeql-analysis.yml`: CodeQL.

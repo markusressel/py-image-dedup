@@ -71,9 +71,22 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 30
+      # signature store of the experimental matching pipeline (tests/test_matching_store.py)
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
     env:
       PY_IMAGE_DEDUP_ELASTICSEARCH_HOST: 127.0.0.1
       PY_IMAGE_DEDUP_ELASTICSEARCH_PORT: 9200
+      PY_IMAGE_DEDUP_TEST_POSTGRES_DSN: postgresql://postgres:postgres@127.0.0.1:5432/postgres
     steps:
       - uses: actions/checkout@v7
       - name: Install poetry
@@ -83,7 +96,7 @@ jobs:
           python-version: "3.14"
           cache: poetry
       - name: Install dependencies
-        run: poetry install --no-interaction
+        run: poetry install --no-interaction --extras postgres
       # ElasticSearchStoreBackend retries forever until Elasticsearch answers, so make sure it is up first
       - name: Wait for Elasticsearch
         run: |

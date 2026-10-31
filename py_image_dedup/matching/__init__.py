@@ -12,3 +12,4 @@ from py_image_dedup.matching.models import (
 from py_image_dedup.matching.pipeline import MatchingPipeline, MatchingResult, find_image_files
 from py_image_dedup.matching.signatures import compute_signature
 from py_image_dedup.matching.store import SignatureStore
+from py_image_dedup.matching.store import SqliteSignatureStore, open_signature_store

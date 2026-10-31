@@ -23,14 +23,26 @@ Replaces `image-match` + Elasticsearch. Goal: group all copies of a photo with h
 configurable prioritization rules pick the best one.
 
 - [x] Prototype + benchmark: `py_image_dedup/matching/`, findings in `docs/matching-prototype.md` (#534)
-- [ ] Answer the open questions in `docs/matching-prototype.md` (variants, burst window, rotations, crops, HEIC/RAW, migration)
+- [x] Answer the open questions in `docs/matching-prototype.md` (variants, burst window, rotations, crops, HEIC/RAW,
+      migration, store): see "Decisions" there
 - [ ] Run the benchmark read-only on a real library sample, calibrate thresholds and the auto-act confidence
-- [ ] Introduce a `SignatureBackend` / store interface so backends can be swapped and compared
+- [x] Signature store interface (`SignatureStore`, `open_signature_store(url)`), SQLite in its own file (default)
+- [x] Optional Postgres signature store (`matching/store_postgres.py`, `postgres` extra, integration tests in CI)
+- [ ] Wire the signature store URL into `config.py` (e.g. `matching.store: sqlite:////data/signatures.db`)
+- [ ] Introduce a `SignatureBackend` interface so image-match and the hash pipeline can be swapped and compared
+- [ ] Side-by-side comparison: `matching.backend: image-match|hashes|both`, compare the groups on the owner's
+      dataset in the web UI (`matcher` column)
+- [ ] Rotation/mirror matching: hash the 4 rotations (or 8 dihedral transforms) for copies without orientation tag
+- [ ] Variants (grayscale, edited) and crops: keep as matches, but always route to review instead of auto-acting
+- [ ] Burst window as a decision factor (confidence/review) instead of a hard veto
+- [ ] Crop detection with embeddings (SSCD via onnxruntime, opt-in); crops usually, but not always, win (review)
 - [ ] SQLite store for hashes, metadata, groups, decisions and the action log (single file on a PVC)
   - [x] Groups, candidates, decisions (deciding rule), user overrides, runs and the action log:
         `py_image_dedup/state` (web UI backend, backend independent `matcher` column)
-  - [ ] Hashes and image metadata (prototype: `matching/store.py`)
-- [ ] Decode & normalise: apply EXIF orientation before hashing, support HEIC (`pillow-heif`) and RAW previews (`rawpy`)
+  - [x] Hashes and image metadata: `matching/store.py` (own SQLite file, separate from the state store),
+        optional Postgres (`matching/store_postgres.py`)
+- [ ] Decode & normalise: apply EXIF orientation before hashing (prototype done)
+- [ ] HEIC (`pillow-heif`) and RAW previews (`rawpy`) as optional extras (not needed by the owner, later)
 - [ ] Extract matching metadata: `DateTimeOriginal` (+ sub-seconds), camera model, `ImageUniqueID` /
       Apple content identifier, `Software` (edited) (prototype done, Apple content identifier missing)
 - [ ] Staged grouping, each match tagged with confidence + reason:

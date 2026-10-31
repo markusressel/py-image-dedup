@@ -36,6 +36,12 @@ dependencies = [
     "imagehash>=4.3.2,<5.0.0",
 ]
 
+[project.optional-dependencies]
+# PostgreSQL signature store of the experimental matching pipeline (py_image_dedup/matching/store_postgres.py)
+postgres = [
+    "psycopg[binary]>=3.2,<4.0",
+]
+
 [project.urls]
 homepage = "https://github.com/markusressel/py-image-dedup"
 repository = "https://github.com/markusressel/py-image-dedup"

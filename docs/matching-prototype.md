@@ -2,7 +2,7 @@
 
 Status: **experimental prototype**, not used by the deduplicator, the CLI or the daemon. Production still uses
 `image-match` + Elasticsearch. This document summarises the design, the benchmark results on `tests/images/`
-and the decisions that are still open. See the "Matching & ranking pipeline" section of `TODO.md` for the plan.
+and the owner's decisions on the open questions. See the "Matching & ranking pipeline" section of `TODO.md` for the plan.
 
 ## What the prototype does
 
@@ -13,7 +13,8 @@ Package `py_image_dedup/matching/`:
 | `decoding.py`   | Pillow decode, JPEG draft mode (DCT scaling to >= 512 px), EXIF orientation applied (`ImageOps.exif_transpose`), conversion to RGB               |
 | `metadata.py`   | `DateTimeOriginal` + `SubSecTimeOriginal`, camera make/model, `ImageUniqueID`, `Software`                                                        |
 | `signatures.py` | SHA-256 of the file, SHA-256 of the decoded preview pixels, pHash + dHash (`imagehash`, 64 bit), grayscale flag, lazy full resolution pixel hash |
-| `store.py`      | `SignatureStore`: SQLite (stdlib `sqlite3`), one row per file, incremental (size + mtime + `SIGNATURE_VERSION`)                                  |
+| `store.py`      | `SignatureStore` interface + `SqliteSignatureStore` (stdlib `sqlite3`, default), one row per file, incremental (size + mtime + `SIGNATURE_VERSION`), `open_signature_store(url)` factory |
+| `store_postgres.py` | `PostgresSignatureStore` (psycopg 3, optional `postgres` extra), same record semantics                                                     |
 | `search.py`     | All-pairs Hamming distance search, numpy (`bitwise_count` over `uint64`), block-wise to bound memory                                             |
 | `grouping.py`   | Staged matching with reason + confidence, burst veto, constrained union-find clustering                                                          |
 | `pipeline.py`   | `MatchingPipeline`: analyse (thread pool) into the store, match, cluster                                                                         |
@@ -158,25 +159,54 @@ The SQLite store needs roughly 0.5 KB per file including indexes (~20 MB for 40k
    can show "why".
 6. Keep the full resolution pixel hash lazy: it costs 79 ms/file and is only needed for a handful of pairs.
 
-## Open questions for the owner
+## Signature store backends
 
-1. **Are grayscale and edited versions duplicates you want removed**, or "variants" to keep next to the
-   original? The test data puts them in the same group; the prototype matches them (with a note).
-2. **Burst window**: 10 s is a guess. Should *any* different capture time of the same camera veto
-   (strictest; risk: tools that shift capture times, e.g. time zone fixes, would then never match their source),
-   or only a short window?
-3. **Rotated/mirrored copies without orientation tag**: worth the 4-8x hash cost, or ignore?
-4. **Crops**: is opt-in embedding search (SSCD + onnxruntime, ~100 MB model) wanted, or out of scope?
-5. **HEIC/RAW**: are there HEIC (iPhone) or RAW files in the library? Then `pillow-heif` / `rawpy` previews
-   are needed before switching (the prototype only handles what Pillow decodes).
-6. **Migration**: switch hard (full re-analysis, remove Elasticsearch) or run both backends side by side for a
-   while and compare the groups in the web UI (`matcher` column)?
-7. Should the SQLite signature store live in the same database file as the state store (one PVC file) or in a
-   separate one (can be deleted/rebuilt independently)?
+The pipeline only talks to the `SignatureStore` interface (`store.py`): upsert/get records keyed by path
+(size, mtime, hashes, metadata), `get_all()`/`iter_all()` for the search, `get_file_states()` + `needs_analysis()`
+for incremental runs, `remove()`/`remove_missing()` for deleted files, `set_full_pixel_hash()` for the lazy
+pixel hash and `schema_version`. Stores are persistence only: the Hamming distance search always loads all
+signatures and runs in numpy (`search.py`), so no database specific similarity search is needed.
+
+`open_signature_store(url)` creates a store from a URL like setting (to be wired into `config.py` later):
+
+| URL                                            | Store                                                             |
+|------------------------------------------------|-------------------------------------------------------------------|
+| `sqlite:///relative/signatures.db`             | SQLite, path relative to the working directory (SQLAlchemy style) |
+| `sqlite:////data/signatures.db`                | SQLite, absolute path                                             |
+| `/data/signatures.db` (no scheme)              | SQLite file                                                       |
+| `sqlite://`, `sqlite:///:memory:`, `:memory:`  | SQLite in memory (tests)                                          |
+| `postgresql://user:password@host:5432/db`      | Postgres (`postgres://` works too, any libpq URI incl. `?sslmode=...`) |
+
+- **SQLite** (default) lives in its **own database file**, separate from the web UI state store
+  (`py_image_dedup/state`), so it can be deleted and rebuilt independently (everything in it can be recomputed).
+- **Postgres** needs the optional extra: `pip install py-image-dedup[postgres]` / `poetry install --extras postgres`
+  (`psycopg[binary]` 3.x, imported lazily, the package works without it). Tables are prefixed with `matching_`
+  (`matching_files`, `matching_meta`), so a database shared with other applications works; schema creation is
+  serialised with an advisory lock. All signatures are streamed with a server side cursor.
+- **Schema version**: `SCHEMA_VERSION` in `store.py` (SQLite `PRAGMA user_version`, Postgres `matching_meta`).
+  The store is a cache, so a store with another schema version is dropped and rebuilt (full re-analysis).
+  `SIGNATURE_VERSION` (`models.py`) triggers re-analysis of single records without touching the schema.
+- Tests: `tests/test_matching_store.py` runs the same contract tests against SQLite (always) and Postgres
+  (`integration` marker, `PY_IMAGE_DEDUP_TEST_POSTGRES_DSN`, Postgres service container in CI).
+
+## Decisions (owner, 2026-10-31)
+
+1. **Grayscale/edited versions** are variants to keep, unless the original does not look nice on its own; then
+   the original can be deleted. That is a human decision: such groups go to review, never automatic action.
+2. **Burst window**: keep a burst window as a decision factor; not a hard veto on any capture time difference.
+3. **Rotated/mirrored copies without orientation tag**: yes, match them, even if it is expensive
+   (4-8x hash storage and search time).
+4. **Crops**: yes to AI embeddings for crops. The crop should win in most cases, but not all (review).
+5. **HEIC/RAW**: possible, but not relevant to the owner (JPEG/PNG matter). Others may care, so support them
+   later as optional extras.
+6. **Migration**: run both backends side by side if easily possible and compare the results on the owner's dataset.
+7. **Signature store**: a separate SQLite file for the hashes (not the state store database); if feasible also
+   support Postgres (the owner runs a cluster instance). Done, see "Signature store backends".
 
 ## Not done (intentionally)
 
 - No wiring into `ImageMatchDeduplicator`, the daemon, CLI, config or Docker image.
-- No `SignatureBackend` interface yet: the prototype API (`MatchingPipeline.analyse/match`) should inform it.
+- No `SignatureBackend` interface (image-match vs. hashes) yet: the prototype API (`MatchingPipeline.analyse/match`)
+  should inform it. The store itself is abstracted (`SignatureStore`).
 - Quality signals for prioritization (format tier, JPEG quality estimate, sharpness) are not part of this
   prototype.
