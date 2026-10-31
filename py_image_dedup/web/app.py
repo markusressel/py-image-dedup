@@ -15,6 +15,7 @@ from prometheus_client import CONTENT_TYPE_LATEST, REGISTRY, generate_latest
 from pydantic import BaseModel
 
 from py_image_dedup.config import DeduplicatorConfig
+from py_image_dedup.integrations.immich import ImmichClient, ImmichError
 from py_image_dedup.state.store import StateStore, GroupStatus, DecisionSource
 from py_image_dedup.web.thumbnails import ThumbnailCache
 
@@ -40,6 +41,10 @@ class KeepRequest(BaseModel):
 
 class ImportDiscardedRequest(BaseModel):
     discarded_paths: List[str]
+    apply: bool = False
+
+
+class ImportRequest(BaseModel):
     apply: bool = False
 
 
@@ -226,16 +231,49 @@ def create_app(store: StateStore, config: DeduplicatorConfig, static_directory: 
         store.set_user_keeper(group_id, candidate["path"])
         return with_details(store.get_group(group_id))
 
+    def require_target_directory():
+        if config.DEDUPLICATOR_DUPLICATES_TARGET_DIRECTORY.value is None:
+            raise HTTPException(status_code=409,
+                                detail="duplicates_target_directory is not configured. User decisions "
+                                       "only move duplicates, they never delete files.")
+
+    @app.get("/api/integrations/immich")
+    def immich_status():
+        return {"configured": bool(config.IMMICH_URL.value and config.IMMICH_API_KEY.value),
+                "url": config.IMMICH_URL.value}
+
+    @app.post("/api/integrations/immich/import-trash")
+    def immich_import_trash(request: ImportRequest):
+        """
+        Imports the files trashed in Immich (f.ex. by its duplicate review) as decisions,
+        see /api/decisions/import-discarded. Without apply, only reports what would happen.
+        """
+        if not (config.IMMICH_URL.value and config.IMMICH_API_KEY.value):
+            raise HTTPException(status_code=409, detail="Immich is not configured (immich.url, immich.api_key)")
+        if request.apply:
+            require_target_directory()
+        client = ImmichClient(config.IMMICH_URL.value, config.IMMICH_API_KEY.value,
+                              path_mappings=config.IMMICH_PATH_MAPPINGS.value)
+        try:
+            trashed = client.trashed_original_paths()
+        except ImmichError as ex:
+            raise HTTPException(status_code=502, detail=str(ex))
+        mapped = [client.map_path(p) for p in trashed]
+        unmapped = [p for p, m in zip(trashed, mapped) if m is None]
+        result = store.import_discarded_paths([m for m in mapped if m is not None], apply=request.apply)
+        result["trashed"] = len(trashed)
+        result["unmapped"] = len(unmapped)
+        result["unmapped_examples"] = unmapped[:5]
+        return result
+
     @app.post("/api/decisions/import-discarded")
     def import_discarded(request: ImportDiscardedRequest):
         """
         Applies decisions made in another tool (f.ex. Immich): groups where all but one member
         are in discarded_paths keep the remaining one. Without apply, only reports what would happen.
         """
-        if request.apply and config.DEDUPLICATOR_DUPLICATES_TARGET_DIRECTORY.value is None:
-            raise HTTPException(status_code=409,
-                                detail="duplicates_target_directory is not configured. User decisions "
-                                       "only move duplicates, they never delete files.")
+        if request.apply:
+            require_target_directory()
         return store.import_discarded_paths(request.discarded_paths, apply=request.apply)
 
     @app.post("/api/groups/{group_id}/ignore")

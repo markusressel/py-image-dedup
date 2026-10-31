@@ -4,6 +4,8 @@ import type {
   Failure,
   Group,
   GroupDetail,
+  ImmichImportResult,
+  ImmichStatus,
   Page,
   Run,
   Status,
@@ -62,6 +64,9 @@ export const api = {
   actions: (params?: Params) => request<Page<Action>>('GET', `/api/actions${query(params)}`),
   failures: (params?: Params) => request<Page<Failure>>('GET', `/api/failures${query(params)}`),
   config: () => request<ConfigResponse>('GET', '/api/config'),
+  immich: () => request<ImmichStatus>('GET', '/api/integrations/immich'),
+  importImmichTrash: (apply: boolean) =>
+    request<ImmichImportResult>('POST', '/api/integrations/immich/import-trash', { apply }),
 }
 
 export function thumbnailUrl(candidateId: number, size = 320): string {

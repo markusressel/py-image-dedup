@@ -196,3 +196,25 @@ export interface ConfigResponse {
   hints: Hint[]
   weak_rules: string[]
 }
+
+export interface ImmichStatus {
+  configured: boolean
+  url: string | null
+}
+
+export interface ImportOutcomes {
+  decided: number
+  no_discarded_member: number
+  all_discarded: number
+  several_remaining: number
+  already_decided_by_user: number
+}
+
+export interface ImmichImportResult {
+  applied: boolean
+  outcomes: ImportOutcomes
+  decided: { group_id: number; keep_path: string }[]
+  trashed: number
+  unmapped: number
+  unmapped_examples: string[]
+}

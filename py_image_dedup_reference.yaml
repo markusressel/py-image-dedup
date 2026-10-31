@@ -117,3 +117,18 @@ py_image_dedup:
     # Directory containing the built web UI (web/dist). If unset, web/dist
     # next to the py_image_dedup package is used, if it exists.
     # static_directory: /app/web/dist
+
+  # Optional Immich integration: import the files trashed in Immich (f.ex. by
+  # its duplicate review) as decisions for the duplicate groups (web UI dashboard).
+  immich:
+    # Base URL of the Immich server.
+    # url: http://immich-server:2283
+    # API key with the asset.read permission of the user who owns the trashed
+    # assets. Better set via env: PY_IMAGE_DEDUP_IMMICH_API_KEY
+    # api_key: ...
+    # Maps the paths Immich reports to the paths this application sees,
+    # f.ex. when Immich mounts the library at a different location.
+    # Only paths matching a mapping are imported (if any mapping is set).
+    path_mappings: []
+    #  - immich: /mnt/photos
+    #    local: /data/photos

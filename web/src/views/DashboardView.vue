@@ -6,6 +6,7 @@ import { status } from '../status'
 import { formatDuration, formatRelative, formatTime, percent } from '../format'
 import ProgressBar from '../components/ProgressBar.vue'
 import StatusBadge from '../components/StatusBadge.vue'
+import ImmichImport from '../components/ImmichImport.vue'
 
 const runs = usePolling(() => api.runs({ limit: 10 }), () => (status.value?.live.busy ? 3000 : 10000))
 
@@ -100,6 +101,8 @@ const failedActions = computed(() => actionCount('move', 'failed') + actionCount
         <span class="tile-label">your decisions waiting to be executed</span>
       </div>
     </section>
+
+    <ImmichImport />
 
     <section class="card">
       <div class="card-head">
