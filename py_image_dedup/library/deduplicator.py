@@ -49,6 +49,13 @@ WEAK_PRIORITIZATION_RULES = {
     "file-path",  # implicit last criterion: alphabetical order of the file path
 }
 
+# prefer-edited: file name (without extension) and EXIF "Software" patterns of edited copies
+DEFAULT_EDITED_FILE_NAME_PATTERNS = [r"(?i)[-_ .(](edit|edited|bearbeitet)(\W|_|$)"]
+DEFAULT_EDITING_SOFTWARE_PATTERNS = [
+    r"(?i)lightroom|photoshop|snapseed|gimp|darktable|rawtherapee|affinity|luminar|capture one|pixelmator|"
+    r"vsco|picsart|facetune"
+]
+
 # EXIF values longer than this are not copied into the state database (e.g. maker notes)
 MAX_STORED_EXIF_VALUE_LENGTH = 200
 
@@ -62,6 +69,24 @@ def _path_matches(pattern: str, path: str) -> bool:
     except re.error:
         LOGGER.warning(f"Invalid path pattern in prioritization rules: {pattern}")
         return False
+
+
+def _edit_marker(candidate: dict, rule: dict) -> str | None:
+    """
+    Checks whether a candidate is an edited copy, see the prefer-edited prioritization rule.
+    :return: why the candidate is considered edited, None if it is not
+    """
+    path = Path(str(candidate[MetadataKey.PATH.value]))
+    for pattern in rule.get("file_name_patterns") or DEFAULT_EDITED_FILE_NAME_PATTERNS:
+        if _path_matches(pattern, path.stem):
+            return f"file name matches '{pattern}'"
+    exif = candidate[MetadataKey.METADATA.value].get(MetadataKey.EXIF_DATA.value) or {}
+    software = exif.get("Software")
+    if software:
+        for pattern in rule.get("software_patterns") or DEFAULT_EDITING_SOFTWARE_PATTERNS:
+            if _path_matches(pattern, str(software)):
+                return f"edited with '{str(software).strip()}'"
+    return None
 
 
 def _format_timestamp(timestamp: float) -> str:
@@ -550,6 +575,14 @@ class ImageMatchDeduplicator:
             if needs_review:
                 review_reason = f"The best copy was only chosen by the weak tie-breaker rule '{decided_by}'" \
                     if decided_by is not None else "All prioritization rules rated the copies equal"
+            edit_rule = next((r for r in DeduplicatorConfig.PRIORITIZATION_RULES.value
+                              if r.get("name") == "prefer-edited"), None)
+            if has_duplicates and not needs_review and edit_rule is not None:
+                edited = [_edit_marker(c, edit_rule) is not None for c in ranked]
+                if any(edited) and not all(edited):
+                    needs_review = True
+                    review_reason = "Contains an edited copy and its original: check that the edit should " \
+                                    "replace the original (ignore the group to keep both)"
 
             keep_paths = [c[MetadataKey.PATH.value] for c in files_to_keep]
             best_path = files_to_keep[0][MetadataKey.PATH.value]
@@ -559,6 +592,8 @@ class ImageMatchDeduplicator:
                 path = candidate[MetadataKey.PATH.value]
                 if path == best_path:
                     keep_reason = "best copy according to the prioritization rules"
+                elif path in keep_paths and self._protected_pattern(path) is not None:
+                    keep_reason = f"in a protected path ('{self._protected_pattern(path)}')"
                 elif path in keep_paths:
                     keep_reason = f"file modification time differs more than {max_mod_time_diff} " \
                                   f"from the best copy, so it is not considered a duplicate"
@@ -587,7 +622,8 @@ class ImageMatchDeduplicator:
             dont_keep = [c for c in all_candidates if c[MetadataKey.PATH.value] != group["keep_path"]]
             if len(keep) != 1:
                 return None
-            return keep, dont_keep
+            protected = [c for c in dont_keep if self._protected_pattern(c[MetadataKey.PATH.value]) is not None]
+            return keep + protected, [c for c in dont_keep if c not in protected]
         if group["needs_review"] and self._config.DEDUPLICATION_HOLD_AMBIGUOUS_GROUPS.value:
             return None
         return files_to_keep, duplicates
@@ -689,11 +725,25 @@ class ImageMatchDeduplicator:
                     keep.append(c)
             dont_keep = list(filter(lambda x: x not in keep, dont_keep))
 
+        # never touch files in protected paths
+        protected = [c for c in dont_keep if self._protected_pattern(c[MetadataKey.PATH.value]) is not None]
+        keep.extend(protected)
+        dont_keep = [c for c in dont_keep if c not in protected]
+
         # remember that we have processed these files
         for candidate in duplicate_candidates:
             self._processed_files[candidate[MetadataKey.PATH.value]] = True
 
         return keep, dont_keep
+
+    def _protected_pattern(self, path) -> str | None:
+        """
+        :return: the protected_paths pattern matching the given file path, None if it is not protected
+        """
+        for pattern in self._config.PROTECTED_PATHS.value or []:
+            if pattern.search(str(path)):
+                return pattern.pattern
+        return None
 
     @classmethod
     def _sort_by_quality_descending(cls, duplicate_candidates) -> []:
@@ -810,6 +860,10 @@ class ImageMatchDeduplicator:
                     value = index
                     text = f"matches {rule_name} pattern '{patterns[index]}'"
                 criteria.append((rule_name, value, text))
+            elif rule_name == "prefer-edited":
+                # intentionally edited copies are better than their original
+                marker = _edit_marker(candidate, rule)
+                criteria.append((rule_name, 0 if marker else 1, f"edited: {marker}" if marker else "not edited"))
             elif rule_name == "higher-pixel-count":
                 # higher pixel count is better
                 pixel_count = metadata[MetadataKey.PIXELCOUNT.value]
@@ -883,6 +937,12 @@ class ImageMatchDeduplicator:
         for path in duplicates:
             self._group_of_path[str(path)] = group_id
         self._failed_groups.discard(group_id)
+
+        protected = [p for p in duplicates if self._protected_pattern(p) is not None]
+        for path in protected:
+            self._record_action(path, "move", ActionStatus.SKIPPED, dry_run=dry_run, source=DecisionSource.USER,
+                                message=f"in a protected path ('{self._protected_pattern(path)}')")
+        duplicates = [p for p in duplicates if p not in protected]
 
         reason = None
         if target_dir is None:

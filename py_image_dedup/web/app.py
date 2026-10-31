@@ -32,7 +32,7 @@ KNOWN_PRIORITIZATION_RULES = {
     "longer-folder-path", "shorter-folder-path",
     "higher-score", "lower-score",
     "higher-pixel-count", "lower-pixel-count",
-    "preferred-paths", "avoided-paths",
+    "preferred-paths", "avoided-paths", "prefer-edited",
 }
 
 

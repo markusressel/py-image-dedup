@@ -51,6 +51,7 @@ NODE_PRIORITIZATION_RULES = "prioritization_rules"
 NODE_MAX_FILE_MODIFICATION_TIME_DIFF = "max_file_modification_time_diff"
 NODE_REMOVE_EMPTY_FOLDERS = "remove_empty_folders"
 NODE_DUPLICATES_TARGET_DIRECTORY = "duplicates_target_directory"
+NODE_PROTECTED_PATHS = "protected_paths"
 
 NODE_HOLD_AMBIGUOUS_GROUPS = "hold_ambiguous_groups"
 
@@ -258,6 +259,20 @@ class DeduplicatorConfig(ConfigBase):
         ],
         default=None,
         example=timedelta(minutes=5)
+    )
+
+    PROTECTED_PATHS = ListConfigEntry(
+        description="Regular expressions (matched anywhere in the file path) of files that are never moved or "
+                    "deleted, f.ex. curated albums. If the best copy of a group is somewhere else, both are kept.",
+        item_type=RegexConfigEntry,
+        key_path=[
+            NODE_MAIN,
+            NODE_DEDUPLICATION,
+            NODE_PROTECTED_PATHS
+        ],
+        required=False,
+        default=[],
+        example=["/Familie/"]
     )
 
     PRIORITIZATION_RULES = ListConfigEntry(
