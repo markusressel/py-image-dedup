@@ -33,6 +33,7 @@ dependencies = [
     "ruamel-yaml-clib>=0.2.15",
     "fastapi>=0.162.0,<0.163.0",
     "uvicorn>=0.54.0,<0.55.0",
+    "imagehash>=4.3.2,<5.0.0",
 ]
 
 [project.urls]

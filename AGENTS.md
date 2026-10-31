@@ -70,12 +70,16 @@ py_image_dedup/
     __init__.py                # ImageSignatureStore base class (metadata, EXIF, datamodel version)
     elasticsearchstorebackend.py  # Elasticsearch + image-match implementation
     metadata_key.py            # keys of stored documents
+  matching/                    # EXPERIMENTAL prototype (not wired in): SQLite signatures (SHA-256, pixel hash,
+                               # pHash/dHash), staged grouping + confidence, burst veto, union-find clustering
+                               # (see docs/matching-prototype.md), benchmark.py: `python -m py_image_dedup.matching.benchmark`
   util/                        # file + image helpers, echo()
 web/                           # Vue 3 + Vite + TypeScript single page app (no component library)
   src/api.ts, src/types.ts     # typed client for the JSON API (keep in sync with py_image_dedup/web/app.py)
   src/views/                   # Dashboard, Groups, GroupDetail, Run, Actions, Config
   src/polling.ts               # polling composable (status: 1s while busy, 3s idle; paused in hidden tabs)
 tests/                         # pytest/unittest tests, test config + sample images
+docs/                          # design notes (matching-prototype.md: benchmark results, open questions)
 docker/entrypoint.sh           # drops privileges to PUID/PGID
 py_image_dedup_reference.yaml  # documented reference configuration
 ```
