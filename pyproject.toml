@@ -48,4 +48,4 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "*"
-httpx = "^0.28.1"
+httpx2 = "^2.16.0"
