@@ -39,7 +39,7 @@ dependencies = [
 [project.optional-dependencies]
 # PostgreSQL signature store of the experimental matching pipeline (py_image_dedup/matching/store_postgres.py)
 postgres = [
-    "psycopg[binary]>=3.2,<4.0",
+    "psycopg[binary]>=3.3.8,<4.0",
 ]
 # opt-in crop detection of the experimental matching pipeline (py_image_dedup/matching/embeddings.py)
 embeddings = [
