@@ -19,7 +19,7 @@ dependencies = [
     "Pillow",
     "ordered-set",
     "watchdog>=0.10.2,<6.1.0",
-    "elasticsearch>=7,<8",
+    "elasticsearch>=9,<10",
     "scipy",
     "numpy",
     "container-app-conf>=5.0.0,<6.0.0",
