@@ -309,14 +309,14 @@ requests = ["requests (>=2.4.0,<3.0.0)"]
 
 [[package]]
 name = "fastapi"
-version = "0.163.2"
+version = "0.164.0"
 description = "FastAPI framework, high performance, easy to learn, fast to code, ready for production"
 optional = false
 python-versions = ">=3.11"
 groups = ["main"]
 files = [
-    {file = "fastapi-0.163.2-py3-none-any.whl", hash = "sha256:825a8fdd18d7bfcb1b86735e9805c59b7400d55c4060d3df5331b62ae452f004"},
-    {file = "fastapi-0.163.2.tar.gz", hash = "sha256:e605c4c9b94be78b43aa8239a62ccf7b6684346cdc9e053633feab0ab21b87c7"},
+    {file = "fastapi-0.164.0-py3-none-any.whl", hash = "sha256:6ec63b74a112a6acc22c87f29bb8cb209002050cfeb4f993b959e6caea65c468"},
+    {file = "fastapi-0.164.0.tar.gz", hash = "sha256:3db1b4b146924d284b33bd6b9ca244c8bd0560d5e3526591447fd3abe4383989"},
 ]
 
 [package.dependencies]
@@ -324,7 +324,7 @@ annotated-doc = ">=0.0.2"
 anyio = ">=4.1.0"
 opentelemetry-api = ">=1.44.0"
 pydantic = ">=2.9.0"
-starlette = ">=0.46.0"
+starlette = ">=1.6.0"
 typing-extensions = ">=4.8.0"
 typing-inspection = ">=0.4.2"
 
@@ -1836,4 +1836,4 @@ postgres = ["psycopg"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.14,<4.0"
-content-hash = "eb393d5c729056c91c56be181916cbbd39e39d31d78c4a692a5f9550a1758c38"
+content-hash = "638df2d7a95e690fbe415c97b320daa694ca5caf0e279365bbd65ff440fdda55"
